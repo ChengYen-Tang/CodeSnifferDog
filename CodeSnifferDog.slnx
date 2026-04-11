@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CodeSnifferDog.Tests/CodeSnifferDog.Tests.csproj" />
+  <Project Path="CodeSnifferDog/CodeSnifferDog.csproj" />
+</Solution>
