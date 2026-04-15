@@ -28,7 +28,7 @@ public sealed class OperationalContextChatReducerTests
 
         ChatMessage[] reduced = [.. await reducer.ReduceAsync(messages, TestContext.CancellationToken)];
 
-        Assert.AreEqual(2, reduced.Length);
+        Assert.HasCount(2, reduced);
         Assert.AreEqual(0, summarizer.CallCount);
         CollectionAssert.AreEqual(messages, reduced);
     }
@@ -54,15 +54,14 @@ public sealed class OperationalContextChatReducerTests
                 TestContext.CancellationToken),
         ];
 
-        Assert.AreEqual(1, reduced.Length);
+        Assert.HasCount(1, reduced);
         Assert.AreEqual(ChatRole.Assistant, reduced[0].Role);
-        Assert.IsTrue(reduced[0].Text?.StartsWith("Operational summary checkpoint", StringComparison.Ordinal) == true);
+        Assert.IsTrue(reduced[0].Text?.StartsWith("Operational summary checkpoint", StringComparison.Ordinal) ?? false);
         Assert.AreEqual(
             OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
             reduced[0].AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
-        Assert.AreEqual(
-            true,
-            reduced[0].AdditionalProperties![OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey]);
+        bool isCompactionSummary = reduced[0].AdditionalProperties![OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey] is true;
+        Assert.IsTrue(isCompactionSummary);
         Assert.AreEqual(1, summarizer.CallCount);
     }
 
@@ -143,7 +142,7 @@ public sealed class OperationalContextChatReducerTests
         ChatMessage[] reduced = [.. await reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken)];
 
         Assert.AreEqual(1, summarizer.CallCount);
-        Assert.AreEqual(1, reduced.Length);
+        Assert.HasCount(1, reduced);
     }
 
     [TestMethod]

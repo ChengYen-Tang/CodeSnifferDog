@@ -29,7 +29,7 @@ public sealed class ChatClientOperationalContextCompactionSummarizerTests
             },
             TestContext.CancellationToken);
 
-        Assert.AreEqual(3, chatClient.LastMessages.Count);
+        Assert.HasCount(3, chatClient.LastMessages);
         Assert.AreEqual("user-1", chatClient.LastMessages[0].Text);
         Assert.AreEqual("assistant-1", chatClient.LastMessages[1].Text);
         Assert.AreEqual("summarize now", chatClient.LastMessages[2].Text);

@@ -21,6 +21,6 @@ public sealed class EstimatingOperationalContextCompactionUsageProviderTests
             TestContext.CancellationToken);
 
         Assert.IsNotNull(usage);
-        Assert.IsTrue(usage.UsedTokens > 0);
+        Assert.IsGreaterThan(0L, usage.UsedTokens);
     }
 }

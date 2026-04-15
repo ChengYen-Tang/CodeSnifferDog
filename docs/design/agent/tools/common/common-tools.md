@@ -5,7 +5,7 @@
 - 專案名稱：CodeSnifferDog
 - 文件目的：定義所有 Agent 共用的通用分析工具
 - 文件狀態：草稿
-- 最後更新：2026-04-14
+- 最後更新：2026-04-15
 
 ## 第一版範圍
 
@@ -32,6 +32,10 @@
   - Linux/macOS 使用 `bash`
 - 預設工作目錄：
   - `Repository root path`
+- 搜尋邊界：
+  - 預設從 `Repository root path` 作為工作目錄執行
+  - 允許 Agent 在 `Command` 中提供完整路徑，查看 repo 外的檔案或目錄
+  - 這個工具不會把搜尋範圍強制限制在 repo 內
 - 第一版不額外細分成多個 shell 工具。
 - 第一版先不要設計過多限制，後續依實作需要再補安全策略與命令白名單。
 
@@ -62,6 +66,11 @@
   - `CodeSnifferDog/assets/ripgrep/osx-x64/rg`
   - `CodeSnifferDog/assets/ripgrep/osx-arm64/rg`
 - 目前專案已設定在編譯時複製 `CodeSnifferDog/assets/ripgrep/**` 到輸出目錄。
+- 目前程式實作位置：
+  - `CodeSnifferDog/Modules/Tools/Common/CommonToolSet.cs`
+  - `CodeSnifferDog/Modules/Tools/Common/CommandProcessRunner.cs`
+  - `CodeSnifferDog/Modules/Tools/Common/RipgrepAssetLocator.cs`
+  - `CodeSnifferDog/Models/Common/Tools/*.cs`
 - 理由：
   - `rg` 為跨平台工具
   - 速度快
@@ -80,3 +89,5 @@
 - 2026-04-14：建立通用工具文件，第一版只保留 `Shell` 與 `Ripgrep search`。
 - 2026-04-14：補充 `RunRipgrepCommand` 使用系統隨附的 `rg` 編譯資產，不依賴使用者環境 PATH。
 - 2026-04-14：補充專案內 `rg` 資產的實際放置路徑與編譯複製行為。
+- 2026-04-15：補充通用工具的實作位置，對應目前專案內的 `CommonToolSet` 與相關 runtime。
+- 2026-04-15：明確定義 `RunRipgrepCommand` 以 repo root 為工作目錄，但允許透過完整路徑查看 repo 外內容。
