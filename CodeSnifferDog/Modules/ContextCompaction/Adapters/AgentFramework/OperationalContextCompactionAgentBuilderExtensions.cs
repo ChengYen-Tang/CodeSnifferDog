@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
 using System.Collections;
 using System.Globalization;
+using System.Reflection;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 
@@ -83,7 +84,20 @@ public static class OperationalContextCompactionAgentBuilderExtensions
         for (int index = 0; index < left.Count; index++)
             if (left[index].Role != right[index].Role ||
                 !string.Equals(left[index].Text, right[index].Text, StringComparison.Ordinal) ||
+                !ContentsAreEquivalent(left[index].Contents, right[index].Contents) ||
                 !AdditionalPropertiesAreEquivalent(left[index].AdditionalProperties, right[index].AdditionalProperties))
+                return false;
+
+        return true;
+    }
+
+    private static bool ContentsAreEquivalent(IList<AIContent> left, IList<AIContent> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (int index = 0; index < left.Count; index++)
+            if (!string.Equals(CanonicalizeContent(left[index]), CanonicalizeContent(right[index]), StringComparison.Ordinal))
                 return false;
 
         return true;
@@ -93,6 +107,17 @@ public static class OperationalContextCompactionAgentBuilderExtensions
         AdditionalPropertiesDictionary? left,
         AdditionalPropertiesDictionary? right) =>
         CanonicalizeAdditionalProperties(left) == CanonicalizeAdditionalProperties(right);
+
+    private static string CanonicalizeContent(AIContent content)
+    {
+        IEnumerable<string> entries = content.GetType()
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(static property => property.CanRead)
+            .OrderBy(static property => property.Name, StringComparer.Ordinal)
+            .Select(property => $"{property.Name}={CanonicalizeValue(property.GetValue(content))}");
+
+        return $"{content.GetType().FullName}|{string.Join("|", entries)}";
+    }
 
     private static string CanonicalizeAdditionalProperties(AdditionalPropertiesDictionary? properties)
     {

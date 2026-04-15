@@ -11,7 +11,8 @@ public sealed class ChatClientOperationalContextCompactionSummarizer(IChatClient
         OperationalContextCompactionOptions options,
         CancellationToken cancellationToken)
     {
-        List<ChatMessage> summaryMessages = [.. messages, new ChatMessage(ChatRole.User, summaryPrompt)];
+        List<ChatMessage> summaryMessages = [.. TrimTrailingToolOnlyMessages(messages)];
+        summaryMessages.Add(new ChatMessage(ChatRole.User, summaryPrompt));
 
         ChatOptions chatOptions = new()
         {
@@ -25,5 +26,30 @@ public sealed class ChatClientOperationalContextCompactionSummarizer(IChatClient
             throw new OperationalContextCompactionException("Operational context compaction summary call returned empty content.");
 
         return summary;
+    }
+
+    private static IReadOnlyList<ChatMessage> TrimTrailingToolOnlyMessages(IReadOnlyList<ChatMessage> messages)
+    {
+        int lastIndexToKeep = messages.Count - 1;
+
+        while (lastIndexToKeep >= 0 && IsToolOnlyMessage(messages[lastIndexToKeep]))
+            lastIndexToKeep--;
+
+        if (lastIndexToKeep < 0)
+            return [];
+
+        return [.. messages.Take(lastIndexToKeep + 1)];
+    }
+
+    private static bool IsToolOnlyMessage(ChatMessage message)
+    {
+        if (!string.IsNullOrWhiteSpace(message.Text))
+            return false;
+
+        if (message.Contents.Count == 0)
+            return false;
+
+        return message.Contents.All(static content =>
+            content is FunctionCallContent or FunctionResultContent);
     }
 }

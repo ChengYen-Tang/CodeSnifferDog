@@ -17,12 +17,22 @@ public sealed class EstimatingOperationalContextCompactionUsageProvider(Func<str
         long usedTokens = 0;
 
         foreach (ChatMessage message in messages)
-            usedTokens += _textToTokenEstimator(message.Text ?? string.Empty);
+            usedTokens += EstimateMessageTokens(message);
 
         return ValueTask.FromResult<OperationalContextCompactionUsage?>(new OperationalContextCompactionUsage
         {
             UsedTokens = usedTokens,
         });
+    }
+
+    private long EstimateMessageTokens(ChatMessage message)
+    {
+        long usedTokens = _textToTokenEstimator(message.Text ?? string.Empty);
+
+        foreach (AIContent content in message.Contents)
+            usedTokens += _textToTokenEstimator(content.ToString() ?? string.Empty);
+
+        return usedTokens;
     }
 
     private static int DefaultEstimate(string text)

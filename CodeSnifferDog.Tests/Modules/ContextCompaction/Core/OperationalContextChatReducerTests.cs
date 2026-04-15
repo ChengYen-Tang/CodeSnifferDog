@@ -26,15 +26,15 @@ public sealed class OperationalContextChatReducerTests
             new(ChatRole.User, "user"),
         ];
 
-        IEnumerable<ChatMessage> reduced = await reducer.ReduceAsync(messages, TestContext.CancellationToken);
+        ChatMessage[] reduced = [.. await reducer.ReduceAsync(messages, TestContext.CancellationToken)];
 
-        Assert.AreEqual(2, reduced.Count());
+        Assert.AreEqual(2, reduced.Length);
         Assert.AreEqual(0, summarizer.CallCount);
-        CollectionAssert.AreEqual(messages, reduced.ToArray());
+        CollectionAssert.AreEqual(messages, reduced);
     }
 
     [TestMethod]
-    public async Task ReduceAsync_PreservesSystemBoundarySummaryAndTail_WhenThresholdIsExceeded()
+    public async Task ReduceAsync_ReplacesHistory_WithSingleSummaryCheckpoint_WhenThresholdIsExceeded()
     {
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
         OperationalContextChatReducer reducer = CreateReducer(
@@ -42,115 +42,27 @@ public sealed class OperationalContextChatReducerTests
             new FixedUsageProvider(300),
             threshold: 200);
 
-        ChatMessage[] messages =
+        ChatMessage[] reduced =
         [
-            new(ChatRole.System, "system-1"),
-            new(ChatRole.User, "user-1"),
-            new(ChatRole.Assistant, "assistant-boundary"),
-            new(ChatRole.Assistant, "assistant-1"),
-            new(ChatRole.User, "user-2"),
+            .. await reducer.ReduceAsync(
+                [
+                    new ChatMessage(ChatRole.System, "system-1"),
+                    new ChatMessage(ChatRole.User, "user-1"),
+                    new ChatMessage(ChatRole.Assistant, "assistant-1"),
+                    new ChatMessage(ChatRole.User, "user-2"),
+                ],
+                TestContext.CancellationToken),
         ];
 
-        ChatMessage[] reduced = [.. await reducer.ReduceAsync(messages, TestContext.CancellationToken)];
-
-        Assert.HasCount(5, reduced);
-        Assert.AreEqual(ChatRole.System, reduced[0].Role);
-        Assert.AreEqual("system-1", reduced[0].Text);
-        Assert.AreEqual("Operational context boundary marker", reduced[1].Text);
-        Assert.AreEqual(
-            OperationalContextCompactionArtifactMetadata.BoundaryArtifactKind,
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
-        Assert.AreEqual(
-            "assistant-boundary",
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.BoundaryAnchorTextKey]);
-        Assert.AreEqual(
-            2,
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.BoundaryAnchorIndexKey]);
-        Assert.AreEqual(
-            "3,4",
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.PreservedTailIndexesKey]);
-        Assert.AreEqual(ChatRole.Assistant, reduced[2].Role);
-        Assert.Contains("Operational summary checkpoint", reduced[2].Text);
+        Assert.AreEqual(1, reduced.Length);
+        Assert.AreEqual(ChatRole.Assistant, reduced[0].Role);
+        Assert.IsTrue(reduced[0].Text?.StartsWith("Operational summary checkpoint", StringComparison.Ordinal) == true);
         Assert.AreEqual(
             OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
-            reduced[2].AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
+            reduced[0].AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
         Assert.AreEqual(
             true,
-            reduced[2].AdditionalProperties!.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey));
-        Assert.AreEqual(
-            true,
-            reduced[2].AdditionalProperties!.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.HasPreservedTailKey));
-        Assert.Contains("Current objective", reduced[2].Text);
-        Assert.AreEqual("assistant-1", reduced[3].Text);
-        Assert.AreEqual("user-2", reduced[4].Text);
-        Assert.AreEqual(1, summarizer.CallCount);
-    }
-
-    [TestMethod]
-    public async Task ReduceAsync_UsesStableIndexes_WhenTextsRepeat()
-    {
-        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
-        OperationalContextChatReducer reducer = CreateReducer(
-            summarizer,
-            new FixedUsageProvider(300),
-            threshold: 200);
-
-        ChatMessage[] messages =
-        [
-            new(ChatRole.System, "system-1"),
-            new(ChatRole.User, "same"),
-            new(ChatRole.Assistant, "same"),
-            new(ChatRole.User, "same"),
-            new(ChatRole.Assistant, "same"),
-        ];
-
-        ChatMessage[] reduced = [.. await reducer.ReduceAsync(messages, TestContext.CancellationToken)];
-
-        Assert.AreEqual(
-            2,
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.BoundaryAnchorIndexKey]);
-        Assert.AreEqual(
-            3,
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIndexKey]);
-        Assert.AreEqual(
-            4,
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIndexKey]);
-        Assert.AreEqual(
-            "3,4",
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.PreservedTailIndexesKey]);
-        Assert.AreEqual(
-            "same",
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.BoundaryAnchorTextKey]);
-        Assert.AreEqual(
-            2,
-            reduced[2].AdditionalProperties![OperationalContextCompactionArtifactMetadata.MessagesToKeepCountKey]);
-    }
-
-    [TestMethod]
-    public async Task ReduceAsync_DoesNotDuplicateBoundaryAndTail_WhenTailConsumesAllCandidateMessages()
-    {
-        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
-        OperationalContextChatReducer reducer = CreateReducer(
-            summarizer,
-            new FixedUsageProvider(300),
-            threshold: 200);
-
-        ChatMessage[] messages =
-        [
-            new(ChatRole.System, "system-1"),
-            new(ChatRole.User, "user-1"),
-            new(ChatRole.Assistant, "assistant-1"),
-        ];
-
-        ChatMessage[] reduced = [.. await reducer.ReduceAsync(messages, TestContext.CancellationToken)];
-
-        Assert.HasCount(5, reduced);
-        Assert.AreEqual("system-1", reduced[0].Text);
-        Assert.AreEqual("Operational context boundary marker", reduced[1].Text);
-        Assert.Contains("Operational summary checkpoint", reduced[2].Text);
-        Assert.Contains("Current objective", reduced[2].Text);
-        Assert.AreEqual("user-1", reduced[3].Text);
-        Assert.AreEqual("assistant-1", reduced[4].Text);
+            reduced[0].AdditionalProperties![OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey]);
         Assert.AreEqual(1, summarizer.CallCount);
     }
 
@@ -158,7 +70,7 @@ public sealed class OperationalContextChatReducerTests
     public async Task ReduceAsync_Throws_WhenSummaryIsMissingRequiredFragments()
     {
         OperationalContextChatReducer reducer = CreateReducer(
-            new RecordingSummarizer("only partial summary"),
+            new RecordingSummarizer("<summary>only partial summary</summary>"),
             new FixedUsageProvider(300),
             threshold: 200);
 
@@ -190,13 +102,13 @@ public sealed class OperationalContextChatReducerTests
         await reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken);
 
         Assert.IsNotNull(summarizer.LastSummaryPrompt);
-        Assert.Contains("Return text only.", summarizer.LastSummaryPrompt);
-        Assert.Contains("Do not call tools.", summarizer.LastSummaryPrompt);
-        Assert.Contains("<summary>...</summary>", summarizer.LastSummaryPrompt);
+        Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("Return text only.", StringComparison.Ordinal));
+        Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("Do not call tools.", StringComparison.Ordinal));
+        Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("<summary>...</summary>", StringComparison.Ordinal));
     }
 
     [TestMethod]
-    public async Task ReduceAsync_StopsCompacting_AfterMaxConsecutiveFailures()
+    public async Task ReduceAsync_Throws_WhenSummarizerFails()
     {
         OperationalContextChatReducer reducer = CreateReducer(
             new ThrowingSummarizer(),
@@ -205,19 +117,33 @@ public sealed class OperationalContextChatReducerTests
 
         await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
             () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task ReduceReactiveAsync_Throws_WhenSummarizerFails()
+    {
+        OperationalContextChatReducer reducer = CreateReducer(
+            new ThrowingSummarizer(),
+            new FixedUsageProvider(10),
+            threshold: 20_000);
 
         await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
-            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
+            () => reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
+    }
 
-        ChatMessage[] originalMessages =
-        [
-            new(ChatRole.User, "user"),
-            new(ChatRole.Assistant, "assistant"),
-        ];
+    [TestMethod]
+    public async Task ReduceReactiveAsync_BypassesAutomaticThreshold()
+    {
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        OperationalContextChatReducer reducer = CreateReducer(
+            summarizer,
+            new FixedUsageProvider(10),
+            threshold: 20_000);
 
-        ChatMessage[] reduced = [.. await reducer.ReduceAsync(originalMessages, TestContext.CancellationToken)];
+        ChatMessage[] reduced = [.. await reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken)];
 
-        CollectionAssert.AreEqual(originalMessages, reduced);
+        Assert.AreEqual(1, summarizer.CallCount);
+        Assert.AreEqual(1, reduced.Length);
     }
 
     [TestMethod]
@@ -234,21 +160,6 @@ public sealed class OperationalContextChatReducerTests
         await reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken);
 
         Assert.AreEqual(1, summarizer.CallCount);
-    }
-
-    [TestMethod]
-    public async Task ReduceReactiveAsync_BypassesAutomaticThreshold()
-    {
-        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
-        OperationalContextChatReducer reducer = CreateReducer(
-            summarizer,
-            new FixedUsageProvider(usedTokens: 10),
-            threshold: 20_000);
-
-        ChatMessage[] reduced = [.. await reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken)];
-
-        Assert.AreEqual(1, summarizer.CallCount);
-        Assert.HasCount(3, reduced);
     }
 
     [TestMethod]
@@ -273,116 +184,12 @@ public sealed class OperationalContextChatReducerTests
         Assert.AreEqual(OperationalContextCompactionReason.AutomaticThreshold, cleanupHandler.LastReason);
     }
 
-    [TestMethod]
-    public async Task ReduceReactiveAsync_DoesNotPolluteAutomaticFailureBreaker()
-    {
-        OperationalContextChatReducer reducer = CreateReducer(
-            new ThrowingSummarizer(),
-            new FixedUsageProvider(300),
-            threshold: 200);
-
-        await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
-            () => reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
-
-        await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
-            () => reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
-
-        await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
-            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
-    }
-
-    [TestMethod]
-    public async Task ReduceReactiveAsync_Compacts_WhenUsageProviderReturnsNull()
-    {
-        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
-        OperationalContextChatReducer reducer = CreateReducer(
-            summarizer,
-            new NullUsageProvider(),
-            threshold: 20_000);
-
-        ChatMessage[] reduced = [.. await reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken)];
-
-        Assert.AreEqual(1, summarizer.CallCount);
-        Assert.HasCount(3, reduced);
-    }
-
-    [TestMethod]
-    public async Task ReduceAsync_SetsSummaryMetadata_ForCompactionArtifacts()
-    {
-        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
-        OperationalContextChatReducer reducer = CreateReducer(
-            summarizer,
-            new FixedUsageProvider(300),
-            threshold: 200);
-
-        ChatMessage[] reduced = [.. await reducer.ReduceAsync(
-            [
-                new ChatMessage(ChatRole.User, "user-1"),
-                new ChatMessage(ChatRole.Assistant, "assistant-1"),
-                new ChatMessage(ChatRole.User, "user-2"),
-            ],
-            TestContext.CancellationToken)];
-
-        Assert.AreEqual(
-            OperationalContextCompactionArtifactMetadata.CurrentSummaryFormatVersion,
-            reduced[1].AdditionalProperties![OperationalContextCompactionArtifactMetadata.SummaryFormatVersionKey]);
-        Assert.AreEqual(
-            true,
-            reduced[1].AdditionalProperties!.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey));
-        Assert.AreEqual(
-            true,
-            reduced[1].AdditionalProperties!.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.HasPreservedTailKey));
-    }
-
-    [TestMethod]
-    public async Task ReduceAsync_AppendsArtifacts_FromProviders_AndTracksCounts()
-    {
-        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
-        OperationalContextChatReducer reducer = CreateReducer(
-            summarizer,
-            new FixedUsageProvider(300),
-            threshold: 200,
-            artifactProviders:
-            [
-                new RecordingArtifactProvider(
-                    [
-                        new ChatMessage(ChatRole.System, "attachment-1"),
-                    ],
-                    [
-                        new ChatMessage(ChatRole.Assistant, "hook-1"),
-                    ]),
-            ]);
-
-        ChatMessage[] reduced = [.. await reducer.ReduceAsync(
-            [
-                new ChatMessage(ChatRole.System, "system-1"),
-                new ChatMessage(ChatRole.User, "user-1"),
-                new ChatMessage(ChatRole.Assistant, "assistant-1"),
-                new ChatMessage(ChatRole.User, "user-2"),
-            ],
-            TestContext.CancellationToken)];
-
-        Assert.AreEqual("Operational context boundary marker", reduced[1].Text);
-        Assert.Contains("Operational summary checkpoint", reduced[2].Text);
-        Assert.AreEqual("assistant-1", reduced[3].Text);
-        Assert.AreEqual("user-2", reduced[4].Text);
-        Assert.AreEqual("attachment-1", reduced[5].Text);
-        Assert.AreEqual("hook-1", reduced[6].Text);
-        Assert.AreEqual(
-            1,
-            reduced[2].AdditionalProperties![OperationalContextCompactionArtifactMetadata.AttachmentsCountKey]);
-        Assert.AreEqual(
-            1,
-            reduced[2].AdditionalProperties![OperationalContextCompactionArtifactMetadata.HookResultsCountKey]);
-    }
-
     private static OperationalContextChatReducer CreateReducer(
         IOperationalContextCompactionSummarizer summarizer,
         IOperationalContextCompactionUsageProvider usageProvider,
         int threshold,
         long contextWindowBufferTokens = 8_192,
         long summaryReservedOutputTokens = 4_096,
-        IEnumerable<IOperationalContextCompactionArtifactProvider>? artifactProviders = null,
         IEnumerable<IOperationalContextCompactionHook>? hooks = null,
         IEnumerable<IOperationalContextCompactionCleanupHandler>? cleanupHandlers = null) => new(
             new OperationalContextCompactionOptions
@@ -394,9 +201,8 @@ public sealed class OperationalContextChatReducerTests
             new StaticOperationalContextSummaryPromptProvider("summarize the current run"),
             summarizer,
             usageProvider,
-            artifactProviders,
-            hooks,
-            cleanupHandlers);
+            hooks: hooks,
+            cleanupHandlers: cleanupHandlers);
 
     private sealed class FixedUsageProvider(long usedTokens, long? contextWindowTokens = null) : IOperationalContextCompactionUsageProvider
     {
@@ -425,13 +231,6 @@ public sealed class OperationalContextChatReducerTests
             LastSummaryPrompt = summaryPrompt;
             return ValueTask.FromResult(response);
         }
-    }
-
-    private sealed class NullUsageProvider : IOperationalContextCompactionUsageProvider
-    {
-        public ValueTask<OperationalContextCompactionUsage?> GetUsageAsync(
-            IReadOnlyList<ChatMessage> messages,
-            CancellationToken cancellationToken) => ValueTask.FromResult<OperationalContextCompactionUsage?>(null);
     }
 
     private sealed class ThrowingSummarizer : IOperationalContextCompactionSummarizer
@@ -489,20 +288,5 @@ public sealed class OperationalContextChatReducerTests
             LastReason = reason;
             return ValueTask.CompletedTask;
         }
-    }
-
-    private sealed class RecordingArtifactProvider(
-        IReadOnlyList<ChatMessage> attachmentMessages,
-        IReadOnlyList<ChatMessage> hookResultMessages) : IOperationalContextCompactionArtifactProvider
-    {
-        public ValueTask<OperationalContextCompactionArtifacts> CreateArtifactsAsync(
-            IReadOnlyList<ChatMessage> originalMessages,
-            IReadOnlyList<ChatMessage> messagesToKeep,
-            OperationalContextCompactionReason reason,
-            CancellationToken cancellationToken) => ValueTask.FromResult(new OperationalContextCompactionArtifacts
-            {
-                AttachmentMessages = attachmentMessages,
-                HookResultMessages = hookResultMessages,
-            });
     }
 }

@@ -49,8 +49,8 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
 
         Assert.HasCount(2, invocations);
         CollectionAssert.AreEqual(originalMessages, invocations[0].ToArray());
-        Assert.AreEqual("Operational context boundary marker", invocations[1][1].Text);
-        Assert.AreEqual("Operational summary checkpoint", invocations[1][2].Text?.Split(Environment.NewLine)[0]);
+        Assert.HasCount(1, invocations[1]);
+        Assert.AreEqual("Operational summary checkpoint", invocations[1][0].Text?.Split(Environment.NewLine)[0]);
     }
 
     [TestMethod]
@@ -77,6 +77,25 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
                 TestContext.CancellationToken));
 
         Assert.AreEqual(1, callCount);
+    }
+
+    [TestMethod]
+    public async Task InvokeWithReactiveCompactionRetryAsync_ThrowsCompactionException_WhenReactiveCompactionFails()
+    {
+        OperationalContextAgentCompactionOptions options = CreateOptions(
+            CreateReducer(new ThrowingSummarizer()),
+            new DefaultOperationalContextReactiveCompactionExceptionDecider());
+
+        ChatMessage[] originalMessages = [new(ChatRole.User, "user")];
+
+        await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
+            () => OperationalContextCompactionAgentBuilderExtensions.InvokeWithReactiveCompactionRetryAsync(
+                originalMessages,
+                options,
+                (messages, cancellationToken) => throw new OperationalContextModelInvocationException(
+                    OperationalContextModelInvocationFailureKind.ContextWindowExceeded,
+                    "context too large"),
+                TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -127,6 +146,17 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
         Assert.IsTrue(equivalent);
     }
 
+    [TestMethod]
+    public void MessagesAreEquivalentForRetry_ReturnsFalse_WhenContentsDiffer()
+    {
+        ChatMessage left = new(ChatRole.Assistant, [new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?> { ["value"] = 1 })]);
+        ChatMessage right = new(ChatRole.Assistant, [new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?> { ["value"] = 2 })]);
+
+        bool equivalent = OperationalContextCompactionAgentBuilderExtensions.MessagesAreEquivalentForRetry([left], [right]);
+
+        Assert.IsFalse(equivalent);
+    }
+
     private static OperationalContextAgentCompactionOptions CreateOptions(
         OperationalContextChatReducer reducer,
         IOperationalContextReactiveCompactionExceptionDecider decider) => new()
@@ -162,6 +192,15 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
             string summaryPrompt,
             OperationalContextCompactionOptions options,
             CancellationToken cancellationToken) => ValueTask.FromResult(response);
+    }
+
+    private sealed class ThrowingSummarizer : IOperationalContextCompactionSummarizer
+    {
+        public ValueTask<string> SummarizeAsync(
+            IReadOnlyList<ChatMessage> messages,
+            string summaryPrompt,
+            OperationalContextCompactionOptions options,
+            CancellationToken cancellationToken) => throw new InvalidOperationException("boom");
     }
 
 }

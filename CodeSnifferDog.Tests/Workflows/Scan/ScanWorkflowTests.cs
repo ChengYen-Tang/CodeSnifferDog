@@ -188,6 +188,58 @@ public sealed class ScanWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_PreservesCompactionArtifacts_AndCompletesWorkflow()
+    {
+        List<ChatInvocation> scanInvocations = [];
+        int scanFailures = 0;
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        OperationalContextAgentCompactionOptions compactionOptions = CreateCompactionOptions(summarizer);
+        ScriptedChatClient scanChatClient = new(invocation =>
+        {
+            scanInvocations.Add(invocation);
+
+            if (scanFailures == 0)
+            {
+                scanFailures++;
+                throw new OperationalContextModelInvocationException(
+                    OperationalContextModelInvocationFailureKind.ContextWindowExceeded,
+                    "context too large");
+            }
+
+            return HandleScanInvocation(invocation);
+        });
+        ScriptedChatClient verifierChatClient = new(HandleVerifierInvocation);
+        InMemoryScanProjectStore scanProjectStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        ScanWorkflow workflow = new(
+            new ScanAgentFactory(compactionOptions).Create(
+                scanChatClient,
+                """
+                You are the Scan Agent for CodeSnifferDog.
+
+                Use the system-controlled user input as the source of truth for the repository root path.
+                """,
+                scanProjectStore,
+                verdictBuffer),
+            CreateVerifierAgent(verifierChatClient, scanProjectStore, verdictBuffer),
+            scanProjectStore,
+            verdictBuffer);
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsGreaterThan(0, summarizer.CallCount);
+        Assert.IsGreaterThanOrEqualTo(2, scanInvocations.Count);
+
+        ChatInvocation compactedInvocation = scanInvocations.First(invocation =>
+            invocation.Messages.Any(IsSummaryArtifactMessage));
+
+        Assert.AreEqual(1, compactedInvocation.Messages.Count(message => IsSummaryArtifactMessage(message)));
+        Assert.IsTrue(compactedInvocation.Messages.Any(message =>
+            message.Text?.Contains("Operational summary checkpoint", StringComparison.Ordinal) == true));
+    }
+
+    [TestMethod]
     public async Task RunAsync_Fails_WhenVerifierDoesNotSubmitVerdict()
     {
         ScanWorkflow workflow = CreateWorkflow(
@@ -313,7 +365,8 @@ public sealed class ScanWorkflowTests
                 scanProjectStore,
                 verdictBuffer);
 
-    private static OperationalContextAgentCompactionOptions CreateCompactionOptions() => new()
+    private static OperationalContextAgentCompactionOptions CreateCompactionOptions(
+        IOperationalContextCompactionSummarizer? summarizer = null) => new()
     {
         Reducer = new OperationalContextChatReducer(
             new OperationalContextCompactionOptions
@@ -321,7 +374,7 @@ public sealed class ScanWorkflowTests
                 ContextTokenThreshold = 10,
             },
             new StaticOperationalContextSummaryPromptProvider("Summarize the current workflow state."),
-            new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"),
+            summarizer ?? new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"),
             new FixedUsageProvider(usedTokens: 100)),
         AutomaticCompactionTrigger = CompactionTriggers.TokensExceed(10),
         ReactiveExceptionDecider = new DefaultOperationalContextReactiveCompactionExceptionDecider(),
@@ -409,6 +462,12 @@ public sealed class ScanWorkflowTests
     private static string? GetCallId(AIContent content) =>
         content.GetType().GetProperty("CallId")?.GetValue(content)?.ToString();
 
+    private static bool IsSummaryArtifactMessage(ChatMessage message) =>
+        string.Equals(
+            message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString(),
+            OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
+            StringComparison.Ordinal);
+
     private sealed class ScriptedChatClient(Func<ChatInvocation, ChatResponse> responseFactory) : IChatClient
     {
         private int _callIndex = -1;
@@ -459,10 +518,16 @@ public sealed class ScanWorkflowTests
 
     private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer
     {
+        public int CallCount { get; private set; }
+
         public ValueTask<string> SummarizeAsync(
             IReadOnlyList<ChatMessage> messages,
             string summaryPrompt,
             OperationalContextCompactionOptions options,
-            CancellationToken cancellationToken) => ValueTask.FromResult(response);
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return ValueTask.FromResult(response);
+        }
     }
 }
