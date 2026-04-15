@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Common.Tools;
 using System.Text;
+using System.ComponentModel;
 using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
@@ -24,7 +25,9 @@ public sealed class CommonToolSet(string repositoryRootPath)
             serializerOptions: null),
     ];
 
+    [Description("Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux or macOS.")]
     private ValueTask<CommandExecutionResult> RunShellCommandToolAsync(
+        [Description("The shell command text to execute inside the repository root path.")]
         string Command,
         CancellationToken cancellationToken) =>
         RunShellCommandAsync(
@@ -34,7 +37,9 @@ public sealed class CommonToolSet(string repositoryRootPath)
             },
             cancellationToken);
 
+    [Description("Run one ripgrep search command in the repository root path.")]
     private ValueTask<CommandExecutionResult> RunRipgrepCommandToolAsync(
+        [Description("Arguments after rg. Do not include rg or rg.exe. Full paths are allowed when you need to inspect files outside the repository root path.")]
         string Command,
         CancellationToken cancellationToken) =>
         RunRipgrepCommandAsync(

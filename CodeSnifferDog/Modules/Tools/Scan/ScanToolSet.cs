@@ -2,6 +2,7 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
 using CodeSnifferDog.Modules.Tools.Review;
+using System.ComponentModel;
 using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.Tools.Scan;
@@ -53,10 +54,15 @@ public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdic
             serializerOptions: null),
     ];
 
+    [Description("Add one discovered project unit to the current scan result.")]
     private ValueTask<AddScanProjectResult> AddScanProjectToolAsync(
+        [Description("The display name of the discovered project unit.")]
         string ProjectName,
+        [Description("The repository-relative path or canonical path that identifies the discovered project unit.")]
         string ProjectPath,
+        [Description("The project category or file type, such as .csproj, package.json, or directory-based module.")]
         string ProjectType,
+        [Description("Why this project unit should enter the next planning stage.")]
         string Reason,
         CancellationToken cancellationToken) =>
         AddScanProjectAsync(
@@ -69,7 +75,9 @@ public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdic
             },
             cancellationToken);
 
+    [Description("Add multiple discovered project units to the current scan result.")]
     private ValueTask<AddScanProjectsResult> AddScanProjectsToolAsync(
+        [Description("The project units to add to the current scan result.")]
         IReadOnlyList<AddScanProjectArgs> Projects,
         CancellationToken cancellationToken) =>
         AddScanProjectsAsync(
@@ -79,7 +87,11 @@ public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdic
             },
             cancellationToken);
 
-    private ValueTask<bool> DeleteScanProjectToolAsync(string ScanProjectId, CancellationToken cancellationToken) =>
+    [Description("Delete one existing scan project from the current scan result by its id.")]
+    private ValueTask<bool> DeleteScanProjectToolAsync(
+        [Description("The id of the stored scan project to delete from the current scan result.")]
+        string ScanProjectId,
+        CancellationToken cancellationToken) =>
         DeleteScanProjectAsync(
             new DeleteScanProjectArgs
             {
@@ -87,8 +99,11 @@ public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdic
             },
             cancellationToken);
 
+    [Description("Submit the verifier approval or rejection for the current scan result.")]
     private ValueTask<bool> SubmitReviewVerdictToolAsync(
+        [Description("True when the current scan result is approved. False when more work is required.")]
         bool Approved,
+        [Description("The approval note or the rejection reason that explains what the scan agent should keep or fix.")]
         string Message,
         CancellationToken cancellationToken) =>
         SubmitReviewVerdictAsync(
