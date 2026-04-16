@@ -1,0 +1,717 @@
+using CodeSnifferDog.Agents.ProjectPlan;
+using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.ProjectPlan.Tools;
+using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
+using CodeSnifferDog.Modules.ContextCompaction.Core;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
+using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Modules.Tools.ProjectPlan;
+using CodeSnifferDog.Modules.Tools.Review;
+using CodeSnifferDog.Workflows.ProjectPlan;
+using FluentResults;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+
+namespace CodeSnifferDog.Tests.Workflows.ProjectPlan;
+
+[TestClass]
+[DoNotParallelize]
+public sealed class ProjectPlanWorkflowTests
+{
+    public required TestContext TestContext { get; init; }
+
+    [TestMethod]
+    public async Task RunAsync_CompletesProjectPlanWorkflow_ThroughRealToolCalls()
+    {
+        ProjectPlanWorkflow workflow = CreateWorkflow(
+            HandlePlanInvocation,
+            HandleVerifierInvocation);
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(2, result.Value.PlanAttempts);
+        Assert.AreEqual(2, result.Value.VerifierAttempts);
+        Assert.AreEqual(0, result.Value.ProjectPlanAgentResetCount);
+        Assert.IsTrue(result.Value.ProjectVerifierApproved);
+        Assert.IsFalse(result.Value.ContinuedAfterVerifierRejectionLimit);
+        Assert.IsTrue(result.Value.ShouldEnterRuleReview);
+        Assert.IsTrue(result.Value.Verdict.Approved);
+        Assert.HasCount(2, result.Value.TaskItems);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ResetsProjectPlanAgentConversation_AfterRepeatedMissingSubmissions()
+    {
+        int emptyAttempts = 0;
+
+        ProjectPlanWorkflow workflow = CreateWorkflow(
+            invocation =>
+            {
+                if (emptyAttempts < 3)
+                {
+                    emptyAttempts++;
+                    return CreateAssistantResponse("No task items submitted yet.");
+                }
+
+                return CreateFunctionCallResponse(
+                    "plan-add-single",
+                    "AddProjectPlanTaskItem",
+                    new Dictionary<string, object?>
+                    {
+                        ["Files"] = new[]
+                        {
+                            new Dictionary<string, object?>
+                            {
+                                ["FilePath"] = "CodeSnifferDog/Program.cs",
+                                ["TotalLines"] = 120,
+                            },
+                        },
+                    });
+            },
+            _ => CreateFunctionCallResponse(
+                "verdict-approve",
+                "SubmitReviewVerdict",
+                new Dictionary<string, object?>
+                {
+                    ["Approved"] = true,
+                    ["Message"] = "The project plan is acceptable.",
+                }),
+            new ProjectPlanWorkflowOptions
+            {
+                MaxMissingSubmissionAttempts = 3,
+                MaxProjectPlanAgentResets = 1,
+            });
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(1, result.Value.ProjectPlanAgentResetCount);
+        Assert.AreEqual(4, result.Value.PlanAttempts);
+        Assert.AreEqual(1, result.Value.VerifierAttempts);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_RecreatesProjectPlanAgentInstance_WhenResetOccurs()
+    {
+        int emptyAttempts = 0;
+        int createdPlanAgents = 0;
+        ScriptedChatClient planChatClient = new(invocation =>
+        {
+            if (emptyAttempts < 3)
+            {
+                emptyAttempts++;
+                return CreateAssistantResponse("No task items submitted yet.");
+            }
+
+            return CreateFunctionCallResponse(
+                "plan-add-single",
+                "AddProjectPlanTaskItem",
+                new Dictionary<string, object?>
+                {
+                    ["Files"] = new[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["FilePath"] = "CodeSnifferDog/Program.cs",
+                            ["TotalLines"] = 120,
+                        },
+                    },
+                });
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The project plan is acceptable.",
+            }));
+        InMemoryProjectPlanTaskItemStore taskItemStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ProjectPlanWorkflow workflow = new(
+            repositoryRootPath =>
+            {
+                createdPlanAgents++;
+                return CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer);
+            },
+            (repositoryRootPath, scanProject) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            taskItemStore,
+            verdictBuffer,
+            promptAssetReader,
+            new ProjectPlanWorkflowOptions
+            {
+                MaxMissingSubmissionAttempts = 3,
+                MaxProjectPlanAgentResets = 1,
+            });
+
+        Result<ProjectPlanWorkflowResult> result =
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(2, createdPlanAgents);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ContinuesAfterVerifierRejectionLimit()
+    {
+        ProjectPlanWorkflow workflow = CreateWorkflow(
+            invocation =>
+            {
+                if (HasFunctionResult(invocation.Messages, "plan-add-infrastructure"))
+                    return CreateAssistantResponse("Correction task item recorded.");
+
+                if (HasCorrectionInstruction(invocation.Messages))
+                {
+                    return CreateFunctionCallResponse(
+                        "plan-add-infrastructure",
+                        "AddProjectPlanTaskItem",
+                        new Dictionary<string, object?>
+                        {
+                            ["Files"] = new[]
+                            {
+                                new Dictionary<string, object?>
+                                {
+                                    ["FilePath"] = "CodeSnifferDog/Modules/Tools/Common/CommonToolSet.cs",
+                                    ["TotalLines"] = 180,
+                                },
+                            },
+                        });
+                }
+
+                if (HasFunctionResult(invocation.Messages, "plan-add-program"))
+                    return CreateAssistantResponse("Initial task item recorded.");
+
+                return CreateFunctionCallResponse(
+                    "plan-add-program",
+                    "AddProjectPlanTaskItem",
+                    new Dictionary<string, object?>
+                    {
+                        ["Files"] = new[]
+                        {
+                            new Dictionary<string, object?>
+                            {
+                                ["FilePath"] = "CodeSnifferDog/Program.cs",
+                                ["TotalLines"] = 120,
+                            },
+                        },
+                    });
+            },
+            _ => CreateFunctionCallResponse(
+                "verdict-reject",
+                "SubmitReviewVerdict",
+                new Dictionary<string, object?>
+                {
+                    ["Approved"] = false,
+                    ["Message"] = "Add the missing infrastructure task item before continuing.",
+                }),
+            new ProjectPlanWorkflowOptions
+            {
+                MaxVerifierRejectionAttempts = 3,
+            });
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(3, result.Value.PlanAttempts);
+        Assert.AreEqual(3, result.Value.VerifierAttempts);
+        Assert.IsFalse(result.Value.ProjectVerifierApproved);
+        Assert.IsTrue(result.Value.ContinuedAfterVerifierRejectionLimit);
+        Assert.IsTrue(result.Value.ShouldEnterRuleReview);
+        Assert.IsFalse(result.Value.Verdict.Approved);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Fails_WhenProjectPlanAgentResetsAreExhausted()
+    {
+        ProjectPlanWorkflow workflow = CreateWorkflow(
+            _ => CreateAssistantResponse("Still no task items."),
+            _ => CreateAssistantResponse("Verifier should not run."),
+            new ProjectPlanWorkflowOptions
+            {
+                MaxMissingSubmissionAttempts = 3,
+                MaxProjectPlanAgentResets = 1,
+            });
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsFailed);
+        Assert.IsTrue(result.Errors.Any(error =>
+            error.Message.Contains("allowed reset limit", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_SendsConfiguredPlanAndVerifierPrefixes()
+    {
+        bool planPrefixObserved = false;
+        bool verifierPrefixObserved = false;
+
+        ProjectPlanWorkflow workflow = CreateWorkflow(
+            invocation =>
+            {
+                planPrefixObserved = invocation.Messages.Any(message =>
+                    message.Role == ChatRole.User &&
+                    message.Text?.StartsWith(CreateMessageTemplates().PlanInputPrefix, StringComparison.Ordinal) == true);
+
+                return HandlePlanInvocation(invocation);
+            },
+            invocation =>
+            {
+                verifierPrefixObserved = invocation.Messages.Any(message =>
+                    message.Role == ChatRole.User &&
+                    message.Text?.StartsWith(CreateMessageTemplates().VerifierInputPrefix, StringComparison.Ordinal) == true);
+
+                return HandleVerifierInvocation(invocation);
+            });
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsTrue(planPrefixObserved);
+        Assert.IsTrue(verifierPrefixObserved);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PassesCurrentScanProject_ToVerifierPromptContext()
+    {
+        StoredScanProject scanProject = new()
+        {
+            ScanProjectId = "scan-project-runtime",
+            ProjectName = "RuntimeProject",
+            ProjectPath = "src/RuntimeProject/RuntimeProject.csproj",
+            ProjectType = ".csproj",
+            Reason = "Runtime-selected project.",
+        };
+        string? verifierPrompt = null;
+        ScriptedChatClient planChatClient = new(HandlePlanInvocation);
+        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The project plan is acceptable.",
+            }));
+        InMemoryProjectPlanTaskItemStore taskItemStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ProjectPlanWorkflow workflow = new(
+            repositoryRootPath => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
+            (repositoryRootPath, currentScanProject) =>
+            {
+                ProjectVerifierAgentFactory factory =
+                    new(CreateCompactionOptions(ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt));
+                string promptTemplate =
+                    """
+                    You are the Project Verifier Agent for CodeSnifferDog.
+
+                    - Repository root path:
+                    {{RepositoryRootPath}}
+
+                    - Scan project:
+                    {{ScanProjectJson}}
+                    """;
+
+                verifierPrompt = promptTemplate
+                    .Replace("{{RepositoryRootPath}}", repositoryRootPath, StringComparison.Ordinal)
+                    .Replace("{{ScanProjectJson}}", System.Text.Json.JsonSerializer.Serialize(currentScanProject), StringComparison.Ordinal);
+
+                return factory.Create(
+                    verifierChatClient,
+                    promptTemplate,
+                    repositoryRootPath,
+                    currentScanProject,
+                    taskItemStore,
+                    verdictBuffer);
+            },
+            taskItemStore,
+            verdictBuffer,
+            promptAssetReader);
+
+        Result<ProjectPlanWorkflowResult> result =
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", scanProject, TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsNotNull(verifierPrompt);
+        Assert.IsTrue(verifierPrompt.Contains("RuntimeProject", StringComparison.Ordinal));
+        Assert.IsTrue(verifierPrompt.Contains("scan-project-runtime", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PreservesCompactionArtifacts_AndCompletesWorkflow()
+    {
+        List<ChatInvocation> planInvocations = [];
+        int planFailures = 0;
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        OperationalContextAgentCompactionOptions compactionOptions = CreateCompactionOptions(
+            ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt,
+            summarizer);
+        ScriptedChatClient planChatClient = new(invocation =>
+        {
+            planInvocations.Add(invocation);
+
+            if (planFailures == 0)
+            {
+                planFailures++;
+                throw new OperationalContextModelInvocationException(
+                    OperationalContextModelInvocationFailureKind.ContextWindowExceeded,
+                    "context too large");
+            }
+
+            return HandlePlanInvocation(invocation);
+        });
+        ScriptedChatClient verifierChatClient = new(HandleVerifierInvocation);
+        InMemoryProjectPlanTaskItemStore taskItemStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ProjectPlanWorkflow workflow = new(
+            repositoryRootPath => new ProjectPlanAgentFactory(compactionOptions).Create(
+                planChatClient,
+                """
+                You are the Project Plan Agent for CodeSnifferDog.
+
+                - Repository root path:
+                {{RepositoryRootPath}}
+                """,
+                repositoryRootPath,
+                taskItemStore,
+                verdictBuffer),
+            (repositoryRootPath, scanProject) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            taskItemStore,
+            verdictBuffer,
+            promptAssetReader);
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsGreaterThan(0, summarizer.CallCount);
+        Assert.IsGreaterThanOrEqualTo(2, planInvocations.Count);
+        Assert.IsTrue(summarizer.LastSummaryPrompt?.Contains("Summarize the current Project Planning-stage work", StringComparison.Ordinal) ?? false);
+
+        ChatInvocation compactedInvocation = planInvocations.First(invocation =>
+            invocation.Messages.Any(IsSummaryArtifactMessage));
+
+        Assert.AreEqual(1, compactedInvocation.Messages.Count(message => IsSummaryArtifactMessage(message)));
+        Assert.IsTrue(compactedInvocation.Messages.Any(message =>
+            message.Text?.Contains("Operational summary checkpoint", StringComparison.Ordinal) == true));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Fails_WhenVerifierDoesNotSubmitVerdict()
+    {
+        ProjectPlanWorkflow workflow = CreateWorkflow(
+            HandlePlanInvocation,
+            _ => CreateAssistantResponse("No verdict submitted."));
+
+        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsFailed);
+        Assert.IsTrue(result.Errors.Any(error =>
+            error.Message.Contains("without submitting a verdict", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task AddProjectPlanTaskItemAsync_RejectsBlankFields()
+    {
+        ProjectPlanToolSet toolSet = CreateToolSet();
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.AddProjectPlanTaskItemAsync(
+            new AddProjectPlanTaskItemArgs
+            {
+                Files =
+                [
+                    new ProjectPlanFile
+                    {
+                        FilePath = " ",
+                        TotalLines = 10,
+                    },
+                ],
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
+    public async Task AddProjectPlanTaskItemsAsync_RejectsEmptyList()
+    {
+        ProjectPlanToolSet toolSet = CreateToolSet();
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.AddProjectPlanTaskItemsAsync(
+            new AddProjectPlanTaskItemsArgs
+            {
+                TaskItems = [],
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
+    public async Task SubmitReviewVerdictAsync_RejectsBlankMessage()
+    {
+        ProjectPlanToolSet toolSet = CreateToolSet();
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.SubmitReviewVerdictAsync(
+            new SubmitReviewVerdictArgs
+            {
+                Approved = false,
+                Message = " ",
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    private static ProjectPlanWorkflow CreateWorkflow(
+        Func<ChatInvocation, ChatResponse> planResponseFactory,
+        Func<ChatInvocation, ChatResponse> verifierResponseFactory,
+        ProjectPlanWorkflowOptions? options = null)
+    {
+        ScriptedChatClient planChatClient = new(planResponseFactory);
+        ScriptedChatClient verifierChatClient = new(verifierResponseFactory);
+        InMemoryProjectPlanTaskItemStore taskItemStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+
+        return new ProjectPlanWorkflow(
+            repositoryRootPath => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
+            (repositoryRootPath, scanProject) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            taskItemStore,
+            verdictBuffer,
+            promptAssetReader,
+            options);
+    }
+
+    private static ProjectPlanToolSet CreateToolSet()
+        =>
+        new(new InMemoryProjectPlanTaskItemStore(), new ReviewVerdictBuffer());
+
+    private static ProjectPlanWorkflowMessageTemplates CreateMessageTemplates()
+        =>
+        new(new PromptAssetReader());
+
+    private static StoredScanProject CreateScanProject()
+        =>
+        new()
+        {
+            ScanProjectId = "scan-project-1",
+            ProjectName = "CodeSnifferDog",
+            ProjectPath = "CodeSnifferDog/CodeSnifferDog.csproj",
+            ProjectType = ".csproj",
+            Reason = "Primary application project.",
+        };
+
+    private static AIAgent CreatePlanAgent(
+        string repositoryRootPath,
+        IChatClient chatClient,
+        IProjectPlanTaskItemStore taskItemStore,
+        ReviewVerdictBuffer verdictBuffer) =>
+        new ProjectPlanAgentFactory(CreateCompactionOptions(ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt))
+            .Create(chatClient, repositoryRootPath, taskItemStore, verdictBuffer);
+
+    private static AIAgent CreateVerifierAgent(
+        string repositoryRootPath,
+        IChatClient chatClient,
+        StoredScanProject scanProject,
+        IProjectPlanTaskItemStore taskItemStore,
+        ReviewVerdictBuffer verdictBuffer) =>
+        new ProjectVerifierAgentFactory(CreateCompactionOptions(ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt))
+            .Create(chatClient, repositoryRootPath, scanProject, taskItemStore, verdictBuffer);
+
+    private static OperationalContextAgentCompactionOptions CreateCompactionOptions(
+        string summaryPromptAssetPath,
+        IOperationalContextCompactionSummarizer? summarizer = null) =>
+        new OperationalContextAgentCompactionOptionsFactory(
+            new PromptAssetReader(),
+            summarizer ?? new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"),
+            new FixedUsageProvider(usedTokens: 100))
+            .CreateFromPromptAsset(
+                summaryPromptAssetPath,
+                new OperationalContextCompactionOptions
+                {
+                    ContextTokenThreshold = 10,
+                });
+
+    private static ChatResponse HandlePlanInvocation(ChatInvocation invocation)
+    {
+        if (HasFunctionResult(invocation.Messages, "plan-add-tools"))
+            return CreateAssistantResponse("Correction plan recorded.");
+
+        if (HasCorrectionInstruction(invocation.Messages))
+        {
+            return CreateFunctionCallResponse(
+                "plan-add-tools",
+                "AddProjectPlanTaskItem",
+                new Dictionary<string, object?>
+                {
+                    ["Files"] = new[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["FilePath"] = "CodeSnifferDog/Modules/Tools/Common/CommonToolSet.cs",
+                            ["TotalLines"] = 180,
+                        },
+                    },
+                });
+        }
+
+        if (HasFunctionResult(invocation.Messages, "plan-add-core"))
+            return CreateAssistantResponse("Initial plan recorded.");
+
+        return CreateFunctionCallResponse(
+            "plan-add-core",
+            "AddProjectPlanTaskItems",
+            new Dictionary<string, object?>
+            {
+                ["TaskItems"] = new[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["Files"] = new[]
+                        {
+                            new Dictionary<string, object?>
+                            {
+                                ["FilePath"] = "CodeSnifferDog/Program.cs",
+                                ["TotalLines"] = 120,
+                            },
+                            new Dictionary<string, object?>
+                            {
+                                ["FilePath"] = "CodeSnifferDog/CodeSnifferDog.csproj",
+                                ["TotalLines"] = 35,
+                            },
+                        },
+                    },
+                },
+            });
+    }
+
+    private static ChatResponse HandleVerifierInvocation(ChatInvocation invocation)
+    {
+        if (HasFunctionResult(invocation.Messages, "verdict-approve"))
+            return CreateAssistantResponse("Project plan approved.");
+
+        if (HasFunctionResult(invocation.Messages, "verdict-reject"))
+            return CreateAssistantResponse("Project plan requires one correction.");
+
+        bool hasToolsTaskItem = invocation.Messages.Any(message =>
+            message.Role == ChatRole.User &&
+            message.Text?.Contains("CommonToolSet.cs", StringComparison.Ordinal) == true);
+
+        return CreateFunctionCallResponse(
+            hasToolsTaskItem ? "verdict-approve" : "verdict-reject",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = hasToolsTaskItem,
+                ["Message"] = hasToolsTaskItem
+                    ? "The task items cover the expected project files with acceptable grouping."
+                    : "Add the missing infrastructure task item that covers CommonToolSet.cs before continuing.",
+            });
+    }
+
+    private static ChatResponse CreateAssistantResponse(string text)
+        =>
+        new(new ChatMessage(ChatRole.Assistant, text));
+
+    private static ChatResponse CreateFunctionCallResponse(
+        string callId,
+        string functionName,
+        IDictionary<string, object?> arguments) => new(new ChatMessage(
+        ChatRole.Assistant,
+        [new FunctionCallContent(callId, functionName, arguments)]))
+        {
+            FinishReason = new ChatFinishReason("tool_calls"),
+        };
+
+    private static bool HasCorrectionInstruction(IReadOnlyList<ChatMessage> messages)
+        =>
+        messages.Any(message =>
+            message.Role == ChatRole.User &&
+            message.Text?.Contains("missing infrastructure task item", StringComparison.Ordinal) == true);
+
+    private static bool HasFunctionResult(IReadOnlyList<ChatMessage> messages, string callId)
+        =>
+        messages.SelectMany(message => message.Contents)
+            .Where(static content => content is FunctionResultContent)
+            .Any(content => string.Equals(GetCallId(content), callId, StringComparison.Ordinal));
+
+    private static string? GetCallId(AIContent content)
+        =>
+        content.GetType().GetProperty("CallId")?.GetValue(content)?.ToString();
+
+    private static bool IsSummaryArtifactMessage(ChatMessage message)
+        =>
+        string.Equals(
+            message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString(),
+            OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
+            StringComparison.Ordinal);
+
+    private sealed class ScriptedChatClient(Func<ChatInvocation, ChatResponse> responseFactory) : IChatClient
+    {
+        private int _callIndex = -1;
+        private readonly Func<ChatInvocation, ChatResponse> _responseFactory = responseFactory;
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            int callIndex = Interlocked.Increment(ref _callIndex);
+            ChatInvocation invocation = new([.. messages], options, callIndex);
+            return Task.FromResult(_responseFactory(invocation));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ChatResponse response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+
+            foreach (ChatResponseUpdate update in response.ToChatResponseUpdates())
+                yield return update;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed record ChatInvocation(
+        IReadOnlyList<ChatMessage> Messages,
+        ChatOptions? Options,
+        int CallIndex);
+
+    private sealed class FixedUsageProvider(long usedTokens) : IOperationalContextCompactionUsageProvider
+    {
+        public ValueTask<OperationalContextCompactionUsage?> GetUsageAsync(
+            IReadOnlyList<ChatMessage> messages,
+            CancellationToken cancellationToken) => ValueTask.FromResult<OperationalContextCompactionUsage?>(new OperationalContextCompactionUsage
+            {
+                UsedTokens = usedTokens,
+            });
+    }
+
+    private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer
+    {
+        public int CallCount { get; private set; }
+
+        public string? LastSummaryPrompt { get; private set; }
+
+        public ValueTask<string> SummarizeAsync(
+            IReadOnlyList<ChatMessage> messages,
+            string summaryPrompt,
+            OperationalContextCompactionOptions options,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            LastSummaryPrompt = summaryPrompt;
+            return ValueTask.FromResult(response);
+        }
+    }
+}
