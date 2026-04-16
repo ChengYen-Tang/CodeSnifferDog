@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
 using FluentResults;
@@ -10,16 +11,19 @@ using Microsoft.Extensions.AI;
 namespace CodeSnifferDog.Workflows.Scan;
 
 public sealed class ScanWorkflow(
-    AIAgent scanAgent,
-    AIAgent scanVerifierAgent,
+    Func<string, AIAgent> scanAgentFactory,
+    Func<string, AIAgent> scanVerifierAgentFactory,
     IScanProjectStore scanProjectStore,
     ReviewVerdictBuffer verdictBuffer,
+    PromptAssetReader? promptAssetReader = null,
     ScanWorkflowOptions? options = null)
 {
-    private readonly AIAgent _scanAgent = scanAgent;
-    private readonly AIAgent _scanVerifierAgent = scanVerifierAgent;
+    private readonly Func<string, AIAgent> _scanAgentFactory = scanAgentFactory;
+    private readonly Func<string, AIAgent> _scanVerifierAgentFactory = scanVerifierAgentFactory;
     private readonly IScanProjectStore _scanProjectStore = scanProjectStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
+    private readonly ScanWorkflowMessageTemplates _messageTemplates =
+        new(promptAssetReader ?? new PromptAssetReader());
     private readonly ScanWorkflowOptions _options = options ?? new ScanWorkflowOptions();
 
     public async Task<Result<ScanWorkflowResult>> RunAsync(
@@ -32,6 +36,8 @@ public sealed class ScanWorkflow(
         repositoryRootPath = repositoryRootPath.Trim();
         await _scanProjectStore.ClearAsync(cancellationToken).ConfigureAwait(false);
 
+        AIAgent scanAgent = _scanAgentFactory(repositoryRootPath);
+        AIAgent scanVerifierAgent = _scanVerifierAgentFactory(repositoryRootPath);
         List<ChatMessage> scanMessages = CreateScanMessages(repositoryRootPath);
 
         int scanAttempts = 0;
@@ -44,7 +50,7 @@ public sealed class ScanWorkflow(
         {
             scanAttempts++;
 
-            Result runScanResult = await RunAgentAsync(_scanAgent, scanMessages, cancellationToken).ConfigureAwait(false);
+            Result runScanResult = await RunAgentAsync(scanAgent, scanMessages, cancellationToken).ConfigureAwait(false);
 
             if (runScanResult.IsFailed)
                 return runScanResult.ToResult<ScanWorkflowResult>();
@@ -62,12 +68,13 @@ public sealed class ScanWorkflow(
                     if (scanAgentResetCount > _options.MaxScanAgentResets)
                         return Result.Fail<ScanWorkflowResult>("Scan Agent did not submit any scan projects after the allowed reset limit.");
 
+                    scanAgent = _scanAgentFactory(repositoryRootPath);
                     scanMessages = CreateScanMessages(repositoryRootPath);
                     missingSubmissionAttempts = 0;
                     continue;
                 }
 
-                scanMessages.Add(new ChatMessage(ChatRole.User, ScanToolSet.MissingScanSubmissionMessage));
+                scanMessages.Add(new ChatMessage(ChatRole.User, _messageTemplates.MissingScanSubmissionMessage));
                 continue;
             }
 
@@ -80,7 +87,7 @@ public sealed class ScanWorkflow(
                 new(ChatRole.User, BuildVerifierInput(projects)),
             ];
 
-            Result runVerifierResult = await RunAgentAsync(_scanVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
+            Result runVerifierResult = await RunAgentAsync(scanVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
 
             if (runVerifierResult.IsFailed)
                 return runVerifierResult.ToResult<ScanWorkflowResult>();
@@ -153,14 +160,17 @@ public sealed class ScanWorkflow(
         }
     }
 
-    private static string BuildScanInput(string repositoryRootPath) =>
-        $"{ScanToolSet.ScanInputPrefix}{Environment.NewLine}{Environment.NewLine}{repositoryRootPath}";
+    private string BuildScanInput(string repositoryRootPath)
+        =>
+        $"{_messageTemplates.ScanInputPrefix}{Environment.NewLine}{Environment.NewLine}{repositoryRootPath}";
 
-    private static List<ChatMessage> CreateScanMessages(string repositoryRootPath) =>
+    private List<ChatMessage> CreateScanMessages(string repositoryRootPath)
+        =>
     [
         new(ChatRole.User, BuildScanInput(repositoryRootPath)),
     ];
 
-    private static string BuildVerifierInput(IReadOnlyList<StoredScanProject> projects) =>
-        $"{ScanToolSet.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{JsonSerializer.Serialize(projects)}";
+    private string BuildVerifierInput(IReadOnlyList<StoredScanProject> projects)
+        =>
+        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{JsonSerializer.Serialize(projects)}";
 }

@@ -2,53 +2,51 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
 using CodeSnifferDog.Modules.Tools.Review;
-using System.ComponentModel;
 using Microsoft.Extensions.AI;
+using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.Scan;
 
 public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdictBuffer verdictBuffer)
 {
-    public const string ScanInputPrefix =
-        "The following path is the repository root to scan for projects. Identify the project units that should enter the next planning stage.";
-
-    public const string VerifierInputPrefix =
-        "The following content is the current scan result from the Scan Agent. Approve it if acceptable. Reject it if more work is required, and explain why.";
-
-    public const string MissingScanSubmissionMessage =
-        "No scan projects were submitted in the previous attempt. You must use the scan tools to add at least one valid project unit or explicitly correct the existing scan state.";
-
     private readonly IScanProjectStore _scanProjectStore = scanProjectStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
 
-    public IList<AITool> CreateScanAgentTools() =>
+    public IList<AITool> CreateScanAgentTools()
+        =>
     [
         AIFunctionFactory.Create(
-            (Func<string, string, string, string, CancellationToken, ValueTask<AddScanProjectResult>>)AddScanProjectToolAsync,
+            AddScanProjectToolAsync,
             "AddScanProject",
             "Add one discovered project unit to the current scan result.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            (Func<IReadOnlyList<AddScanProjectArgs>, CancellationToken, ValueTask<AddScanProjectsResult>>)AddScanProjectsToolAsync,
+            AddScanProjectsToolAsync,
             "AddScanProjects",
             "Add multiple discovered project units to the current scan result.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            (Func<string, CancellationToken, ValueTask<bool>>)DeleteScanProjectToolAsync,
+            DeleteScanProjectToolAsync,
             "DeleteScanProject",
             "Delete an existing scan project from the current scan result by its id.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            (Func<CancellationToken, ValueTask<IReadOnlyList<StoredScanProject>>>)ListScanProjectsAsync,
+            ListScanProjectsAsync,
             "ListScanProjects",
             "List all scan projects currently stored for this scan attempt.",
             serializerOptions: null),
     ];
 
-    public IList<AITool> CreateVerifierTools() =>
+    public IList<AITool> CreateVerifierTools()
+        =>
     [
         AIFunctionFactory.Create(
-            (Func<bool, string, CancellationToken, ValueTask<bool>>)SubmitReviewVerdictToolAsync,
+            ListScanProjectsAsync,
+            "ListScanProjects",
+            "List all scan projects currently stored for this scan attempt.",
+            serializerOptions: null),
+        AIFunctionFactory.Create(
+            SubmitReviewVerdictToolAsync,
             "SubmitReviewVerdict",
             "Submit the verifier approval or rejection for the current scan result.",
             serializerOptions: null),
@@ -142,7 +140,7 @@ public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdic
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(args);
-        
+
         if (args.Projects.Count == 0)
             throw new ArgumentException("At least one scan project is required.", nameof(args));
 
@@ -172,7 +170,8 @@ public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdic
         return _scanProjectStore.DeleteAsync(args.ScanProjectId.Trim(), cancellationToken);
     }
 
-    public ValueTask<IReadOnlyList<StoredScanProject>> ListScanProjectsAsync(CancellationToken cancellationToken) =>
+    public ValueTask<IReadOnlyList<StoredScanProject>> ListScanProjectsAsync(CancellationToken cancellationToken)
+        =>
         _scanProjectStore.ListAsync(cancellationToken);
 
     public ValueTask<bool> SubmitReviewVerdictAsync(

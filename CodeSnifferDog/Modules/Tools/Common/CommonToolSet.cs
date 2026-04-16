@@ -1,7 +1,7 @@
 using CodeSnifferDog.Models.Common.Tools;
-using System.Text;
-using System.ComponentModel;
 using Microsoft.Extensions.AI;
+using System.ComponentModel;
+using System.Text;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
 
@@ -11,15 +11,16 @@ public sealed class CommonToolSet(string repositoryRootPath)
     private readonly CommandProcessRunner _processRunner = new();
     private readonly RipgrepAssetLocator _ripgrepAssetLocator = new();
 
-    public IList<AITool> CreateTools() =>
+    public IList<AITool> CreateTools()
+        =>
     [
         AIFunctionFactory.Create(
-            (Func<string, CancellationToken, ValueTask<CommandExecutionResult>>)RunShellCommandToolAsync,
+            RunShellCommandToolAsync,
             "RunShellCommand",
             "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux/macOS. Pass only the command text to execute.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            (Func<string, CancellationToken, ValueTask<CommandExecutionResult>>)RunRipgrepCommandToolAsync,
+            RunRipgrepCommandToolAsync,
             "RunRipgrepCommand",
             "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text.",
             serializerOptions: null),
@@ -91,7 +92,8 @@ public sealed class CommonToolSet(string repositoryRootPath)
         return fullPath;
     }
 
-    private static string EncodePowerShellCommand(string command) =>
+    private static string EncodePowerShellCommand(string command)
+        =>
         Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
 
     internal static bool StartsWithRipgrepExecutable(string command)

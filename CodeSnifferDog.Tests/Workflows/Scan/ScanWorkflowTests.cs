@@ -7,9 +7,11 @@ using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
+using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
 using CodeSnifferDog.Workflows.Scan;
+using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
@@ -92,6 +94,63 @@ public sealed class ScanWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_RecreatesScanAgentInstance_WhenResetOccurs()
+    {
+        int emptyAttempts = 0;
+        int createdScanAgents = 0;
+        ScriptedChatClient scanChatClient = new(invocation =>
+        {
+            if (emptyAttempts < 3)
+            {
+                emptyAttempts++;
+                return CreateAssistantResponse("No projects submitted yet.");
+            }
+
+            return CreateFunctionCallResponse(
+                "scan-add-primary",
+                "AddScanProject",
+                new Dictionary<string, object?>
+                {
+                    ["ProjectName"] = "CodeSnifferDog",
+                    ["ProjectPath"] = "CodeSnifferDog/CodeSnifferDog.csproj",
+                    ["ProjectType"] = ".csproj",
+                    ["Reason"] = "Primary application project.",
+                });
+        });
+        ScriptedChatClient verifierChatClient = new(invocation => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The scan result is acceptable.",
+            }));
+        InMemoryScanProjectStore scanProjectStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ScanWorkflow workflow = new(
+            repositoryRootPath =>
+            {
+                createdScanAgents++;
+                return CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer);
+            },
+            repositoryRootPath => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
+            scanProjectStore,
+            verdictBuffer,
+            promptAssetReader,
+            new ScanWorkflowOptions
+            {
+                MaxMissingSubmissionAttempts = 3,
+                MaxScanAgentResets = 1,
+            });
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(2, createdScanAgents);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ContinuesAfterVerifierRejectionLimit()
     {
         ScanWorkflow workflow = CreateWorkflow(
@@ -167,7 +226,7 @@ public sealed class ScanWorkflowTests
             {
                 scanPrefixObserved = invocation.Messages.Any(message =>
                     message.Role == ChatRole.User &&
-                    message.Text?.StartsWith(ScanToolSet.ScanInputPrefix, StringComparison.Ordinal) == true);
+                    message.Text?.StartsWith(CreateMessageTemplates().ScanInputPrefix, StringComparison.Ordinal) == true);
 
                 return HandleScanInvocation(invocation);
             },
@@ -175,7 +234,7 @@ public sealed class ScanWorkflowTests
             {
                 verifierPrefixObserved = invocation.Messages.Any(message =>
                     message.Role == ChatRole.User &&
-                    message.Text?.StartsWith(ScanToolSet.VerifierInputPrefix, StringComparison.Ordinal) == true);
+                    message.Text?.StartsWith(CreateMessageTemplates().VerifierInputPrefix, StringComparison.Ordinal) == true);
 
                 return HandleVerifierInvocation(invocation);
             });
@@ -193,7 +252,9 @@ public sealed class ScanWorkflowTests
         List<ChatInvocation> scanInvocations = [];
         int scanFailures = 0;
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
-        OperationalContextAgentCompactionOptions compactionOptions = CreateCompactionOptions(summarizer);
+        OperationalContextAgentCompactionOptions compactionOptions = CreateCompactionOptions(
+            ScanPromptAssetPaths.ScanSummaryPrompt,
+            summarizer);
         ScriptedChatClient scanChatClient = new(invocation =>
         {
             scanInvocations.Add(invocation);
@@ -211,25 +272,29 @@ public sealed class ScanWorkflowTests
         ScriptedChatClient verifierChatClient = new(HandleVerifierInvocation);
         InMemoryScanProjectStore scanProjectStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
         ScanWorkflow workflow = new(
-            new ScanAgentFactory(compactionOptions).Create(
+            repositoryRootPath => new ScanAgentFactory(compactionOptions).Create(
                 scanChatClient,
                 """
                 You are the Scan Agent for CodeSnifferDog.
 
                 Use the system-controlled user input as the source of truth for the repository root path.
                 """,
+                repositoryRootPath,
                 scanProjectStore,
                 verdictBuffer),
-            CreateVerifierAgent(verifierChatClient, scanProjectStore, verdictBuffer),
+            repositoryRootPath => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
             scanProjectStore,
-            verdictBuffer);
+            verdictBuffer,
+            promptAssetReader);
 
         var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsGreaterThan(0, summarizer.CallCount);
         Assert.IsGreaterThanOrEqualTo(2, scanInvocations.Count);
+        Assert.IsTrue(summarizer.LastSummaryPrompt?.Contains("Summarize the current Scan-stage work", StringComparison.Ordinal) ?? false);
 
         ChatInvocation compactedInvocation = scanInvocations.First(invocation =>
             invocation.Messages.Any(IsSummaryArtifactMessage));
@@ -320,65 +385,54 @@ public sealed class ScanWorkflowTests
         ScriptedChatClient verifierChatClient = new(verifierResponseFactory);
         InMemoryScanProjectStore scanProjectStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
 
         return new ScanWorkflow(
-            CreateScanAgent(scanChatClient, scanProjectStore, verdictBuffer),
-            CreateVerifierAgent(verifierChatClient, scanProjectStore, verdictBuffer),
+            repositoryRootPath => CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer),
+            repositoryRootPath => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
             scanProjectStore,
             verdictBuffer,
+            promptAssetReader,
             options);
     }
 
-    private static ScanToolSet CreateToolSet() =>
+    private static ScanToolSet CreateToolSet()
+        =>
         new(new InMemoryScanProjectStore(), new ReviewVerdictBuffer());
 
+    private static ScanWorkflowMessageTemplates CreateMessageTemplates()
+        =>
+        new(new PromptAssetReader());
+
     private static AIAgent CreateScanAgent(
+        string repositoryRootPath,
         IChatClient chatClient,
         IScanProjectStore scanProjectStore,
         ReviewVerdictBuffer verdictBuffer) =>
-        new ScanAgentFactory(CreateCompactionOptions())
-            .Create(
-                chatClient,
-                """
-                You are the Scan Agent for CodeSnifferDog.
-
-                Use the system-controlled user input as the source of truth for the repository root path.
-                """,
-                scanProjectStore,
-                verdictBuffer);
+        new ScanAgentFactory(CreateCompactionOptions(ScanPromptAssetPaths.ScanSummaryPrompt))
+            .Create(chatClient, repositoryRootPath, scanProjectStore, verdictBuffer);
 
     private static AIAgent CreateVerifierAgent(
+        string repositoryRootPath,
         IChatClient chatClient,
         IScanProjectStore scanProjectStore,
         ReviewVerdictBuffer verdictBuffer) =>
-        new ScanVerifierAgentFactory(CreateCompactionOptions())
-            .Create(
-                chatClient,
-                """
-                You are the Scan Verifier Agent for CodeSnifferDog.
-
-                ## Inputs
-                - Repository root path:
-                {{RepositoryRootPath}}
-                """,
-                @"Z:\GitHub\CodeSnifferDog",
-                scanProjectStore,
-                verdictBuffer);
+        new ScanVerifierAgentFactory(CreateCompactionOptions(ScanPromptAssetPaths.ScanSummaryPrompt))
+            .Create(chatClient, repositoryRootPath, scanProjectStore, verdictBuffer);
 
     private static OperationalContextAgentCompactionOptions CreateCompactionOptions(
-        IOperationalContextCompactionSummarizer? summarizer = null) => new()
-    {
-        Reducer = new OperationalContextChatReducer(
-            new OperationalContextCompactionOptions
-            {
-                ContextTokenThreshold = 10,
-            },
-            new StaticOperationalContextSummaryPromptProvider("Summarize the current workflow state."),
+        string summaryPromptAssetPath,
+        IOperationalContextCompactionSummarizer? summarizer = null) =>
+        new OperationalContextAgentCompactionOptionsFactory(
+            new PromptAssetReader(),
             summarizer ?? new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"),
-            new FixedUsageProvider(usedTokens: 100)),
-        AutomaticCompactionTrigger = CompactionTriggers.TokensExceed(10),
-        ReactiveExceptionDecider = new DefaultOperationalContextReactiveCompactionExceptionDecider(),
-    };
+            new FixedUsageProvider(usedTokens: 100))
+            .CreateFromPromptAsset(
+                summaryPromptAssetPath,
+                new OperationalContextCompactionOptions
+                {
+                    ContextTokenThreshold = 10,
+                });
 
     private static ChatResponse HandleScanInvocation(ChatInvocation invocation)
     {
@@ -436,7 +490,8 @@ public sealed class ScanWorkflowTests
             });
     }
 
-    private static ChatResponse CreateAssistantResponse(string text) =>
+    private static ChatResponse CreateAssistantResponse(string text)
+        =>
         new(new ChatMessage(ChatRole.Assistant, text));
 
     private static ChatResponse CreateFunctionCallResponse(
@@ -449,20 +504,24 @@ public sealed class ScanWorkflowTests
             FinishReason = new ChatFinishReason("tool_calls"),
         };
 
-    private static bool HasCorrectionInstruction(IReadOnlyList<ChatMessage> messages) =>
+    private static bool HasCorrectionInstruction(IReadOnlyList<ChatMessage> messages)
+        =>
         messages.Any(message =>
             message.Role == ChatRole.User &&
             message.Text?.Contains("Add the test project", StringComparison.Ordinal) == true);
 
-    private static bool HasFunctionResult(IReadOnlyList<ChatMessage> messages, string callId) =>
+    private static bool HasFunctionResult(IReadOnlyList<ChatMessage> messages, string callId)
+        =>
         messages.SelectMany(message => message.Contents)
             .Where(static content => content is FunctionResultContent)
             .Any(content => string.Equals(GetCallId(content), callId, StringComparison.Ordinal));
 
-    private static string? GetCallId(AIContent content) =>
+    private static string? GetCallId(AIContent content)
+        =>
         content.GetType().GetProperty("CallId")?.GetValue(content)?.ToString();
 
-    private static bool IsSummaryArtifactMessage(ChatMessage message) =>
+    private static bool IsSummaryArtifactMessage(ChatMessage message)
+        =>
         string.Equals(
             message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString(),
             OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
@@ -520,6 +579,8 @@ public sealed class ScanWorkflowTests
     {
         public int CallCount { get; private set; }
 
+        public string? LastSummaryPrompt { get; private set; }
+
         public ValueTask<string> SummarizeAsync(
             IReadOnlyList<ChatMessage> messages,
             string summaryPrompt,
@@ -527,6 +588,7 @@ public sealed class ScanWorkflowTests
             CancellationToken cancellationToken)
         {
             CallCount++;
+            LastSummaryPrompt = summaryPrompt;
             return ValueTask.FromResult(response);
         }
     }
