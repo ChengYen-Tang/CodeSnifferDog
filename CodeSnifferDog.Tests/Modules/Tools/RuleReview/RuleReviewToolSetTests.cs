@@ -1,0 +1,80 @@
+using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Modules.Tools.Review;
+using CodeSnifferDog.Modules.Tools.RuleReview;
+
+namespace CodeSnifferDog.Tests.Modules.Tools.RuleReview;
+
+[TestClass]
+public sealed class RuleReviewToolSetTests
+{
+    [TestMethod]
+    public async Task SubmitNoIssueConclusionAsync_Fails_WhenIssuesExist()
+    {
+        RuleReviewToolSet toolSet = new(new InMemoryRuleReviewIssueStore(), new ReviewVerdictBuffer());
+
+        await toolSet.CreateRuleReviewIssueAsync(
+            new CreateRuleReviewIssueArgs
+            {
+                IssueType = "Performance",
+                FileOrFunction = "Program.cs",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken);
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => toolSet.SubmitNoIssueConclusionAsync(
+            new SubmitNoIssueConclusionArgs
+            {
+                ReviewStrategy = "Reviewed the current scope.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                WhyNoIssueWasFound = "No issue was found.",
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
+    public async Task CreateRuleReviewIssueAsync_ResetsExistingNoIssueConclusion()
+    {
+        RuleReviewToolSet toolSet = new(new InMemoryRuleReviewIssueStore(), new ReviewVerdictBuffer());
+
+        await toolSet.SubmitNoIssueConclusionAsync(
+            new SubmitNoIssueConclusionArgs
+            {
+                ReviewStrategy = "Reviewed the current scope.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                WhyNoIssueWasFound = "No issue was found.",
+            },
+            TestContext.CancellationToken);
+
+        await toolSet.CreateRuleReviewIssueAsync(
+            new CreateRuleReviewIssueArgs
+            {
+                IssueType = "Performance",
+                FileOrFunction = "Program.cs",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken);
+
+        NoIssueConclusion? noIssueConclusion = await toolSet.GetNoIssueConclusionAsync(TestContext.CancellationToken);
+
+        Assert.IsNull(noIssueConclusion);
+    }
+
+    public required TestContext TestContext { get; init; }
+}

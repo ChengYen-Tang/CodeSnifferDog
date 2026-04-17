@@ -17,8 +17,6 @@
 ## C# Structure
 
 ```csharp
-namespace CodeSnifferDog.Agent.Messages;
-
 public sealed class ReviewVerdict
 {
     public required bool Approved { get; init; }

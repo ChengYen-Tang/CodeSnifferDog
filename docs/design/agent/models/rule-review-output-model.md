@@ -18,8 +18,6 @@
 ## C# Structure
 
 ```csharp
-namespace CodeSnifferDog.Agent.Messages;
-
 public sealed class RuleReviewIssue
 {
     public required string IssueType { get; init; }

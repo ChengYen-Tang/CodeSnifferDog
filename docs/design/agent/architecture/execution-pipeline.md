@@ -271,6 +271,21 @@ Reject it if more work is required, and explain why.
 3. 保留由工具寫入的結構化狀態，例如既有 issues 與 no-issue 狀態
 4. 以相同輸入重新啟動新的 `Rule Review Agent` run
 
+若 repeated missing submission 持續發生，直到超過允許的 agent reset 上限，第一版不應讓整個外層流程直接失敗。
+
+此時應將目前這條 `rule flow` 視為：
+
+- 沒有產出可驗證的 review result
+- 以 degraded state 結束
+- 保留原因到 workflow state 與可觀測性紀錄
+
+也就是說，這種情況下：
+
+1. 不進入 `Review Verifier Agent`
+2. 不進入 `Report Aggregator`
+3. 不影響其他 `rule flow` 或其他 `task item` 繼續執行
+4. 由外層 orchestration 在容器收斂時，將此 flow 視為一條已結束但未成功提交 review result 的 flow
+
 ### 為什麼要重置
 
 這個機制的目的，是避免 agent 陷入重複性的推理循環，例如：
@@ -307,6 +322,8 @@ Reject it if more work is required, and explain why.
 - 是否已有 no-issue conclusion 被提交
 
 只有當上述狀態明確存在時，才允許流轉到 verifier。
+
+若在 repeated missing submission 與 reset 後仍無法形成上述狀態，系統仍應保留這條 flow 的執行結果與失敗事實，而不是讓整個大流程因單一 flow 沒有提交而中止。
 
 ## 與其他文件關聯
 

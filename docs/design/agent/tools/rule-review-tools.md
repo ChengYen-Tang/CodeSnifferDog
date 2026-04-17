@@ -108,8 +108,6 @@
 ## C# Tool Shapes
 
 ```csharp
-namespace CodeSnifferDog.Agent.Tools;
-
 public sealed class CreateRuleReviewIssueArgs
 {
     public required string IssueType { get; init; }

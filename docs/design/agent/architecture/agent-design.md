@@ -222,6 +222,9 @@ Review 階段可在兩個層級平行展開：
 - `Report Verifier`
   驗證本次聚合差異是否合理，且沒有扭曲、遺漏或過度合併當前 flow 的結果
 
+另外，若 `Rule Review Agent` 在 repeated missing submission 與 reset 後，仍然無法形成任何 issue 或 `NoIssueConclusion`，則這條 flow 不應讓整個外層流程直接失敗。
+此時應以 degraded state 結束該 flow，保留原因與執行紀錄，並由外層 orchestration 繼續收斂其他 flows。
+
 只有當同一個 `review group` 內由所有規則展開出的 flows 都完成後，該 `task item` 才算完成 review。
 
 ### Task Item 與 Review Group 關係
@@ -231,6 +234,9 @@ Review 階段可在兩個層級平行展開：
 - `review group` 是一個與單一 `task item` 對應的執行容器。
 - 容器的責任是建立、追蹤與管理該 `task item` 下所有規則的 review flows。
 - 容器結束的條件，是該 `task item` 下所有 rule flows 都已完成且通過最終驗證。
+- 每一條 rule flow 都有自己獨立的 issue state、no-issue state 與 verdict state。
+- 可平行的是多條 flow 的執行，不是多條 flow 共用同一份 review state。
+- 同一條 flow 內的 reviewer 與 verifier 會沿用同一份垂直狀態。
 
 ### Rule Flow 生命週期
 

@@ -24,8 +24,6 @@
 ## C# Tool Shape
 
 ```csharp
-namespace CodeSnifferDog.Agent.Tools;
-
 public sealed class SubmitReviewVerdictArgs
 {
     public required bool Approved { get; init; }
