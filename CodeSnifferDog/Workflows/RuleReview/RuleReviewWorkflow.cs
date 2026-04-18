@@ -47,142 +47,151 @@ public sealed class RuleReviewWorkflow(
             RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
         string reviewVerdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
         await _issueStore.ClearAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
+        _verdictBuffer.Reset(reviewVerdictScopeKey);
 
-        Result<AIAgent> createRuleReviewAgentResult = TryCreateAgent(
-            () => _ruleReviewAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
-            "Rule Review Agent");
-
-        if (createRuleReviewAgentResult.IsFailed)
-            return createRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
-
-        Result<AIAgent> createReviewVerifierAgentResult = TryCreateAgent(
-            () => _reviewVerifierAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
-            "Review Verifier Agent");
-
-        if (createReviewVerifierAgentResult.IsFailed)
-            return createReviewVerifierAgentResult.ToResult<RuleReviewWorkflowResult>();
-
-        AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value;
-        AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value;
-        List<ChatMessage> reviewMessages = CreateReviewMessages();
-
-        int reviewAttempts = 0;
-        int verifierAttempts = 0;
-        int verifierRejectionAttempts = 0;
-        int missingSubmissionAttempts = 0;
-        int ruleReviewAgentResetCount = 0;
-
-        while (true)
+        try
         {
-            reviewAttempts++;
+            Result<AIAgent> createRuleReviewAgentResult = TryCreateAgent(
+                () => _ruleReviewAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                "Rule Review Agent");
 
-            Result runReviewResult = await RunAgentAsync(ruleReviewAgent, reviewMessages, cancellationToken).ConfigureAwait(false);
+            if (createRuleReviewAgentResult.IsFailed)
+                return createRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
 
-            if (runReviewResult.IsFailed)
-                return runReviewResult.ToResult<RuleReviewWorkflowResult>();
+            Result<AIAgent> createReviewVerifierAgentResult = TryCreateAgent(
+                () => _reviewVerifierAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                "Review Verifier Agent");
 
-            IReadOnlyList<StoredRuleReviewIssue> issues = await _issueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
-            NoIssueConclusion? noIssueConclusion = await _issueStore.GetNoIssueConclusionAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
+            if (createReviewVerifierAgentResult.IsFailed)
+                return createReviewVerifierAgentResult.ToResult<RuleReviewWorkflowResult>();
 
-            if (issues.Count == 0 && noIssueConclusion is null)
+            AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value;
+            AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value;
+            List<ChatMessage> reviewMessages = CreateReviewMessages();
+
+            int reviewAttempts = 0;
+            int verifierAttempts = 0;
+            int verifierRejectionAttempts = 0;
+            int missingSubmissionAttempts = 0;
+            int ruleReviewAgentResetCount = 0;
+
+            while (true)
             {
-                missingSubmissionAttempts++;
+                reviewAttempts++;
 
-                if (missingSubmissionAttempts >= _options.MaxMissingSubmissionAttempts)
+                Result runReviewResult = await RunAgentAsync(ruleReviewAgent, reviewMessages, cancellationToken).ConfigureAwait(false);
+
+                if (runReviewResult.IsFailed)
+                    return runReviewResult.ToResult<RuleReviewWorkflowResult>();
+
+                IReadOnlyList<StoredRuleReviewIssue> issues = await _issueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
+                NoIssueConclusion? noIssueConclusion = await _issueStore.GetNoIssueConclusionAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
+
+                if (issues.Count == 0 && noIssueConclusion is null)
                 {
-                    ruleReviewAgentResetCount++;
+                    missingSubmissionAttempts++;
 
-                    if (ruleReviewAgentResetCount > _options.MaxRuleReviewAgentResets)
+                    if (missingSubmissionAttempts >= _options.MaxMissingSubmissionAttempts)
                     {
-                        ReviewVerdict missingSubmissionVerdict = new()
-                        {
-                            Approved = false,
-                            Message = "Rule Review Agent did not submit any issues or a no-issue conclusion after the allowed reset limit.",
-                        };
+                        ruleReviewAgentResetCount++;
 
-                        return Result.Ok(CreateResult(
-                            taskItem,
-                            ruleMarkdown,
-                            issues,
-                            noIssueConclusion,
-                            missingSubmissionVerdict,
-                            reviewAttempts,
-                            verifierAttempts,
-                            ruleReviewAgentResetCount,
-                            reviewVerifierApproved: false,
-                            continuedAfterVerifierRejectionLimit: false,
-                            stoppedAfterMissingSubmissionLimit: true));
+                        if (ruleReviewAgentResetCount > _options.MaxRuleReviewAgentResets)
+                        {
+                            ReviewVerdict missingSubmissionVerdict = new()
+                            {
+                                Approved = false,
+                                Message = "Rule Review Agent did not submit any issues or a no-issue conclusion after the allowed reset limit.",
+                            };
+
+                            return Result.Ok(CreateResult(
+                                taskItem,
+                                ruleMarkdown,
+                                issues,
+                                noIssueConclusion,
+                                missingSubmissionVerdict,
+                                reviewAttempts,
+                                verifierAttempts,
+                                ruleReviewAgentResetCount,
+                                reviewVerifierApproved: false,
+                                continuedAfterVerifierRejectionLimit: false,
+                                stoppedAfterMissingSubmissionLimit: true));
+                        }
+
+                        Result<AIAgent> recreateRuleReviewAgentResult = TryCreateAgent(
+                            () => _ruleReviewAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                            "Rule Review Agent");
+
+                        if (recreateRuleReviewAgentResult.IsFailed)
+                            return recreateRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
+
+                        ruleReviewAgent = recreateRuleReviewAgentResult.Value;
+                        reviewMessages = CreateReviewMessages();
+                        missingSubmissionAttempts = 0;
+                        continue;
                     }
 
-                    Result<AIAgent> recreateRuleReviewAgentResult = TryCreateAgent(
-                        () => _ruleReviewAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
-                        "Rule Review Agent");
-
-                    if (recreateRuleReviewAgentResult.IsFailed)
-                        return recreateRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
-
-                    ruleReviewAgent = recreateRuleReviewAgentResult.Value;
-                    reviewMessages = CreateReviewMessages();
-                    missingSubmissionAttempts = 0;
+                    reviewMessages.Add(new ChatMessage(ChatRole.User, _messageTemplates.MissingRuleReviewSubmissionMessage));
                     continue;
                 }
 
-                reviewMessages.Add(new ChatMessage(ChatRole.User, _messageTemplates.MissingRuleReviewSubmissionMessage));
-                continue;
-            }
+                missingSubmissionAttempts = 0;
+                verifierAttempts++;
+                _verdictBuffer.Reset(reviewVerdictScopeKey);
 
-            missingSubmissionAttempts = 0;
-            verifierAttempts++;
+                List<ChatMessage> verifierMessages =
+                [
+                    new(ChatRole.User, BuildVerifierInput(issues, noIssueConclusion)),
+                ];
+
+                Result runVerifierResult = await RunAgentAsync(reviewVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
+
+                if (runVerifierResult.IsFailed)
+                    return runVerifierResult.ToResult<RuleReviewWorkflowResult>();
+
+                if (_verdictBuffer.GetLatest(reviewVerdictScopeKey) is not ReviewVerdict verdict)
+                    return Result.Fail<RuleReviewWorkflowResult>("Review Verifier Agent finished without submitting a verdict.");
+
+                if (verdict.Approved)
+                {
+                    return Result.Ok(CreateResult(
+                        taskItem,
+                        ruleMarkdown,
+                        issues,
+                        noIssueConclusion,
+                        verdict,
+                        reviewAttempts,
+                        verifierAttempts,
+                        ruleReviewAgentResetCount,
+                        reviewVerifierApproved: true,
+                        continuedAfterVerifierRejectionLimit: false,
+                        stoppedAfterMissingSubmissionLimit: false));
+                }
+
+                verifierRejectionAttempts++;
+
+                if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
+                {
+                    return Result.Ok(CreateResult(
+                        taskItem,
+                        ruleMarkdown,
+                        issues,
+                        noIssueConclusion,
+                        verdict,
+                        reviewAttempts,
+                        verifierAttempts,
+                        ruleReviewAgentResetCount,
+                        reviewVerifierApproved: false,
+                        continuedAfterVerifierRejectionLimit: true,
+                        stoppedAfterMissingSubmissionLimit: false));
+                }
+
+                reviewMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+            }
+        }
+        finally
+        {
             _verdictBuffer.Reset(reviewVerdictScopeKey);
-
-            List<ChatMessage> verifierMessages =
-            [
-                new(ChatRole.User, BuildVerifierInput(issues, noIssueConclusion)),
-            ];
-
-            Result runVerifierResult = await RunAgentAsync(reviewVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
-
-            if (runVerifierResult.IsFailed)
-                return runVerifierResult.ToResult<RuleReviewWorkflowResult>();
-
-            if (_verdictBuffer.GetLatest(reviewVerdictScopeKey) is not ReviewVerdict verdict)
-                return Result.Fail<RuleReviewWorkflowResult>("Review Verifier Agent finished without submitting a verdict.");
-
-            if (verdict.Approved)
-            {
-                return Result.Ok(CreateResult(
-                    taskItem,
-                    ruleMarkdown,
-                    issues,
-                    noIssueConclusion,
-                    verdict,
-                    reviewAttempts,
-                    verifierAttempts,
-                    ruleReviewAgentResetCount,
-                    reviewVerifierApproved: true,
-                    continuedAfterVerifierRejectionLimit: false,
-                    stoppedAfterMissingSubmissionLimit: false));
-            }
-
-            verifierRejectionAttempts++;
-
-            if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
-            {
-                return Result.Ok(CreateResult(
-                    taskItem,
-                    ruleMarkdown,
-                    issues,
-                    noIssueConclusion,
-                    verdict,
-                    reviewAttempts,
-                    verifierAttempts,
-                    ruleReviewAgentResetCount,
-                    reviewVerifierApproved: false,
-                    continuedAfterVerifierRejectionLimit: true,
-                    stoppedAfterMissingSubmissionLimit: false));
-            }
-
-            reviewMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+            await _issueStore.ClearAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
         }
     }
 

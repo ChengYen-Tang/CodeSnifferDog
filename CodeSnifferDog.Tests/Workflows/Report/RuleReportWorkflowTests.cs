@@ -250,6 +250,72 @@ public sealed class RuleReportWorkflowTests
         Assert.AreEqual("task-item-2", results[1].Value.TaskItem.ProjectPlanTaskItemId);
     }
 
+    [TestMethod]
+    public async Task RunAsync_CleansWorkingReportAndVerdictBuffer_AfterSuccessfulCompletion()
+    {
+        InMemoryRuleReportIssueStore reportIssueStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        RuleReportWorkflow workflow = new(
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues) =>
+                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(HandleVerifierInvocation), reportIssueStore, verdictBuffer),
+            reportIssueStore,
+            verdictBuffer,
+            new PromptAssetReader());
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        string repositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
+        string ruleMarkdown = "- Detect performance issues.";
+
+        Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
+            repositoryRootPath,
+            ruleMarkdown,
+            taskItem,
+            CreateCurrentFlowIssues(),
+            TestContext.CancellationToken);
+
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        string verdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsEmpty(await reportIssueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsEmpty((await reportIssueStore.GetLatestDiffAsync(ruleFlowKey, TestContext.CancellationToken)).CreatedIssues);
+        Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_CleansWorkingReportAndVerdictBuffer_AfterFailure()
+    {
+        InMemoryRuleReportIssueStore reportIssueStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        RuleReportWorkflow workflow = new(
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues) =>
+                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), reportIssueStore, verdictBuffer),
+            reportIssueStore,
+            verdictBuffer,
+            new PromptAssetReader());
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        string repositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
+        string ruleMarkdown = "- Detect performance issues.";
+
+        Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
+            repositoryRootPath,
+            ruleMarkdown,
+            taskItem,
+            CreateCurrentFlowIssues(),
+            TestContext.CancellationToken);
+
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        string verdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
+
+        Assert.IsTrue(result.IsFailed);
+        Assert.IsEmpty(await reportIssueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsEmpty((await reportIssueStore.GetLatestDiffAsync(ruleFlowKey, TestContext.CancellationToken)).CreatedIssues);
+        Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
+    }
+
     private static RuleReportWorkflow CreateWorkflow(
         Func<ChatInvocation, ChatResponse> aggregatorResponseFactory,
         Func<ChatInvocation, ChatResponse> verifierResponseFactory,

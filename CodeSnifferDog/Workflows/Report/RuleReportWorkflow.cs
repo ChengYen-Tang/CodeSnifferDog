@@ -53,104 +53,111 @@ public sealed class RuleReportWorkflow(
             RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleMarkdown);
         string reportVerdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
-
-        Result<AIAgent> createAggregatorResult = TryCreateAgent(
-            () => _reportAggregatorAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
-            "Report Aggregator Agent");
-
-        if (createAggregatorResult.IsFailed)
-            return createAggregatorResult.ToResult<RuleReportWorkflowResult>();
-
-        Result<AIAgent> createVerifierResult = TryCreateAgent(
-            () => _reportVerifierAgentFactory(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues),
-            "Report Verifier Agent");
-
-        if (createVerifierResult.IsFailed)
-            return createVerifierResult.ToResult<RuleReportWorkflowResult>();
-
-        AIAgent reportAggregatorAgent = createAggregatorResult.Value;
-        AIAgent reportVerifierAgent = createVerifierResult.Value;
-        List<ChatMessage> aggregatorMessages = CreateAggregatorMessages(currentFlowIssues);
         await _reportIssueStore.InitializeWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+        _verdictBuffer.Reset(reportVerdictScopeKey);
 
-        int aggregatorAttempts = 0;
-        int verifierAttempts = 0;
-        int verifierRejectionAttempts = 0;
-
-        while (true)
+        try
         {
-            aggregatorAttempts++;
+            Result<AIAgent> createAggregatorResult = TryCreateAgent(
+                () => _reportAggregatorAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                "Report Aggregator Agent");
 
-            Result runAggregatorResult = await RunAgentAsync(reportAggregatorAgent, aggregatorMessages, cancellationToken).ConfigureAwait(false);
+            if (createAggregatorResult.IsFailed)
+                return createAggregatorResult.ToResult<RuleReportWorkflowResult>();
 
-            if (runAggregatorResult.IsFailed)
-                return runAggregatorResult.ToResult<RuleReportWorkflowResult>();
+            Result<AIAgent> createVerifierResult = TryCreateAgent(
+                () => _reportVerifierAgentFactory(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues),
+                "Report Verifier Agent");
 
-            RuleReportDiff diff = await ComputeAndStoreDiffAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+            if (createVerifierResult.IsFailed)
+                return createVerifierResult.ToResult<RuleReportWorkflowResult>();
 
-            verifierAttempts++;
+            AIAgent reportAggregatorAgent = createAggregatorResult.Value;
+            AIAgent reportVerifierAgent = createVerifierResult.Value;
+            List<ChatMessage> aggregatorMessages = CreateAggregatorMessages(currentFlowIssues);
+
+            int aggregatorAttempts = 0;
+            int verifierAttempts = 0;
+            int verifierRejectionAttempts = 0;
+
+            while (true)
+            {
+                aggregatorAttempts++;
+
+                Result runAggregatorResult = await RunAgentAsync(reportAggregatorAgent, aggregatorMessages, cancellationToken).ConfigureAwait(false);
+
+                if (runAggregatorResult.IsFailed)
+                    return runAggregatorResult.ToResult<RuleReportWorkflowResult>();
+
+                RuleReportDiff diff = await ComputeAndStoreDiffAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+
+                verifierAttempts++;
+                _verdictBuffer.Reset(reportVerdictScopeKey);
+
+                List<ChatMessage> verifierMessages =
+                [
+                    new(ChatRole.User, BuildVerifierInput(diff)),
+                ];
+
+                Result runVerifierResult = await RunAgentAsync(reportVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
+
+                if (runVerifierResult.IsFailed)
+                    return runVerifierResult.ToResult<RuleReportWorkflowResult>();
+
+                if (_verdictBuffer.GetLatest(reportVerdictScopeKey) is not ReviewVerdict verdict)
+                    return Result.Fail<RuleReportWorkflowResult>("Report Verifier Agent finished without submitting a verdict.");
+
+                if (verdict.Approved)
+                {
+                    await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+                    IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
+                        await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
+
+                    return Result.Ok(new RuleReportWorkflowResult
+                    {
+                        TaskItem = taskItem,
+                        RuleMarkdown = ruleMarkdown,
+                        CurrentFlowIssues = currentFlowIssues,
+                        Diff = diff,
+                        RepositoryIssues = repositoryIssues,
+                        Verdict = verdict,
+                        ReportVerifierApproved = true,
+                        ContinuedAfterVerifierRejectionLimit = false,
+                        AggregatorAttempts = aggregatorAttempts,
+                        VerifierAttempts = verifierAttempts,
+                    });
+                }
+
+                verifierRejectionAttempts++;
+
+                if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
+                {
+                    await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+                    IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
+                        await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
+
+                    return Result.Ok(new RuleReportWorkflowResult
+                    {
+                        TaskItem = taskItem,
+                        RuleMarkdown = ruleMarkdown,
+                        CurrentFlowIssues = currentFlowIssues,
+                        Diff = diff,
+                        RepositoryIssues = repositoryIssues,
+                        Verdict = verdict,
+                        ReportVerifierApproved = false,
+                        ContinuedAfterVerifierRejectionLimit = true,
+                        AggregatorAttempts = aggregatorAttempts,
+                        VerifierAttempts = verifierAttempts,
+                    });
+                }
+
+                aggregatorMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+            }
+        }
+        finally
+        {
             _verdictBuffer.Reset(reportVerdictScopeKey);
-
-            List<ChatMessage> verifierMessages =
-            [
-                new(ChatRole.User, BuildVerifierInput(diff)),
-            ];
-
-            Result runVerifierResult = await RunAgentAsync(reportVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
-
-            if (runVerifierResult.IsFailed)
-                return runVerifierResult.ToResult<RuleReportWorkflowResult>();
-
-            if (_verdictBuffer.GetLatest(reportVerdictScopeKey) is not ReviewVerdict verdict)
-                return Result.Fail<RuleReportWorkflowResult>("Report Verifier Agent finished without submitting a verdict.");
-
-            if (verdict.Approved)
-            {
-                await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
-                IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
-                    await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
-                await _reportIssueStore.ClearWorkingReportAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
-
-                return Result.Ok(new RuleReportWorkflowResult
-                {
-                    TaskItem = taskItem,
-                    RuleMarkdown = ruleMarkdown,
-                    CurrentFlowIssues = currentFlowIssues,
-                    Diff = diff,
-                    RepositoryIssues = repositoryIssues,
-                    Verdict = verdict,
-                    ReportVerifierApproved = true,
-                    ContinuedAfterVerifierRejectionLimit = false,
-                    AggregatorAttempts = aggregatorAttempts,
-                    VerifierAttempts = verifierAttempts,
-                });
-            }
-
-            verifierRejectionAttempts++;
-
-            if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
-            {
-                await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
-                IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
-                    await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
-                await _reportIssueStore.ClearWorkingReportAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
-
-                return Result.Ok(new RuleReportWorkflowResult
-                {
-                    TaskItem = taskItem,
-                    RuleMarkdown = ruleMarkdown,
-                    CurrentFlowIssues = currentFlowIssues,
-                    Diff = diff,
-                    RepositoryIssues = repositoryIssues,
-                    Verdict = verdict,
-                    ReportVerifierApproved = false,
-                    ContinuedAfterVerifierRejectionLimit = true,
-                    AggregatorAttempts = aggregatorAttempts,
-                    VerifierAttempts = verifierAttempts,
-                });
-            }
-
-            aggregatorMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+            await _reportIssueStore.ClearWorkingReportAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
         }
     }
 

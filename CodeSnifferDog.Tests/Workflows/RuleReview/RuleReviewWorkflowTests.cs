@@ -433,6 +433,70 @@ public sealed class RuleReviewWorkflowTests
         Assert.AreEqual("task-item-2", results[1].Value.TaskItem.ProjectPlanTaskItemId);
     }
 
+    [TestMethod]
+    public async Task RunAsync_CleansIssueStoreAndVerdictBuffer_AfterSuccessfulCompletion()
+    {
+        InMemoryRuleReviewIssueStore issueStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        RuleReviewWorkflow workflow = new(
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueVerifierInvocation), issueStore, verdictBuffer),
+            issueStore,
+            verdictBuffer,
+            new PromptAssetReader());
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        string repositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
+        string ruleMarkdown = "- Detect performance issues.";
+
+        Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
+            repositoryRootPath,
+            ruleMarkdown,
+            taskItem,
+            TestContext.CancellationToken);
+
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        string verdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsEmpty(await issueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsNull(await issueStore.GetNoIssueConclusionAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_CleansIssueStoreAndVerdictBuffer_AfterFailure()
+    {
+        InMemoryRuleReviewIssueStore issueStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        RuleReviewWorkflow workflow = new(
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), issueStore, verdictBuffer),
+            issueStore,
+            verdictBuffer,
+            new PromptAssetReader());
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        string repositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
+        string ruleMarkdown = "- Detect performance issues.";
+
+        Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
+            repositoryRootPath,
+            ruleMarkdown,
+            taskItem,
+            TestContext.CancellationToken);
+
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        string verdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
+
+        Assert.IsTrue(result.IsFailed);
+        Assert.IsEmpty(await issueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsNull(await issueStore.GetNoIssueConclusionAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
+    }
+
     private static RuleReviewWorkflow CreateWorkflow(
         Func<ChatInvocation, ChatResponse> reviewResponseFactory,
         Func<ChatInvocation, ChatResponse> verifierResponseFactory,
