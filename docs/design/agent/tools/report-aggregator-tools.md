@@ -2,21 +2,20 @@
 
 ## 設計方向
 
-- `Report Aggregator` 不另外維護新的 report model
-- 第一版直接維護某條 `rule` 在整個 repo 範圍內的 `RuleReviewIssue` 集合
+- `Report Aggregator` 維護某條 `rule` 在整個 repo 範圍內的 `RuleReportIssue` 集合
 - 來源有兩份：
   - 當前 `plan item + rule flow` 通過 verifier 的 `RuleReviewIssue` 集合，由系統主動提供給 agent
-  - 目前已存在的該 `rule` 總 `RuleReviewIssue` 集合
+  - 目前已存在的該 `rule` latest snapshot，系統會在每條 `plan item + rule flow` 開始時複製成這條 flow 自己的 working report
 - `Report Aggregator` 的責任是把前者整理進後者
-- repo-level 的 issue 結構第一版直接沿用 `RuleReviewIssue`
+- repo-level 的 report issue 與 review-stage issue 使用相同欄位內容，但擁有自己的 `RuleReportIssueId`
 
 ## GetRuleReportIssues
 
-讀取目前整個 repo 範圍下，某條 `rule` 的總 `RuleReviewIssue` 集合。
+讀取目前整個 repo 範圍下，某條 `rule` 的 working `RuleReportIssue` 集合。
 
 - 使用時機：`Report Aggregator` 需要取得目前已存在的 rule-level issue 集合時。
 - 參數：無。
-- 回傳：目前該 `rule` 的所有 `RuleReviewIssue`，每筆都應包含可供後續更新或刪除的識別值。
+- 回傳：目前該 `rule` 的所有 `RuleReportIssue`，每筆都應包含可供後續更新或刪除的識別值。
 
 ## GetRuleReportIssue
 
@@ -25,11 +24,11 @@
 - 使用時機：`Report Aggregator` 需要查看某筆既有總 issue 的完整內容時。
 - 參數：
   - `ruleReportIssueId`：要讀取的總 issue 識別值。
-- 回傳：對應的完整 `RuleReviewIssue` 內容。
+- 回傳：對應的完整 `RuleReportIssue` 內容。
 
 ## CreateRuleReportIssue
 
-在該 `rule` 的總 issue 集合中新增一筆 `RuleReviewIssue`。
+在該 `rule` 的 working report 中新增一筆 `RuleReportIssue`。
 
 - 使用時機：`Report Aggregator` 判斷某筆 flow issue 無法與既有總 issue 合併時。
 - 參數：直接使用 `RuleReviewIssue` 所需欄位。
@@ -42,7 +41,7 @@
 - 使用時機：`Report Aggregator` 判斷某筆 flow issue 應與既有總 issue 合併時。
 - 參數：
   - `ruleReportIssueId`
-  - 更新後的完整 `RuleReviewIssue` 欄位內容
+  - 更新後的完整 `RuleReportIssue` 欄位內容
 - 回傳：通常只需回傳更新成功狀態。
 
 ## DeleteRuleReportIssue
@@ -56,7 +55,7 @@
 
 ## 路由原則
 
-- `Report Aggregator` 只負責維護該 `rule` 的總 `RuleReviewIssue` 集合。
+- `Report Aggregator` 只負責維護當前 `plan item + rule flow` 自己的 working `RuleReportIssue` 集合。
 - 它不決定下一步是否完成，這由後續 `Report Verifier` 與程式邏輯處理。
 - `NoIssueConclusion` 不會進入 `Report Aggregator`。
 - 當前 flow 的 `RuleReviewIssue` 集合由系統主動提供，不透過工具讀取。
@@ -141,7 +140,7 @@ public sealed class GetRuleReportIssueArgs
 }
 
 // `ListRuleReportIssues` 與 `ListRuleReviewIssues` 類似，不需要輸入參數，
-// 回傳目前該 rule 在 repo-level 的所有 `RuleReviewIssue`，每筆包含識別值。
+// 回傳目前該 rule 在 working report 中的所有 `RuleReportIssue`，每筆包含識別值。
 
 public sealed class UpdateRuleReportIssueArgs
 {

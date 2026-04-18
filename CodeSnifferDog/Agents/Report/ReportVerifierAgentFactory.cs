@@ -2,18 +2,19 @@ using System.Text.Json;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Common;
+using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
-using CodeSnifferDog.Modules.Tools.RuleReview;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
-namespace CodeSnifferDog.Agents.RuleReview;
+namespace CodeSnifferDog.Agents.Report;
 
-public sealed class RuleReviewAgentFactory(
+public sealed class ReportVerifierAgentFactory(
     OperationalContextAgentCompactionOptions compactionOptions,
     PromptAssetReader? promptAssetReader = null,
     PromptTemplateRenderer? promptTemplateRenderer = null,
@@ -31,15 +32,17 @@ public sealed class RuleReviewAgentFactory(
         string repositoryRootPath,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
-        IRuleReviewIssueStore issueStore,
+        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
+        IRuleReportIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer) =>
         Create(
             chatClient,
-            _promptAssetReader.ReadRequiredPrompt(RuleReviewPromptAssetPaths.RuleReviewAgentPrompt),
+            _promptAssetReader.ReadRequiredPrompt(ReportPromptAssetPaths.ReportVerifierAgentPrompt),
             repositoryRootPath,
             ruleMarkdown,
             taskItem,
-            issueStore,
+            currentFlowIssues,
+            reportIssueStore,
             verdictBuffer);
 
     public AIAgent Create(
@@ -48,7 +51,8 @@ public sealed class RuleReviewAgentFactory(
         string repositoryRootPath,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
-        IRuleReviewIssueStore issueStore,
+        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
+        IRuleReportIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
@@ -56,17 +60,19 @@ public sealed class RuleReviewAgentFactory(
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleMarkdown);
         ArgumentNullException.ThrowIfNull(taskItem);
-        ArgumentNullException.ThrowIfNull(issueStore);
+        ArgumentNullException.ThrowIfNull(currentFlowIssues);
+        ArgumentNullException.ThrowIfNull(reportIssueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
         CommonToolSet commonToolSet = new(repositoryRootPath);
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
-        RuleReviewToolSet toolSet = new(issueStore, verdictBuffer, ruleFlowKey);
+        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleMarkdown);
+        ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
         AIAgent agent = chatClient.AsAIAgent(
-            RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, taskItem),
-            "Rule Review Agent",
-            "Reviews one task-item scope under one rule and maintains discovered issues.",
-            [.. commonToolSet.CreateTools(), .. toolSet.CreateRuleReviewAgentTools()],
+            RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, currentFlowIssues),
+            "Report Verifier Agent",
+            "Verifies whether the current repository-level aggregation diff is acceptable.",
+            [.. commonToolSet.CreateTools(), .. toolSet.CreateVerifierTools()],
             _loggerFactory,
             _serviceProvider);
 
@@ -79,7 +85,7 @@ public sealed class RuleReviewAgentFactory(
         string promptTemplate,
         string repositoryRootPath,
         string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem)
+        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
         =>
         _promptTemplateRenderer.Render(
             promptTemplate,
@@ -87,6 +93,6 @@ public sealed class RuleReviewAgentFactory(
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["ScopeFilesJson"] = JsonSerializer.Serialize(taskItem.Files),
+                ["CurrentFlowIssuesJson"] = JsonSerializer.Serialize(currentFlowIssues),
             });
 }

@@ -32,6 +32,7 @@
 - 會隨每次 plan iteration 改變的內容，不應直接寫進固定 prompt。
 - 當前 flow issues 是固定輸入，應由 prompt 佔位符提供。
 - 當前 `RuleReportDiff` 會隨首次提交與後續回退重提而改變，應由程式邏輯透過固定 prefix 加上 system-controlled user input 提供。
+- `RuleReportDiff` 的 baseline 應是 latest snapshot，不是當前 flow issues。
 - 固定 prefix 第一版定義為：
   `The following content is the current report diff from the Report Aggregator. Approve it if acceptable. Reject it if more work is required, and explain why.`
 

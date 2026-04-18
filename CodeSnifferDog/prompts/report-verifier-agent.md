@@ -34,7 +34,7 @@ Reject it if more work is required, and explain why.
 ```
 
 Use the current flow issues as the reference for what this aggregation attempt was supposed to contribute.
-Use the current `RuleReportDiff` as the reference for what actually changed in the repository-level issue set.
+Use the current `RuleReportDiff` as the reference for what actually changed between the latest rule snapshot and the current working repository-level rule report issue set.
 
 When verifying, check whether:
 

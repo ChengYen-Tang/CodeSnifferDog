@@ -1,3 +1,4 @@
+using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -11,7 +12,10 @@ public sealed class RuleReviewToolSetTests
     [TestMethod]
     public async Task SubmitNoIssueConclusionAsync_Fails_WhenIssuesExist()
     {
-        RuleReviewToolSet toolSet = new(new InMemoryRuleReviewIssueStore(), new ReviewVerdictBuffer());
+        RuleReviewToolSet toolSet = new(
+            new InMemoryRuleReviewIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues."));
 
         await toolSet.CreateRuleReviewIssueAsync(
             new CreateRuleReviewIssueArgs
@@ -43,7 +47,10 @@ public sealed class RuleReviewToolSetTests
     [TestMethod]
     public async Task CreateRuleReviewIssueAsync_ResetsExistingNoIssueConclusion()
     {
-        RuleReviewToolSet toolSet = new(new InMemoryRuleReviewIssueStore(), new ReviewVerdictBuffer());
+        RuleReviewToolSet toolSet = new(
+            new InMemoryRuleReviewIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues."));
 
         await toolSet.SubmitNoIssueConclusionAsync(
             new SubmitNoIssueConclusionArgs
@@ -77,4 +84,43 @@ public sealed class RuleReviewToolSetTests
     }
 
     public required TestContext TestContext { get; init; }
+
+    [TestMethod]
+    public async Task ListRuleReviewIssuesAsync_IsolatedByRuleFlowKey()
+    {
+        InMemoryRuleReviewIssueStore store = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        RuleReviewToolSet firstToolSet = new(
+            store,
+            verdictBuffer,
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues."));
+        RuleReviewToolSet secondToolSet = new(
+            store,
+            verdictBuffer,
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", "- Detect performance issues."));
+
+        await firstToolSet.CreateRuleReviewIssueAsync(
+            new CreateRuleReviewIssueArgs
+            {
+                IssueType = "Performance",
+                FileOrFunction = "Program.cs",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken);
+
+        IReadOnlyList<StoredRuleReviewIssue> firstIssues =
+            await firstToolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
+        IReadOnlyList<StoredRuleReviewIssue> secondIssues =
+            await secondToolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, firstIssues);
+        Assert.IsEmpty(secondIssues);
+    }
 }

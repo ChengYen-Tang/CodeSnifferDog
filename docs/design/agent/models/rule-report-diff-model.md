@@ -11,31 +11,30 @@
 
 - `Report Verifier` 以「當前 flow issues + 本次聚合差異」為主要輸入
 - 差異模型不追求 patch 級別精細度
-- 第一版直接用 `RuleReviewIssue` 集合描述新增、更新、刪除
+- 差異模型應描述某條 `rule` 的 latest snapshot 與當前 `plan item + rule flow` working report 之間的新增、更新、刪除
+- repo-level report issue 與 review-stage issue 分開建模
 
 ## C# Structure
 
 ```csharp
-namespace CodeSnifferDog.Agent.Messages;
-
 public sealed class RuleReportDiff
 {
-    public required IReadOnlyList<RuleReviewIssue> CreatedIssues { get; init; }
-    public required IReadOnlyList<RuleReviewIssue> UpdatedIssues { get; init; }
-    public required IReadOnlyList<RuleReviewIssue> DeletedIssues { get; init; }
+    public required IReadOnlyList<StoredRuleReportIssue> CreatedIssues { get; init; }
+    public required IReadOnlyList<StoredRuleReportIssue> UpdatedIssues { get; init; }
+    public required IReadOnlyList<StoredRuleReportIssue> DeletedIssues { get; init; }
 }
 ```
 
 ## 欄位意圖
 
 - `CreatedIssues`
-  本次聚合新增到 repo-level rule report 的 issues。
+  本次聚合相對於 latest snapshot，新建立到 working report 的 repo-level issues。
 
 - `UpdatedIssues`
-  本次聚合修改過的 repo-level issues。
+  本次聚合相對於 latest snapshot，被修改過的 repo-level issues。
 
 - `DeletedIssues`
-  本次聚合從 repo-level rule report 刪除的 issues。
+  本次聚合相對於 latest snapshot，被從 working report 刪除的 repo-level issues。
 
 ## 變更紀錄
 

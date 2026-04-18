@@ -343,7 +343,10 @@ public sealed class RuleReviewWorkflowTests
     [TestMethod]
     public async Task SubmitReviewVerdictAsync_RejectsBlankMessage()
     {
-        RuleReviewToolSet toolSet = new(new InMemoryRuleReviewIssueStore(), new ReviewVerdictBuffer());
+        RuleReviewToolSet toolSet = new(
+            new InMemoryRuleReviewIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", "- Detect performance issues."));
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.SubmitReviewVerdictAsync(
             new SubmitReviewVerdictArgs
@@ -373,6 +376,61 @@ public sealed class RuleReviewWorkflowTests
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error =>
             error.Message.Contains("Failed to create Rule Review Agent", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_KeepsParallelRuleFlowsIsolated_InSharedStoreAndVerdictBuffer()
+    {
+        InMemoryRuleReviewIssueStore sharedIssueStore = new();
+        ReviewVerdictBuffer sharedVerdictBuffer = new();
+        ScriptedChatClient reviewChatClient = new(HandleIssueReviewInvocation);
+        ScriptedChatClient verifierChatClient = new(HandleIssueVerifierInvocation);
+        PromptAssetReader promptAssetReader = new();
+
+        RuleReviewWorkflow firstWorkflow = new(
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
+            sharedIssueStore,
+            sharedVerdictBuffer,
+            promptAssetReader);
+        RuleReviewWorkflow secondWorkflow = new(
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
+            (repositoryRootPath, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
+            sharedIssueStore,
+            sharedVerdictBuffer,
+            promptAssetReader);
+
+        Task<Result<RuleReviewWorkflowResult>> firstRun = firstWorkflow.RunAsync(
+            @"Z:\GitHub\CodeSnifferDog",
+            "- Detect performance issues.",
+            CreateTaskItem(),
+            TestContext.CancellationToken);
+        Task<Result<RuleReviewWorkflowResult>> secondRun = secondWorkflow.RunAsync(
+            @"Z:\GitHub\CodeSnifferDog",
+            "- Detect memory issues.",
+            new StoredProjectPlanTaskItem
+            {
+                ProjectPlanTaskItemId = "task-item-2",
+                Files =
+                [
+                    new ProjectPlanFile
+                    {
+                        FilePath = "CodeSnifferDog/CommonToolSet.cs",
+                        TotalLines = 80,
+                    },
+                ],
+            },
+            TestContext.CancellationToken);
+
+        Result<RuleReviewWorkflowResult>[] results = await Task.WhenAll(firstRun, secondRun);
+
+        Assert.IsTrue(results.All(result => result.IsSuccess));
+        Assert.AreEqual("task-item-1", results[0].Value.TaskItem.ProjectPlanTaskItemId);
+        Assert.AreEqual("task-item-2", results[1].Value.TaskItem.ProjectPlanTaskItemId);
     }
 
     private static RuleReviewWorkflow CreateWorkflow(

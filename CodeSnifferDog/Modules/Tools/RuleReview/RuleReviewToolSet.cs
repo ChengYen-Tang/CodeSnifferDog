@@ -7,10 +7,15 @@ using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
-public sealed class RuleReviewToolSet(IRuleReviewIssueStore issueStore, ReviewVerdictBuffer verdictBuffer)
+public sealed class RuleReviewToolSet(
+    IRuleReviewIssueStore issueStore,
+    ReviewVerdictBuffer verdictBuffer,
+    RuleFlowKey ruleFlowKey)
 {
     private readonly IRuleReviewIssueStore _issueStore = issueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
+    private readonly RuleFlowKey _ruleFlowKey = ruleFlowKey;
+    private readonly string _reviewVerdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
 
     public IList<AITool> CreateRuleReviewAgentTools()
         =>
@@ -204,6 +209,7 @@ public sealed class RuleReviewToolSet(IRuleReviewIssueStore issueStore, ReviewVe
     {
         ArgumentNullException.ThrowIfNull(args);
         StoredRuleReviewIssue issue = await _issueStore.AddAsync(
+            _ruleFlowKey,
             CreateIssue(args),
             cancellationToken).ConfigureAwait(false);
 
@@ -219,16 +225,16 @@ public sealed class RuleReviewToolSet(IRuleReviewIssueStore issueStore, ReviewVe
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReviewIssueId);
-        return _issueStore.GetAsync(args.RuleReviewIssueId.Trim(), cancellationToken);
+        return _issueStore.GetAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), cancellationToken);
     }
 
     public ValueTask<IReadOnlyList<StoredRuleReviewIssue>> ListRuleReviewIssuesAsync(CancellationToken cancellationToken)
         =>
-        _issueStore.ListAsync(cancellationToken);
+        _issueStore.ListAsync(_ruleFlowKey, cancellationToken);
 
     public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(CancellationToken cancellationToken)
         =>
-        _issueStore.GetNoIssueConclusionAsync(cancellationToken);
+        _issueStore.GetNoIssueConclusionAsync(_ruleFlowKey, cancellationToken);
 
     public ValueTask<StoredRuleReviewIssue> UpdateRuleReviewIssueAsync(
         UpdateRuleReviewIssueArgs args,
@@ -236,7 +242,7 @@ public sealed class RuleReviewToolSet(IRuleReviewIssueStore issueStore, ReviewVe
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReviewIssueId);
-        return _issueStore.UpdateAsync(args.RuleReviewIssueId.Trim(), CreateIssue(args), cancellationToken);
+        return _issueStore.UpdateAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), CreateIssue(args), cancellationToken);
     }
 
     public ValueTask<bool> DeleteRuleReviewIssueAsync(
@@ -245,7 +251,7 @@ public sealed class RuleReviewToolSet(IRuleReviewIssueStore issueStore, ReviewVe
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReviewIssueId);
-        return _issueStore.DeleteAsync(args.RuleReviewIssueId.Trim(), cancellationToken);
+        return _issueStore.DeleteAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), cancellationToken);
     }
 
     public async ValueTask<bool> SubmitNoIssueConclusionAsync(
@@ -254,6 +260,7 @@ public sealed class RuleReviewToolSet(IRuleReviewIssueStore issueStore, ReviewVe
     {
         ArgumentNullException.ThrowIfNull(args);
         await _issueStore.SubmitNoIssueConclusionAsync(
+            _ruleFlowKey,
             new NoIssueConclusion
             {
                 ReviewStrategy = args.ReviewStrategy,
@@ -271,7 +278,7 @@ public sealed class RuleReviewToolSet(IRuleReviewIssueStore issueStore, ReviewVe
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrWhiteSpace(args.Message);
-        _verdictBuffer.Submit(args.Approved, args.Message.Trim());
+        _verdictBuffer.Submit(_reviewVerdictScopeKey, args.Approved, args.Message.Trim());
         return ValueTask.FromResult(true);
     }
 

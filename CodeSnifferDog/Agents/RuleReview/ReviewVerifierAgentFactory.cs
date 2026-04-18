@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Common;
@@ -59,7 +60,8 @@ public sealed class ReviewVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
         CommonToolSet commonToolSet = new(repositoryRootPath);
-        RuleReviewToolSet toolSet = new(issueStore, verdictBuffer);
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        RuleReviewToolSet toolSet = new(issueStore, verdictBuffer, ruleFlowKey);
         AIAgent agent = chatClient.AsAIAgent(
             RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, taskItem),
             "Review Verifier Agent",

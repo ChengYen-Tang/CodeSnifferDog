@@ -43,7 +43,10 @@ public sealed class RuleReviewWorkflow(
 
         repositoryRootPath = repositoryRootPath.Trim();
         ruleMarkdown = ruleMarkdown.Trim();
-        await _issueStore.ClearAsync(cancellationToken).ConfigureAwait(false);
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        string reviewVerdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
+        await _issueStore.ClearAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
         Result<AIAgent> createRuleReviewAgentResult = TryCreateAgent(
             () => _ruleReviewAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
@@ -78,8 +81,8 @@ public sealed class RuleReviewWorkflow(
             if (runReviewResult.IsFailed)
                 return runReviewResult.ToResult<RuleReviewWorkflowResult>();
 
-            IReadOnlyList<StoredRuleReviewIssue> issues = await _issueStore.ListAsync(cancellationToken).ConfigureAwait(false);
-            NoIssueConclusion? noIssueConclusion = await _issueStore.GetNoIssueConclusionAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<StoredRuleReviewIssue> issues = await _issueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
+            NoIssueConclusion? noIssueConclusion = await _issueStore.GetNoIssueConclusionAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
             if (issues.Count == 0 && noIssueConclusion is null)
             {
@@ -130,7 +133,7 @@ public sealed class RuleReviewWorkflow(
 
             missingSubmissionAttempts = 0;
             verifierAttempts++;
-            _verdictBuffer.Reset();
+            _verdictBuffer.Reset(reviewVerdictScopeKey);
 
             List<ChatMessage> verifierMessages =
             [
@@ -142,7 +145,7 @@ public sealed class RuleReviewWorkflow(
             if (runVerifierResult.IsFailed)
                 return runVerifierResult.ToResult<RuleReviewWorkflowResult>();
 
-            if (_verdictBuffer.Latest is not ReviewVerdict verdict)
+            if (_verdictBuffer.GetLatest(reviewVerdictScopeKey) is not ReviewVerdict verdict)
                 return Result.Fail<RuleReviewWorkflowResult>("Review Verifier Agent finished without submitting a verdict.");
 
             if (verdict.Approved)

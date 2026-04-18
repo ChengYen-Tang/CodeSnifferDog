@@ -218,7 +218,7 @@ Review 階段可在兩個層級平行展開：
 - `Review Verifier Agent`
   驗證該規則的 review 結論是否可信，必要時要求補查或退回
 - `Report Aggregator`
-  將當前 flow 的 verified issues 合併進整個 repo 範圍下同一條 `rule` 的總 issue 集合，必要時也收納 verifier 未完全認可的降級結果
+  將當前 flow 的 verified issues 合併進整個 repo 範圍下同一條 `rule` 的總 report issue 集合，必要時也收納 verifier 未完全認可的降級結果
 - `Report Verifier`
   驗證本次聚合差異是否合理，且沒有扭曲、遺漏或過度合併當前 flow 的結果
 
@@ -233,7 +233,8 @@ Review 階段可在兩個層級平行展開：
 - 每個 `task item` 以一組 files 作為 scope 的進入點。
 - `review group` 是一個與單一 `task item` 對應的執行容器。
 - 容器的責任是建立、追蹤與管理該 `task item` 下所有規則的 review flows。
-- 容器結束的條件，是該 `task item` 下所有 rule flows 都已完成且通過最終驗證。
+- 容器結束的條件，是該 `task item` 下所有 rule flows 都已結束其生命週期。
+- flow 的結束可分為 approved completion 或 degraded completion，不要求每條 flow 都通過最終驗證。
 - 每一條 rule flow 都有自己獨立的 issue state、no-issue state 與 verdict state。
 - 可平行的是多條 flow 的執行，不是多條 flow 共用同一份 review state。
 - 同一條 flow 內的 reviewer 與 verifier 會沿用同一份垂直狀態。
@@ -281,9 +282,11 @@ Review Verifier Agent 應透過單一 verdict 工具明確決定：
 
 - 接收通過 review verification 的 issue-based 結果
 - 由系統以 `system-controlled user input` 提供當前 `plan item + rule flow` 的局部 `RuleReviewIssue` 集合
-- 讀取整個 repo 範圍下同一條 `rule` 的總 `RuleReviewIssue` 集合
-- 將前者整理、去重、合併進後者
-- 第一版不另外建立新的 report model，而是直接維護 repo-level 的 `RuleReviewIssue` 集合
+- 維護整個 repo 範圍下同一條 `rule` 的 repo-level `RuleReportIssue` 集合
+- 每次 `plan item + rule flow` 開始時，系統都要為這條 flow 建立自己獨立的 working report
+- 該 working report 由該 `rule` 的 latest snapshot 複製而來
+- `Report Aggregator` 只在這條 flow 自己的 working report 上執行新增、更新、刪除與去重整合
+- verifier 檢查的 `RuleReportDiff`，是該 `rule` 的 latest snapshot 與這條 flow 當前 working report 之間的差異
 
 #### 4. Report Verifier
 
@@ -297,15 +300,15 @@ Review Verifier Agent 應透過單一 verdict 工具明確決定：
 
 Report Verifier 應透過單一 verdict 工具明確決定：
 
-- 該 rule flow 完成
-- 回退給 `Report Aggregator`
-- 必要時再回退給前一層 review flow
+- `Approved = true`
+- `Approved = false`
 
 若回退，必須附帶明確原因。
 
 若 `Report Verifier` 通過，該 rule flow 視為完成。
-完成後，系統應更新該 `rule` 的最新快照，並清理本次 `plan item + rule flow` 的暫態執行狀態。
-清理時應保留最新快照、repo-level issue state，以及可觀測性或審計所需的執行紀錄。
+若達到回退上限後採降級完成，該 flow 也視為完成。
+完成時，系統應將目前 working report 升版為該 `rule` 的 latest snapshot，並清理本次 `plan item + rule flow` 的 working report 與 diff 等暫態執行狀態。
+清理時應保留 latest snapshot、repo-level report issue state，以及可觀測性或審計所需的執行紀錄。
 
 ### 程式編排邏輯
 

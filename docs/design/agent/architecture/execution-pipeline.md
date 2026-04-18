@@ -471,11 +471,16 @@ Reject it if more work is required, and explain why.
 
 ### Flow 完成後的 snapshot 與 cleanup
 
+每次 `Report Aggregator` 開始前，系統應先用該 `rule` 的 latest snapshot 初始化這條 `plan item + rule flow` 自己的 working report。
+不同 flow 不可共用同一份 working report 或 diff。
+`Report Aggregator` 整個回退循環都應持續操作這條 flow 自己的 working report。
+`RuleReportDiff` 應由程式邏輯以「latest snapshot -> 這條 flow 的 working report」計算，而不是拿當前 flow issues 當 baseline。
+
 當 `Report Verifier` 通過，或在達到回退上限後以降級完成方式結束時，系統應：
 
-1. 更新該 `rule` 的最新快照
-2. 清理本次 `plan item + rule flow` 的暫態執行狀態
-3. 保留最新快照、repo-level issue state，以及可觀測性 / 審計所需的執行紀錄
+1. 將當前 working report 升版成該 `rule` 的最新快照
+2. 清理本次 `plan item + rule flow` 的 working report、diff 與其他暫態執行狀態
+3. 保留最新快照、repo-level report issue state，以及可觀測性 / 審計所需的執行紀錄
 
 這裡的重點是：
 

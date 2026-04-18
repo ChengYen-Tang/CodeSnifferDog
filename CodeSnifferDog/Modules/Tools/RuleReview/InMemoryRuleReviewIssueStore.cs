@@ -1,14 +1,17 @@
+using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
 public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
 {
-    private readonly List<StoredRuleReviewIssue> _issues = [];
+    private readonly Dictionary<RuleFlowKey, RuleReviewFlowState> _states = [];
     private readonly Lock _syncRoot = new();
-    private NoIssueConclusion? _noIssueConclusion;
 
-    public ValueTask<StoredRuleReviewIssue> AddAsync(RuleReviewIssue issue, CancellationToken cancellationToken)
+    public ValueTask<StoredRuleReviewIssue> AddAsync(
+        RuleFlowKey ruleFlowKey,
+        RuleReviewIssue issue,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(issue);
         RuleReviewIssue normalizedIssue = NormalizeIssue(issue);
@@ -29,20 +32,25 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
 
         lock (_syncRoot)
         {
-            _noIssueConclusion = null;
-            _issues.Add(storedIssue);
+            RuleReviewFlowState state = GetOrCreateState(ruleFlowKey);
+            state.NoIssueConclusion = null;
+            state.Issues.Add(storedIssue);
         }
 
         return ValueTask.FromResult(storedIssue);
     }
 
-    public ValueTask<StoredRuleReviewIssue> GetAsync(string ruleReviewIssueId, CancellationToken cancellationToken)
+    public ValueTask<StoredRuleReviewIssue> GetAsync(
+        RuleFlowKey ruleFlowKey,
+        string ruleReviewIssueId,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReviewIssueId);
 
         lock (_syncRoot)
         {
-            StoredRuleReviewIssue? issue = _issues.FirstOrDefault(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim());
+            StoredRuleReviewIssue? issue = GetOrCreateState(ruleFlowKey).Issues
+                .FirstOrDefault(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim());
 
             if (issue is null)
                 throw new KeyNotFoundException($"Rule review issue was not found: {ruleReviewIssueId}");
@@ -51,13 +59,16 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
         }
     }
 
-    public ValueTask<IReadOnlyList<StoredRuleReviewIssue>> ListAsync(CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<StoredRuleReviewIssue>> ListAsync(
+        RuleFlowKey ruleFlowKey,
+        CancellationToken cancellationToken)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult<IReadOnlyList<StoredRuleReviewIssue>>([.. _issues]);
+            return ValueTask.FromResult<IReadOnlyList<StoredRuleReviewIssue>>([.. GetOrCreateState(ruleFlowKey).Issues]);
     }
 
     public ValueTask<StoredRuleReviewIssue> UpdateAsync(
+        RuleFlowKey ruleFlowKey,
         string ruleReviewIssueId,
         RuleReviewIssue issue,
         CancellationToken cancellationToken)
@@ -68,14 +79,15 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
 
         lock (_syncRoot)
         {
-            int index = _issues.FindIndex(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim());
+            RuleReviewFlowState state = GetOrCreateState(ruleFlowKey);
+            int index = state.Issues.FindIndex(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim());
 
             if (index < 0)
                 throw new KeyNotFoundException($"Rule review issue was not found: {ruleReviewIssueId}");
 
             StoredRuleReviewIssue storedIssue = new()
             {
-                RuleReviewIssueId = _issues[index].RuleReviewIssueId,
+                RuleReviewIssueId = state.Issues[index].RuleReviewIssueId,
                 IssueType = normalizedIssue.IssueType,
                 FileOrFunction = normalizedIssue.FileOrFunction,
                 RelevantCodePatternOrExpression = normalizedIssue.RelevantCodePatternOrExpression,
@@ -87,58 +99,79 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
                 ScopeCoverage = normalizedIssue.ScopeCoverage,
                 CrossScopeAnalysis = normalizedIssue.CrossScopeAnalysis,
             };
-            _issues[index] = storedIssue;
+            state.Issues[index] = storedIssue;
             return ValueTask.FromResult(storedIssue);
         }
     }
 
-    public ValueTask<bool> DeleteAsync(string ruleReviewIssueId, CancellationToken cancellationToken)
+    public ValueTask<bool> DeleteAsync(
+        RuleFlowKey ruleFlowKey,
+        string ruleReviewIssueId,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReviewIssueId);
 
         lock (_syncRoot)
         {
-            StoredRuleReviewIssue? issue = _issues.FirstOrDefault(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim());
+            RuleReviewFlowState state = GetOrCreateState(ruleFlowKey);
+            StoredRuleReviewIssue? issue = state.Issues.FirstOrDefault(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim());
 
             if (issue is null)
                 return ValueTask.FromResult(false);
 
-            _issues.Remove(issue);
+            state.Issues.Remove(issue);
             return ValueTask.FromResult(true);
         }
     }
 
-    public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(CancellationToken cancellationToken)
+    public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(
+        RuleFlowKey ruleFlowKey,
+        CancellationToken cancellationToken)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult(_noIssueConclusion);
+            return ValueTask.FromResult(GetOrCreateState(ruleFlowKey).NoIssueConclusion);
     }
 
-    public ValueTask SubmitNoIssueConclusionAsync(NoIssueConclusion conclusion, CancellationToken cancellationToken)
+    public ValueTask SubmitNoIssueConclusionAsync(
+        RuleFlowKey ruleFlowKey,
+        NoIssueConclusion conclusion,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(conclusion);
         NoIssueConclusion normalizedConclusion = NormalizeNoIssueConclusion(conclusion);
 
         lock (_syncRoot)
         {
-            if (_issues.Count > 0)
+            RuleReviewFlowState state = GetOrCreateState(ruleFlowKey);
+
+            if (state.Issues.Count > 0)
                 throw new InvalidOperationException("Cannot submit a no-issue conclusion while issues exist.");
 
-            _noIssueConclusion = normalizedConclusion;
+            state.NoIssueConclusion = normalizedConclusion;
         }
 
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask ClearAsync(CancellationToken cancellationToken)
+    public ValueTask ClearAsync(RuleFlowKey ruleFlowKey, CancellationToken cancellationToken)
     {
         lock (_syncRoot)
         {
-            _issues.Clear();
-            _noIssueConclusion = null;
+            if (_states.ContainsKey(ruleFlowKey))
+                _states.Remove(ruleFlowKey);
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    private RuleReviewFlowState GetOrCreateState(RuleFlowKey ruleFlowKey)
+    {
+        if (_states.TryGetValue(ruleFlowKey, out RuleReviewFlowState? state))
+            return state;
+
+        state = new RuleReviewFlowState();
+        _states.Add(ruleFlowKey, state);
+        return state;
     }
 
     private static RuleReviewIssue NormalizeIssue(RuleReviewIssue issue)
@@ -187,5 +220,12 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
             CrossScopeAnalysis = conclusion.CrossScopeAnalysis.Trim(),
             WhyNoIssueWasFound = conclusion.WhyNoIssueWasFound.Trim(),
         };
+    }
+
+    private sealed class RuleReviewFlowState
+    {
+        public List<StoredRuleReviewIssue> Issues { get; } = [];
+
+        public NoIssueConclusion? NoIssueConclusion { get; set; }
     }
 }
