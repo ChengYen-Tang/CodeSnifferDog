@@ -5,104 +5,61 @@ using FluentResults;
 
 namespace CodeSnifferDog.Workflows.ReviewGroup;
 
-public sealed class ReviewGroupWorkflow(
-    Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
-    ReviewGroupWorkflowOptions? options = null)
+public sealed class ReviewGroupWorkflow
 {
-    private readonly Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> _ruleFlowWorkflowRunner = ruleFlowWorkflowRunner;
-    private readonly ReviewGroupWorkflowOptions _options = options ?? new();
-
-    public async Task<Result<ReviewGroupWorkflowResult>> RunAsync(
-        string repositoryRootPath,
+    public Result<ReviewGroupWorkflowResult> Run(
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<string> ruleMarkdowns,
-        CancellationToken cancellationToken = default)
+        IReadOnlyList<RuleFlowWorkflowResult> flowResults)
     {
-        if (string.IsNullOrWhiteSpace(repositoryRootPath))
-            return Result.Fail<ReviewGroupWorkflowResult>("Repository root path is required.");
-
         ArgumentNullException.ThrowIfNull(taskItem);
         ArgumentNullException.ThrowIfNull(ruleMarkdowns);
-
-        if (_options.MaxConcurrentRuleFlows <= 0)
-            return Result.Fail<ReviewGroupWorkflowResult>("MaxConcurrentRuleFlows must be greater than zero.");
-
-        repositoryRootPath = repositoryRootPath.Trim();
+        ArgumentNullException.ThrowIfNull(flowResults);
 
         if (ruleMarkdowns.Count == 0)
         {
-            return Result.Ok(new ReviewGroupWorkflowResult
-            {
-                TaskItem = taskItem,
-                RuleMarkdowns = [],
-                FlowResults = [],
-                HasAnyRuleFlows = false,
-                AllRuleFlowsFinished = true,
-                ApprovedCompletionCount = 0,
-                DegradedCompletionCount = 0,
-            });
+            return flowResults.Count == 0
+                ? Result.Ok(CreateResult(taskItem, [], []))
+                : Result.Fail<ReviewGroupWorkflowResult>("Flow results must be empty when no rules exist.");
         }
 
-        RuleFlowWorkflowResult[] orderedResults = new RuleFlowWorkflowResult[ruleMarkdowns.Count];
-        List<IError> errors = [];
-        using SemaphoreSlim semaphore = new(_options.MaxConcurrentRuleFlows);
+        if (flowResults.Count != ruleMarkdowns.Count)
+            return Result.Fail<ReviewGroupWorkflowResult>("Flow result count must match rule count.");
 
-        Task[] tasks = ruleMarkdowns
-            .Select((ruleMarkdown, index) =>
-                RunRuleFlowAsync(ruleMarkdown, index, orderedResults, errors, semaphore, repositoryRootPath, taskItem, cancellationToken))
-            .ToArray();
+        for (int i = 0; i < ruleMarkdowns.Count; i++)
+        {
+            if (!string.Equals(flowResults[i].TaskItem.ProjectPlanTaskItemId, taskItem.ProjectPlanTaskItemId, StringComparison.Ordinal))
+            {
+                return Result.Fail<ReviewGroupWorkflowResult>(
+                    $"Flow result task item does not match the review group task item at index {i}.");
+            }
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+            if (!string.Equals(flowResults[i].RuleMarkdown, ruleMarkdowns[i], StringComparison.Ordinal))
+            {
+                return Result.Fail<ReviewGroupWorkflowResult>(
+                    $"Flow result order does not match rule order at index {i}.");
+            }
+        }
 
-        if (errors.Count > 0)
-            return Result.Fail<ReviewGroupWorkflowResult>(errors);
+        return Result.Ok(CreateResult(taskItem, ruleMarkdowns, flowResults));
+    }
 
-        int approvedCompletionCount = orderedResults.Count(result => result.IsApprovedCompletion);
+    private static ReviewGroupWorkflowResult CreateResult(
+        StoredProjectPlanTaskItem taskItem,
+        IReadOnlyList<string> ruleMarkdowns,
+        IReadOnlyList<RuleFlowWorkflowResult> flowResults)
+    {
+        int approvedCompletionCount = flowResults.Count(result => result.IsApprovedCompletion);
 
-        return Result.Ok(new ReviewGroupWorkflowResult
+        return new ReviewGroupWorkflowResult
         {
             TaskItem = taskItem,
             RuleMarkdowns = ruleMarkdowns.ToArray(),
-            FlowResults = orderedResults,
-            HasAnyRuleFlows = true,
+            FlowResults = flowResults.ToArray(),
+            HasAnyRuleFlows = flowResults.Count > 0,
             AllRuleFlowsFinished = true,
             ApprovedCompletionCount = approvedCompletionCount,
-            DegradedCompletionCount = orderedResults.Length - approvedCompletionCount,
-        });
-    }
-
-    private async Task RunRuleFlowAsync(
-        string ruleMarkdown,
-        int index,
-        RuleFlowWorkflowResult[] orderedResults,
-        List<IError> errors,
-        SemaphoreSlim semaphore,
-        string repositoryRootPath,
-        StoredProjectPlanTaskItem taskItem,
-        CancellationToken cancellationToken)
-    {
-        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            Result<RuleFlowWorkflowResult> result =
-                await _ruleFlowWorkflowRunner(repositoryRootPath, ruleMarkdown, taskItem, cancellationToken).ConfigureAwait(false);
-
-            if (result.IsSuccess)
-            {
-                orderedResults[index] = result.Value;
-                return;
-            }
-
-            lock (errors)
-            {
-                foreach (IError error in result.Errors)
-                    errors.Add(error);
-            }
-        }
-        finally
-        {
-            semaphore.Release();
-        }
+            DegradedCompletionCount = flowResults.Count - approvedCompletionCount,
+        };
     }
 }

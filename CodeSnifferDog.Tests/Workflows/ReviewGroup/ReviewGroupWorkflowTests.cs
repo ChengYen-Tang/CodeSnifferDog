@@ -13,154 +13,88 @@ namespace CodeSnifferDog.Tests.Workflows.ReviewGroup;
 public sealed class ReviewGroupWorkflowTests
 {
     [TestMethod]
-    public async Task RunAsync_RunsRuleFlowWorkflow_ForEachRule_AndPreservesRuleOrder()
+    public void Run_PreservesRuleOrder_AndCountsApprovedAndDegradedCompletions()
     {
-        List<string> executedRules = [];
-        ReviewGroupWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-            {
-                executedRules.Add(ruleMarkdown);
-                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedWithReport)));
-            });
-
-        Result<ReviewGroupWorkflowResult> result = await workflow.RunAsync(
-            @"Z:\GitHub\CodeSnifferDog",
-            CreateTaskItem(),
-            ["- Rule A", "- Rule B", "- Rule C"]);
+        ReviewGroupWorkflow workflow = new();
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+            taskItem,
+            ["- Rule A", "- Rule B", "- Rule C"],
+            [
+                CreateRuleFlowResult(taskItem, "- Rule A", RuleFlowCompletionState.ApprovedWithReport),
+                CreateRuleFlowResult(taskItem, "- Rule B", RuleFlowCompletionState.DegradedNoIssue),
+                CreateRuleFlowResult(taskItem, "- Rule C", RuleFlowCompletionState.DegradedWithReport),
+            ]);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        CollectionAssert.AreEqual(new[] { "- Rule A", "- Rule B", "- Rule C" }, executedRules);
         CollectionAssert.AreEqual(new[] { "- Rule A", "- Rule B", "- Rule C" }, result.Value.RuleMarkdowns.ToArray());
         CollectionAssert.AreEqual(new[] { "- Rule A", "- Rule B", "- Rule C" }, result.Value.FlowResults.Select(flow => flow.RuleMarkdown).ToArray());
         Assert.IsTrue(result.Value.HasAnyRuleFlows);
         Assert.IsTrue(result.Value.AllRuleFlowsFinished);
-        Assert.AreEqual(3, result.Value.ApprovedCompletionCount);
-        Assert.AreEqual(0, result.Value.DegradedCompletionCount);
-    }
-
-    [TestMethod]
-    public async Task RunAsync_RespectsParallelLimit_WhileAllowingParallelExecution()
-    {
-        int currentConcurrency = 0;
-        int maxObservedConcurrency = 0;
-        ReviewGroupWorkflow workflow = new(
-            async (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-            {
-                int newConcurrency = Interlocked.Increment(ref currentConcurrency);
-                maxObservedConcurrency = Math.Max(maxObservedConcurrency, newConcurrency);
-
-                try
-                {
-                    await Task.Delay(40, cancellationToken).ConfigureAwait(false);
-                    return Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedWithReport));
-                }
-                finally
-                {
-                    Interlocked.Decrement(ref currentConcurrency);
-                }
-            },
-            new ReviewGroupWorkflowOptions
-            {
-                MaxConcurrentRuleFlows = 2,
-            });
-
-        Result<ReviewGroupWorkflowResult> result = await workflow.RunAsync(
-            @"Z:\GitHub\CodeSnifferDog",
-            CreateTaskItem(),
-            ["- Rule A", "- Rule B", "- Rule C", "- Rule D"]);
-
-        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.AreEqual(2, maxObservedConcurrency);
-    }
-
-    [TestMethod]
-    public async Task RunAsync_CountsApprovedAndDegradedCompletions()
-    {
-        ReviewGroupWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-            {
-                RuleFlowCompletionState completionState = ruleMarkdown switch
-                {
-                    "- Rule A" => RuleFlowCompletionState.ApprovedWithReport,
-                    "- Rule B" => RuleFlowCompletionState.DegradedNoIssue,
-                    _ => RuleFlowCompletionState.DegradedWithReport,
-                };
-
-                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, completionState)));
-            });
-
-        Result<ReviewGroupWorkflowResult> result = await workflow.RunAsync(
-            @"Z:\GitHub\CodeSnifferDog",
-            CreateTaskItem(),
-            ["- Rule A", "- Rule B", "- Rule C"]);
-
-        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(1, result.Value.ApprovedCompletionCount);
         Assert.AreEqual(2, result.Value.DegradedCompletionCount);
     }
 
     [TestMethod]
-    public async Task RunAsync_SucceedsWithEmptyRuleList()
+    public void Run_SucceedsWithEmptyRuleList()
     {
-        bool ruleFlowCalled = false;
-        ReviewGroupWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-            {
-                ruleFlowCalled = true;
-                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedWithReport)));
-            });
-
-        Result<ReviewGroupWorkflowResult> result = await workflow.RunAsync(
-            @"Z:\GitHub\CodeSnifferDog",
-            CreateTaskItem(),
-            []);
+        ReviewGroupWorkflow workflow = new();
+        Result<ReviewGroupWorkflowResult> result = workflow.Run(CreateTaskItem(), [], []);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsFalse(ruleFlowCalled);
         Assert.IsFalse(result.Value.HasAnyRuleFlows);
         Assert.IsTrue(result.Value.AllRuleFlowsFinished);
         Assert.IsEmpty(result.Value.FlowResults);
     }
 
     [TestMethod]
-    public async Task RunAsync_FailsWhenAnyRuleFlowFails()
+    public void Run_FailsWhenFlowResultCountDoesNotMatchRuleCount()
     {
-        ReviewGroupWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-            {
-                if (ruleMarkdown == "- Rule B")
-                    return Task.FromResult(Result.Fail<RuleFlowWorkflowResult>("Rule B failed."));
-
-                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedWithReport)));
-            });
-
-        Result<ReviewGroupWorkflowResult> result = await workflow.RunAsync(
-            @"Z:\GitHub\CodeSnifferDog",
-            CreateTaskItem(),
-            ["- Rule A", "- Rule B"]);
+        ReviewGroupWorkflow workflow = new();
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+            taskItem,
+            ["- Rule A", "- Rule B"],
+            [CreateRuleFlowResult(taskItem, "- Rule A", RuleFlowCompletionState.ApprovedWithReport)]);
 
         Assert.IsTrue(result.IsFailed);
-        Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("Rule B failed.", StringComparison.Ordinal)));
+        Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("count", StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]
-    public async Task RunAsync_FailsWhenParallelLimitIsInvalid()
+    public void Run_FailsWhenRuleOrderDoesNotMatchFlowOrder()
     {
-        ReviewGroupWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedWithReport))),
-            new ReviewGroupWorkflowOptions
-            {
-                MaxConcurrentRuleFlows = 0,
-            });
-
-        Result<ReviewGroupWorkflowResult> result = await workflow.RunAsync(
-            @"Z:\GitHub\CodeSnifferDog",
-            CreateTaskItem(),
-            ["- Rule A"]);
+        ReviewGroupWorkflow workflow = new();
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+            taskItem,
+            ["- Rule A", "- Rule B"],
+            [
+                CreateRuleFlowResult(taskItem, "- Rule B", RuleFlowCompletionState.ApprovedWithReport),
+                CreateRuleFlowResult(taskItem, "- Rule A", RuleFlowCompletionState.ApprovedWithReport),
+            ]);
 
         Assert.IsTrue(result.IsFailed);
-        Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("MaxConcurrentRuleFlows", StringComparison.Ordinal)));
+        Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("order", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public void Run_FailsWhenFlowTaskItemDoesNotMatchReviewGroupTaskItem()
+    {
+        ReviewGroupWorkflow workflow = new();
+        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        StoredProjectPlanTaskItem mismatchedTaskItem = new()
+        {
+            ProjectPlanTaskItemId = "task-item-2",
+            Files = taskItem.Files,
+        };
+        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+            taskItem,
+            ["- Rule A"],
+            [CreateRuleFlowResult(mismatchedTaskItem, "- Rule A", RuleFlowCompletionState.ApprovedWithReport)]);
+
+        Assert.IsTrue(result.IsFailed);
+        Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("task item", StringComparison.OrdinalIgnoreCase)));
     }
 
     private static StoredProjectPlanTaskItem CreateTaskItem() =>

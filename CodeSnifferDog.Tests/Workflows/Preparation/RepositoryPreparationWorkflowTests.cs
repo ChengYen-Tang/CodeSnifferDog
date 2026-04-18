@@ -2,6 +2,7 @@ using CodeSnifferDog.Models.Preparation;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Modules.Concurrency;
 using CodeSnifferDog.Workflows.Preparation;
 using FluentResults;
 
@@ -22,7 +23,8 @@ public sealed class RepositoryPreparationWorkflowTests
             {
                 plannedProjectIds.Add(scanProject.ScanProjectId);
                 return Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject)));
-            });
+            },
+            new ReviewAgentConcurrencyGate(4));
 
         Result<RepositoryPreparationWorkflowResult> result =
             await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
@@ -50,10 +52,7 @@ public sealed class RepositoryPreparationWorkflowTests
 
                 return Result.Ok(CreateProjectPlanResult(scanProject));
             },
-            new RepositoryPreparationWorkflowOptions
-            {
-                MaxConcurrentProjectPlans = 3,
-            });
+            new ReviewAgentConcurrencyGate(3));
 
         Result<RepositoryPreparationWorkflowResult> result =
             await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
@@ -88,7 +87,8 @@ public sealed class RepositoryPreparationWorkflowTests
             {
                 projectPlanCalled = true;
                 return Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject)));
-            });
+            },
+            new ReviewAgentConcurrencyGate(2));
 
         Result<RepositoryPreparationWorkflowResult> result =
             await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
@@ -112,7 +112,8 @@ public sealed class RepositoryPreparationWorkflowTests
                     return Task.FromResult(Result.Fail<ProjectPlanWorkflowResult>("ProjectTwo planning failed."));
 
                 return Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject)));
-            });
+            },
+            new ReviewAgentConcurrencyGate(2));
 
         Result<RepositoryPreparationWorkflowResult> result =
             await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
@@ -122,21 +123,9 @@ public sealed class RepositoryPreparationWorkflowTests
     }
 
     [TestMethod]
-    public async Task RunAsync_Fails_WhenParallelismIsInvalid()
+    public void Constructor_Throws_WhenParallelismIsInvalid()
     {
-        RepositoryPreparationWorkflow workflow = new(
-            (repositoryRootPath, cancellationToken) => Task.FromResult(Result.Ok(CreateScanResult(CreateScanProject("scan-1", "ProjectOne")))),
-            (repositoryRootPath, scanProject, cancellationToken) => Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject))),
-            new RepositoryPreparationWorkflowOptions
-            {
-                MaxConcurrentProjectPlans = 0,
-            });
-
-        Result<RepositoryPreparationWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
-
-        Assert.IsTrue(result.IsFailed);
-        Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("MaxConcurrentProjectPlans", StringComparison.Ordinal)));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new ReviewAgentConcurrencyGate(0));
     }
 
     private static ScanWorkflowResult CreateScanResult(params StoredScanProject[] projects)

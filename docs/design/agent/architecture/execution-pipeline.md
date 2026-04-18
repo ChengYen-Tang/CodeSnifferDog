@@ -5,7 +5,7 @@
 - 專案名稱：CodeSnifferDog
 - 文件目的：定義 Agent 階段之間的執行順序與跳轉規則
 - 文件狀態：草稿
-- 最後更新：2026-04-12
+- 最後更新：2026-04-19
 
 ## Scan Agent 到 Scan Verifier Agent 的跳轉規則
 
@@ -189,6 +189,27 @@ Reject it if more work is required, and explain why.
 - 如果 `Approved = true`，該 `ScanProject` 的 project planning flow 完成，進入後續 review loop。
 - 如果 `Approved = false`，程式邏輯會把 `Message` 轉成 system-controlled user input，送回原本的 `Project Plan Agent`，要求它依原因補強。
 
+### Project Planning 到 Review 階段的分派原則
+
+當某個 project planning flow 完成並進入 review 階段後，程式邏輯不應直接把所有 `taskItems x rules` 展開成同時建立的等待 tasks。
+
+第一版應採用以下分派模型：
+
+- 每個 `task item` 先轉成多個 rule-specific work items
+- 每個 work item 依 `rule` 進入對應 execution lane 的 queue
+- scheduler 只在 worker budget 可用時才啟動新的 flow
+- 同一條 `rule` 在任一時間最多只允許一條 running flow
+- scheduler 第一版優先挑選：
+  1. 目前沒有 running flow 的 `rule`
+  2. 在可啟動 rules 中 queue 剩餘數量最多者
+
+這代表：
+
+- 可等待的是 queue 中的 work item，而不是已建立但尚未取得 budget 的 agent tasks
+- 不同 `rule` 可以並行
+- 同一 `rule` 在不同 `task item` 間不得同時進入 review / report flow
+- flow 對應的 agents 應在 scheduler 真正選中該 work item 時才建立
+
 ### Project Plan / Verifier 回退上限
 
 `Project Plan Agent` 與 `Project Verifier Agent` 之間的回退循環也應有上限。
@@ -285,6 +306,7 @@ Reject it if more work is required, and explain why.
 2. 不進入 `Report Aggregator`
 3. 不影響其他 `rule flow` 或其他 `task item` 繼續執行
 4. 由外層 orchestration 在容器收斂時，將此 flow 視為一條已結束但未成功提交 review result 的 flow
+5. 清理這條 flow 內建立的 agents 與暫態執行狀態，但保留 degraded reason 與可觀測性紀錄
 
 ### 為什麼要重置
 
@@ -480,7 +502,8 @@ Reject it if more work is required, and explain why.
 
 1. 將當前 working report 升版成該 `rule` 的最新快照
 2. 清理本次 `plan item + rule flow` 的 working report、diff 與其他暫態執行狀態
-3. 保留最新快照、repo-level report issue state，以及可觀測性 / 審計所需的執行紀錄
+3. 清理這條 flow 內建立的 agents
+4. 保留最新快照、repo-level report issue state，以及可觀測性 / 審計所需的執行紀錄
 
 這裡的重點是：
 
@@ -494,3 +517,4 @@ Reject it if more work is required, and explain why.
 - 2026-04-12：補充 `Review Verifier Agent` 的 verdict-based 跳轉規則。
 - 2026-04-12：補充 review / verifier 回退上限與第一版降級前進策略。
 - 2026-04-12：補充 `Report Aggregator` 到 `Report Verifier` 的執行規則與 flow 完成後的 snapshot / cleanup 原則。
+- 2026-04-19：補充 rule-lane queue scheduling、shared worker budget 與 flow 完成後的 agent cleanup 原則。

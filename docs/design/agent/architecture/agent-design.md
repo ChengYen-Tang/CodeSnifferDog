@@ -5,14 +5,14 @@
 - 專案名稱：CodeSnifferDog
 - 文件目的：定義 Code Review Agent 的角色分工、互動模式、Prompt 組裝方式與多 Agent 協作設計
 - 文件狀態：草稿
-- 最後更新：2026-04-12
+- 最後更新：2026-04-19
 
 ## 設計目標
 
 - 建立一個面向大型專案的全自動化 Code Review Agent。
 - 支援 CLI 與 Server Mode 兩種使用方式。
 - 以固定的 Prompt 框架搭配可替換的 Markdown 規則文件驅動分析流程。
-- 支援多規則並行執行，並產生對應的獨立報告。
+- 支援多規則並行執行，並在共享 worker budget 下產生各規則對應的獨立報告。
 - 在高度自動化前提下保留足夠的可觀測性，讓使用者可追蹤 Agent 行為與執行進度。
 
 ## 與需求文件關聯
@@ -186,21 +186,26 @@
 
 ### 3. Rule Review 階段
 
-此階段的基本單位不是單一 Agent，也不是每條規則各自長期存在的一組固定 group，而是：
+此階段的主要調度單位不是 `task item` 本身，也不是把單一 `task item` 直接展開成一批同時啟動的 flows，而是：
 
-- 一個 `task item`
-- 對應一個 `review group` 容器
+- 每條 `rule` 一個獨立的 execution lane
+- 每條 lane 各自維護自己的 work queue
 
-當程式邏輯將某個 `task item` 分派進 `review group` 後，該容器會依目前存在的 `rule.md` 數量，自動程式化展開多條 review flows。
+當 `Project Plan Agent` 產生 `task items` 後，程式邏輯會把每個 `task item` 轉成多個 rule-specific work items，並依 `rule` 分派到對應 lane 的 queue。
 
-例如目前存在 4 個規則檔，則單一 `task item` 進入 `review group` 後，會展開 4 條獨立的 rule-specific flows。
+例如目前存在 4 個規則檔，則單一 `task item` 會被拆成 4 個 work items，分別進入 4 條規則 lane，而不是直接在同一時間建立 4 條 flow tasks 等待執行。
 
-Review 階段可在兩個層級平行展開：
+Review 階段的平行原則如下：
 
-- 多個 `task item` 可以平行進入各自的 `review group`
-- 同一個 `review group` 內，多個 `rule flow` 也可以平行執行
+- 不同 `rule` 的 lanes 可以平行執行
+- 同一條 `rule` 在任一時間最多只允許一條 flow 執行
+- scheduler 會在 worker 的可用 budget 內，從可執行的 lanes 中挑選下一條 flow 啟動
+- 第一版優先策略為：
+  - 該 `rule` 目前沒有 running flow
+  - 在可啟動 lanes 中優先挑 queue 剩餘數量最多者
+- queue 中等待的是 work item，不是已建立但尚未取得 budget 的 agent tasks
 
-實際平行數量受系統設定限制。
+這種設計的目的，是在維持高吞吐量的同時，避免同一條 `rule` 在不同 `task item` 間同時進行 report merge，導致 snapshot 與 repo-level report state 發生同步衝突。
 
 每一條 flow 都包含：
 
@@ -223,21 +228,35 @@ Review 階段可在兩個層級平行展開：
   驗證本次聚合差異是否合理，且沒有扭曲、遺漏或過度合併當前 flow 的結果
 
 另外，若 `Rule Review Agent` 在 repeated missing submission 與 reset 後，仍然無法形成任何 issue 或 `NoIssueConclusion`，則這條 flow 不應讓整個外層流程直接失敗。
-此時應以 degraded state 結束該 flow，保留原因與執行紀錄，並由外層 orchestration 繼續收斂其他 flows。
-
-只有當同一個 `review group` 內由所有規則展開出的 flows 都完成後，該 `task item` 才算完成 review。
+此時應以 degraded state 結束該 flow，保留原因與執行紀錄，並由外層 orchestration 繼續調度其他 lanes 的 work items。
 
 ### Task Item 與 Review Group 關係
 
 - `task item` 由 `Project Plan Agent` 產生。
 - 每個 `task item` 以一組 files 作為 scope 的進入點。
-- `review group` 是一個與單一 `task item` 對應的執行容器。
-- 容器的責任是建立、追蹤與管理該 `task item` 下所有規則的 review flows。
-- 容器結束的條件，是該 `task item` 下所有 rule flows 都已結束其生命週期。
+- `review group` 保留作為與單一 `task item` 對應的邏輯分組與可觀測性容器。
+- `review group` 的責任是追蹤該 `task item` 在所有規則 lanes 下對應的 rule flows 與最終結果。
+- `review group` 不是主要的平行調度容器；實際調度由 rule lanes 與 scheduler 負責。
+- 容器結束的條件，是該 `task item` 在所有規則 lanes 下對應的 rule flows 都已結束其生命週期。
 - flow 的結束可分為 approved completion 或 degraded completion，不要求每條 flow 都通過最終驗證。
 - 每一條 rule flow 都有自己獨立的 issue state、no-issue state 與 verdict state。
-- 可平行的是多條 flow 的執行，不是多條 flow 共用同一份 review state。
+- 可平行的是不同 `rule` lanes 下的 flow 執行，不是同一條 `rule` 的多條 flow 共用同一份 review state。
 - 同一條 flow 內的 reviewer 與 verifier 會沿用同一份垂直狀態。
+- flow 完成後，該 flow 內建立的 agents 與暫態 state 都應被清理；只保留 repo-level report snapshot、report issue state 與必要的可觀測性紀錄。
+
+### Rule Lane 與 Scheduler
+
+- 每條 `rule` 都有自己的 execution lane。
+- 每條 lane 具有獨立 queue，用來收納不同 `task item` 對應到該 `rule` 的待執行 work items。
+- 同一條 lane 在任一時間最多只允許一條 running flow。
+- 不同 lanes 可在 worker budget 允許下同時執行。
+- scheduler 負責：
+  - 將 `task item` 轉成多個 rule-specific work items
+  - 將 work items 放入對應 lane 的 queue
+  - 在 worker 的 `max parallel agents` 限制內挑選下一條可執行 flow
+  - 只在真正要開始執行時才建立該 flow 對應的 agents
+  - 避免同一條 `rule` 在不同 `task item` 間同時進入 report merge
+- 第一版 `Review Agent Team` 應持有唯一的共享 concurrency budget，所有 lanes 都必須共用這個 budget，而不是各 workflow 自己維護獨立平行參數。
 
 ### Rule Flow 生命週期
 
@@ -318,11 +337,12 @@ Report Verifier 應透過單一 verdict 工具明確決定：
 
 - 接收 Scan / Plan 的結構化輸出
 - 將 project 與 plan items 轉成可執行任務
-- 將 task items 分派進對應的 `review group` 容器
-- 在 `review group` 內依規則數量自動展開多條 rule-specific flows
+- 將 task items 轉成多個 rule-specific work items，並分派進對應的 rule lanes
+- 透過 scheduler 在共享 worker budget 內挑選下一條可執行 flow
 - 根據 verifier 結果決定 pass、補查、退回或重做
 - 管理 review / verifier 回退次數上限，必要時觸發降級前進
 - 在每個 task item 的 review group 完成後收斂結果，再進入後續輸出階段
+- 在 flow 完成後清理該 flow 內的 agents 與暫態執行狀態
 
 關於 `Rule Review Agent` 到 `Review Verifier Agent` 的具體跳轉規則，請參考 [Z:\GitHub\CodeSnifferDog\docs\design\agent\architecture\execution-pipeline.md](Z:\GitHub\CodeSnifferDog\docs\design\agent\architecture\execution-pipeline.md)。
 
@@ -340,7 +360,7 @@ Report Verifier 應透過單一 verdict 工具明確決定：
 - 規則文件解析方式
 - 各類 Agent 的輸入、輸出與生命週期
 - 報告格式與彙整策略
-- Review group 容器的生命週期與完成條件
+- Review group 與 rule lane 的生命週期與完成條件
 - task item schema 與 scope files 的表達方式
 - 各類 verifier 的 verdict schema 與回退規則
 - 各階段 agent 的分析深度與成本配置
@@ -354,5 +374,7 @@ Report Verifier 應透過單一 verdict 工具明確決定：
 - 2026-04-12：收斂前置 planning 與多階段 Agent 架構，移除已過時的單一 Planning Agent 表述。
 - 2026-04-12：補充 6 項 Agent 架構優化原則，包含角色隔離、Explore 型 Scan、精簡 Plan、明確 Verdict 與快慢 Agent 分層。
 - 2026-04-12：補充 task item / review group 關係與單一 rule flow 的生命週期。
+- 2026-04-19：將 review 階段的主要調度模型收斂為 rule execution lanes 與 scheduler，移除 review group 作為主要平行調度容器的舊描述。
+- 2026-04-19：補充 queue-based scheduling 與 flow 完成後的 agent / state cleanup 原則。
 - 2026-04-14：補充通用工具第一版只保留 `Shell` 與 `grep search` 的原則。
 - 2026-04-14：補充記憶與 context compaction 採用 Claude Code 類型完整機制的設計連結。

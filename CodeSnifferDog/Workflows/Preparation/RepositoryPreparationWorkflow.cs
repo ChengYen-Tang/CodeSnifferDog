@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.Preparation;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Modules.Concurrency;
 using FluentResults;
 
 namespace CodeSnifferDog.Workflows.Preparation;
@@ -8,11 +9,11 @@ namespace CodeSnifferDog.Workflows.Preparation;
 public sealed class RepositoryPreparationWorkflow(
     Func<string, CancellationToken, Task<Result<ScanWorkflowResult>>> scanWorkflowRunner,
     Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> projectPlanWorkflowRunner,
-    RepositoryPreparationWorkflowOptions? options = null)
+    IReviewAgentConcurrencyGate concurrencyGate)
 {
     private readonly Func<string, CancellationToken, Task<Result<ScanWorkflowResult>>> _scanWorkflowRunner = scanWorkflowRunner;
     private readonly Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> _projectPlanWorkflowRunner = projectPlanWorkflowRunner;
-    private readonly RepositoryPreparationWorkflowOptions _options = options ?? new();
+    private readonly IReviewAgentConcurrencyGate _concurrencyGate = concurrencyGate;
 
     public async Task<Result<RepositoryPreparationWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -20,9 +21,6 @@ public sealed class RepositoryPreparationWorkflow(
     {
         if (string.IsNullOrWhiteSpace(repositoryRootPath))
             return Result.Fail<RepositoryPreparationWorkflowResult>("Repository root path is required.");
-
-        if (_options.MaxConcurrentProjectPlans <= 0)
-            return Result.Fail<RepositoryPreparationWorkflowResult>("MaxConcurrentProjectPlans must be greater than zero.");
 
         repositoryRootPath = repositoryRootPath.Trim();
 
@@ -43,10 +41,9 @@ public sealed class RepositoryPreparationWorkflow(
 
         ProjectPlanWorkflowResult[] orderedResults = new ProjectPlanWorkflowResult[scanResult.Value.Projects.Count];
         List<IError> errors = [];
-        using SemaphoreSlim semaphore = new(_options.MaxConcurrentProjectPlans);
 
         Task[] tasks = scanResult.Value.Projects
-            .Select((project, index) => RunProjectPlanAsync(project, index, orderedResults, errors, semaphore, repositoryRootPath, cancellationToken))
+            .Select((project, index) => RunProjectPlanAsync(project, index, orderedResults, errors, repositoryRootPath, cancellationToken))
             .ToArray();
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -67,32 +64,24 @@ public sealed class RepositoryPreparationWorkflow(
         int index,
         ProjectPlanWorkflowResult[] orderedResults,
         List<IError> errors,
-        SemaphoreSlim semaphore,
         string repositoryRootPath,
         CancellationToken cancellationToken)
     {
-        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await using IAsyncDisposable lease = await _concurrencyGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
 
-        try
+        Result<ProjectPlanWorkflowResult> result =
+            await _projectPlanWorkflowRunner(repositoryRootPath, project, cancellationToken).ConfigureAwait(false);
+
+        if (result.IsSuccess)
         {
-            Result<ProjectPlanWorkflowResult> result =
-                await _projectPlanWorkflowRunner(repositoryRootPath, project, cancellationToken).ConfigureAwait(false);
-
-            if (result.IsSuccess)
-            {
-                orderedResults[index] = result.Value;
-                return;
-            }
-
-            lock (errors)
-            {
-                foreach (IError error in result.Errors)
-                    errors.Add(error);
-            }
+            orderedResults[index] = result.Value;
+            return;
         }
-        finally
+
+        lock (errors)
         {
-            semaphore.Release();
+            foreach (IError error in result.Errors)
+                errors.Add(error);
         }
     }
 }
