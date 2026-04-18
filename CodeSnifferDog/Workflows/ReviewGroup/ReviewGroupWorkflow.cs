@@ -5,7 +5,7 @@ using FluentResults;
 
 namespace CodeSnifferDog.Workflows.ReviewGroup;
 
-public sealed class ReviewGroupWorkflow
+internal sealed class ReviewGroupWorkflow
 {
     public Result<ReviewGroupWorkflowResult> Run(
         StoredProjectPlanTaskItem taskItem,

@@ -6,7 +6,7 @@ using FluentResults;
 
 namespace CodeSnifferDog.Workflows.Preparation;
 
-public sealed class RepositoryPreparationWorkflow(
+internal sealed class RepositoryPreparationWorkflow(
     Func<string, CancellationToken, Task<Result<ScanWorkflowResult>>> scanWorkflowRunner,
     Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> projectPlanWorkflowRunner,
     IReviewAgentConcurrencyGate concurrencyGate)

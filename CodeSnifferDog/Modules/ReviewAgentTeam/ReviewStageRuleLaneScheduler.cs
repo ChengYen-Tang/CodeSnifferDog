@@ -6,7 +6,7 @@ using FluentResults;
 
 namespace CodeSnifferDog.Modules.ReviewAgentTeam;
 
-public sealed class ReviewStageRuleLaneScheduler(
+internal sealed class ReviewStageRuleLaneScheduler(
     Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
     IReviewAgentConcurrencyGate concurrencyGate)
 {

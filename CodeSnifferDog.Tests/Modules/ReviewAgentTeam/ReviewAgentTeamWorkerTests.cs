@@ -5,9 +5,7 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.Scan;
-using CodeSnifferDog.Modules.Concurrency;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Workflows.ReviewGroup;
 using FluentResults;
 using RuleReviewModels = CodeSnifferDog.Models.RuleReview;
 
@@ -16,20 +14,17 @@ namespace CodeSnifferDog.Tests.Modules.ReviewAgentTeam;
 [TestClass]
 public sealed class ReviewAgentTeamWorkerTests
 {
-    [TestMethod]
-    public async Task RunAsync_UsesSharedWorkerBudget_AndReturnsPreparationAndReviewResults()
-    {
-        using ReviewAgentTeamWorker worker = new(
-            2,
-            (repositoryRootPath, cancellationToken) => Task.FromResult(Result.Ok(CreateScanResult(CreateScanProject("scan-1", "ProjectOne")))),
-            (repositoryRootPath, scanProject, cancellationToken) => Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject))),
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown))),
-            new ReviewGroupWorkflow());
+    private const string RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
+    private static readonly IReadOnlyList<string> RuleMarkdowns = ["- Rule A", "- Rule B"];
+    private static int _cleanupCallCount;
 
-        Result<ReviewAgentTeamRunResult> result = await worker.RunAsync(
-            @"Z:\GitHub\CodeSnifferDog",
-            ["- Rule A", "- Rule B"]);
+    [TestMethod]
+    public async Task AnalyzeAsync_UsesSharedWorkerBudget_AndReturnsPreparationAndReviewResults()
+    {
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
+        using ReviewAgentTeamWorker worker = CreateWorker(teamFactory);
+
+        Result<ReviewAgentTeamRunResult> result = await worker.AnalyzeAsync();
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, worker.MaxParallelAgents);
@@ -39,47 +34,29 @@ public sealed class ReviewAgentTeamWorkerTests
     }
 
     [TestMethod]
-    public void RunAsync_ThrowsAfterDispose()
+    public void AnalyzeAsync_ThrowsAfterDispose()
     {
-        ReviewAgentTeamWorker worker = new(
-            2,
-            (repositoryRootPath, cancellationToken) => Task.FromResult(Result.Ok(CreateScanResult(CreateScanProject("scan-1", "ProjectOne")))),
-            (repositoryRootPath, scanProject, cancellationToken) => Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject))),
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown))),
-            new ReviewGroupWorkflow());
+        ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory());
 
         worker.Dispose();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunAsync(@"Z:\GitHub\CodeSnifferDog", ["- Rule A"]).GetAwaiter().GetResult());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.AnalyzeAsync().GetAwaiter().GetResult());
     }
 
     [TestMethod]
     public void RunPreparationAsync_ThrowsAfterDispose()
     {
-        ReviewAgentTeamWorker worker = new(
-            2,
-            (repositoryRootPath, cancellationToken) => Task.FromResult(Result.Ok(CreateScanResult(CreateScanProject("scan-1", "ProjectOne")))),
-            (repositoryRootPath, scanProject, cancellationToken) => Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject))),
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown))),
-            new ReviewGroupWorkflow());
+        ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory());
 
         worker.Dispose();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunPreparationAsync(@"Z:\GitHub\CodeSnifferDog").GetAwaiter().GetResult());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunPreparationAsync().GetAwaiter().GetResult());
     }
 
     [TestMethod]
     public void RunReviewStageAsync_ThrowsAfterDispose()
     {
-        ReviewAgentTeamWorker worker = new(
-            2,
-            (repositoryRootPath, cancellationToken) => Task.FromResult(Result.Ok(CreateScanResult(CreateScanProject("scan-1", "ProjectOne")))),
-            (repositoryRootPath, scanProject, cancellationToken) => Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject))),
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown))),
-            new ReviewGroupWorkflow());
+        ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory());
         RepositoryPreparationWorkflowResult preparationResult = new()
         {
             ScanResult = CreateScanResult(CreateScanProject("scan-1", "ProjectOne")),
@@ -89,8 +66,74 @@ public sealed class ReviewAgentTeamWorkerTests
 
         worker.Dispose();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunReviewStageAsync(@"Z:\GitHub\CodeSnifferDog", preparationResult, ["- Rule A"]).GetAwaiter().GetResult());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunReviewStageAsync(preparationResult).GetAwaiter().GetResult());
     }
+
+    [TestMethod]
+    public void CreateWorker_ThrowsWhenMaxParallelAgentsIsNotPositive()
+    {
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, 0));
+    }
+
+    [TestMethod]
+    public void CreateWorker_ThrowsWhenRepositoryRootPathIsBlank()
+    {
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
+
+        Assert.ThrowsExactly<ArgumentException>(() => teamFactory.CreateWorker(" ", RuleMarkdowns, 2));
+    }
+
+    [TestMethod]
+    public void CreateWorker_ThrowsWhenRuleMarkdownsIsNull()
+    {
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
+
+        Assert.ThrowsExactly<ArgumentNullException>(() => teamFactory.CreateWorker(RepositoryRootPath, null!, 2));
+    }
+
+    [TestMethod]
+    public void Dispose_CallsCleanupHookOnce()
+    {
+        _cleanupCallCount = 0;
+        ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory());
+
+        worker.Dispose();
+        worker.Dispose();
+
+        Assert.AreEqual(1, _cleanupCallCount);
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_CallsCleanupHookOnce()
+    {
+        _cleanupCallCount = 0;
+        await using ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory());
+
+        await worker.DisposeAsync();
+
+        Assert.AreEqual(1, _cleanupCallCount);
+    }
+
+    private static ReviewAgentTeamFactory CreateTeamFactory() =>
+        new(new ReviewAgentTeamDependencies
+        {
+            ScanWorkflowRunner = (repositoryRootPath, cancellationToken) =>
+                Task.FromResult(Result.Ok(CreateScanResult(CreateScanProject("scan-1", "ProjectOne")))),
+            ProjectPlanWorkflowRunner = (repositoryRootPath, scanProject, cancellationToken) =>
+                Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject))),
+            RuleFlowWorkflowRunner = (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown))),
+            CleanupAsync = cancellationToken =>
+            {
+                _cleanupCallCount++;
+                return ValueTask.CompletedTask;
+            },
+        });
+
+    private static ReviewAgentTeamWorker CreateWorker(ReviewAgentTeamFactory teamFactory) =>
+        teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, 2);
 
     private static ScanWorkflowResult CreateScanResult(params StoredScanProject[] projects) =>
         new()

@@ -209,6 +209,9 @@ Reject it if more work is required, and explain why.
 - 不同 `rule` 可以並行
 - 同一 `rule` 在不同 `task item` 間不得同時進入 review / report flow
 - flow 對應的 agents 應在 scheduler 真正選中該 work item 時才建立
+- 外部不應直接組裝 review-stage 內部 workflow，而應透過 `Review Agent Team` 建立單一 `Worker` 來持有共享 budget 與調度狀態
+- `Worker` 應在建立時綁定 `repository root path` 與 `rule markdowns`，執行時只透過單一 `AnalyzeAsync` 啟動整段流程
+- `Worker` 在生命週期結束時，也應透過明確的 cleanup contract 釋放 team surface 持有的 runtime 資源
 
 ### Project Plan / Verifier 回退上限
 

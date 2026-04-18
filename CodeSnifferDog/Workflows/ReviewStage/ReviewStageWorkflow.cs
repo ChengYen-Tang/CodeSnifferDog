@@ -8,7 +8,7 @@ using FluentResults;
 
 namespace CodeSnifferDog.Workflows.ReviewStage;
 
-public sealed class ReviewStageWorkflow(
+internal sealed class ReviewStageWorkflow(
     ReviewStageRuleLaneScheduler scheduler,
     Func<StoredProjectPlanTaskItem, IReadOnlyList<string>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner)
 {
