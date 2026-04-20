@@ -9,6 +9,8 @@ namespace CodeSnifferDog.Tests.Modules.ContextCompaction.Core;
 [TestClass]
 public sealed class OperationalContextChatReducerTests
 {
+    private const string LongUserText = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
@@ -17,8 +19,7 @@ public sealed class OperationalContextChatReducerTests
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
         OperationalContextChatReducer reducer = CreateReducer(
             summarizer,
-            new FixedUsageProvider(100),
-            threshold: 200);
+            modelContextWindowTokens: 50_000);
 
         ChatMessage[] messages =
         [
@@ -39,28 +40,36 @@ public sealed class OperationalContextChatReducerTests
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
         OperationalContextChatReducer reducer = CreateReducer(
             summarizer,
-            new FixedUsageProvider(300),
-            threshold: 200);
+            modelContextWindowTokens: 3,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1,
+            preservedTailMinMessages: 1,
+            preservedTailMinTokens: 1,
+            preservedTailMaxTokens: 10_000);
 
         ChatMessage[] reduced =
         [
             .. await reducer.ReduceAsync(
                 [
                     new ChatMessage(ChatRole.System, "system-1"),
-                    new ChatMessage(ChatRole.User, "user-1"),
-                    new ChatMessage(ChatRole.Assistant, "assistant-1"),
-                    new ChatMessage(ChatRole.User, "user-2"),
+                    new ChatMessage(ChatRole.User, LongUserText),
+                    new ChatMessage(ChatRole.Assistant, LongUserText),
+                    new ChatMessage(ChatRole.User, LongUserText),
                 ],
                 TestContext.CancellationToken),
         ];
 
-        Assert.HasCount(1, reduced);
-        Assert.AreEqual(ChatRole.Assistant, reduced[0].Role);
-        Assert.IsTrue(reduced[0].Text?.StartsWith("Operational summary checkpoint", StringComparison.Ordinal) ?? false);
+        Assert.HasCount(5, reduced);
+        Assert.AreEqual(ChatRole.System, reduced[0].Role);
+        Assert.AreEqual(ChatRole.Assistant, reduced[2].Role);
+        Assert.IsTrue(reduced[2].Text?.StartsWith("Operational summary checkpoint", StringComparison.Ordinal) ?? false);
         Assert.AreEqual(
             OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
-            reduced[0].AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
-        bool isCompactionSummary = reduced[0].AdditionalProperties![OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey] is true;
+            reduced[2].AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
+        Assert.AreEqual(
+            OperationalContextCompactionArtifactMetadata.ContinuityArtifactKind,
+            reduced[3].AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
+        bool isCompactionSummary = reduced[2].AdditionalProperties![OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey] is true;
         Assert.IsTrue(isCompactionSummary);
         Assert.AreEqual(1, summarizer.CallCount);
     }
@@ -70,11 +79,12 @@ public sealed class OperationalContextChatReducerTests
     {
         OperationalContextChatReducer reducer = CreateReducer(
             new RecordingSummarizer("<summary>only partial summary</summary>"),
-            new FixedUsageProvider(300),
-            threshold: 200);
+            modelContextWindowTokens: 3,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1);
 
         await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
-            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
+            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, LongUserText)], TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -82,11 +92,12 @@ public sealed class OperationalContextChatReducerTests
     {
         OperationalContextChatReducer reducer = CreateReducer(
             new RecordingSummarizer("Current objective\nCompleted work\nNext steps"),
-            new FixedUsageProvider(300),
-            threshold: 200);
+            modelContextWindowTokens: 3,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1);
 
         await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
-            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
+            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, LongUserText)], TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -95,10 +106,11 @@ public sealed class OperationalContextChatReducerTests
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
         OperationalContextChatReducer reducer = CreateReducer(
             summarizer,
-            new FixedUsageProvider(300),
-            threshold: 200);
+            modelContextWindowTokens: 3,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1);
 
-        await reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken);
+        await reducer.ReduceAsync([new ChatMessage(ChatRole.User, LongUserText)], TestContext.CancellationToken);
 
         Assert.IsNotNull(summarizer.LastSummaryPrompt);
         Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("Return text only.", StringComparison.Ordinal));
@@ -111,11 +123,12 @@ public sealed class OperationalContextChatReducerTests
     {
         OperationalContextChatReducer reducer = CreateReducer(
             new ThrowingSummarizer(),
-            new FixedUsageProvider(300),
-            threshold: 200);
+            modelContextWindowTokens: 3,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1);
 
         await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
-            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
+            () => reducer.ReduceAsync([new ChatMessage(ChatRole.User, LongUserText)], TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -123,8 +136,7 @@ public sealed class OperationalContextChatReducerTests
     {
         OperationalContextChatReducer reducer = CreateReducer(
             new ThrowingSummarizer(),
-            new FixedUsageProvider(10),
-            threshold: 20_000);
+            modelContextWindowTokens: 20_000);
 
         await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
             () => reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken));
@@ -136,27 +148,55 @@ public sealed class OperationalContextChatReducerTests
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
         OperationalContextChatReducer reducer = CreateReducer(
             summarizer,
-            new FixedUsageProvider(10),
-            threshold: 20_000);
+            modelContextWindowTokens: 20_000);
 
         ChatMessage[] reduced = [.. await reducer.ReduceReactiveAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken)];
 
         Assert.AreEqual(1, summarizer.CallCount);
-        Assert.HasCount(1, reduced);
+        Assert.HasCount(4, reduced);
     }
 
     [TestMethod]
-    public async Task ReduceAsync_UsesContextWindowThreshold_WhenUsageProvidesWindow()
+    public async Task CompactReactiveAsync_TracksArchivedMessageReferences()
     {
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
         OperationalContextChatReducer reducer = CreateReducer(
             summarizer,
-            new FixedUsageProvider(usedTokens: 9_000, contextWindowTokens: 10_000),
-            threshold: 20_000,
-            contextWindowBufferTokens: 500,
-            summaryReservedOutputTokens: 600);
+            modelContextWindowTokens: 20_000,
+            preservedTailMinMessages: 1,
+            preservedTailMinTokens: 1,
+            preservedTailMaxTokens: 10_000);
 
-        await reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken);
+        OperationalContextCompactionResult result = await reducer.CompactReactiveAsync(
+            [
+                new ChatMessage(ChatRole.User, "user-1"),
+                new ChatMessage(ChatRole.Assistant, "assistant-1"),
+                new ChatMessage(ChatRole.User, "user-2"),
+            ],
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.WasCompacted);
+        Assert.HasCount(2, result.ArchivedMessageReferences);
+        Assert.AreEqual(0, result.ArchivedMessageReferences[0].MessageIndex);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.ArchivedMessageReferences[0].MessageId));
+        Assert.AreEqual(1, result.ArchivedMessageReferences[1].MessageIndex);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.ArchivedMessageReferences[1].MessageId));
+        Assert.AreEqual(
+            OperationalContextCompactionArtifactMetadata.ContinuityArtifactKind,
+            result.ContinuityStateMessage.AdditionalProperties![OperationalContextCompactionArtifactMetadata.ArtifactKindKey]);
+    }
+
+    [TestMethod]
+    public async Task ReduceAsync_UsesPreCallEstimatedTokens_ForAutomaticThreshold()
+    {
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        OperationalContextChatReducer reducer = CreateReducer(
+            summarizer,
+            modelContextWindowTokens: 100,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1);
+
+        await reducer.ReduceAsync([new ChatMessage(ChatRole.User, new string('x', 1_000))], TestContext.CancellationToken);
 
         Assert.AreEqual(1, summarizer.CallCount);
     }
@@ -169,12 +209,13 @@ public sealed class OperationalContextChatReducerTests
         RecordingCleanupHandler cleanupHandler = new();
         OperationalContextChatReducer reducer = CreateReducer(
             summarizer,
-            new FixedUsageProvider(300),
-            threshold: 200,
+            modelContextWindowTokens: 3,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1,
             hooks: [hook],
             cleanupHandlers: [cleanupHandler]);
 
-        await reducer.ReduceAsync([new ChatMessage(ChatRole.User, "user")], TestContext.CancellationToken);
+        await reducer.ReduceAsync([new ChatMessage(ChatRole.User, LongUserText)], TestContext.CancellationToken);
 
         Assert.AreEqual(1, hook.BeforeCallCount);
         Assert.AreEqual(1, hook.AfterCallCount);
@@ -183,35 +224,92 @@ public sealed class OperationalContextChatReducerTests
         Assert.AreEqual(OperationalContextCompactionReason.AutomaticThreshold, cleanupHandler.LastReason);
     }
 
+    [TestMethod]
+    public async Task ReduceAsync_ReinjectsAttachmentAndHookArtifacts_OutsidePreservedTail()
+    {
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        OperationalContextChatReducer reducer = CreateReducer(
+            summarizer,
+            modelContextWindowTokens: 3,
+            summaryReservedOutputTokens: 1,
+            autoCompactBufferTokens: 1,
+            preservedTailMinMessages: 1,
+            preservedTailMinTokens: 1,
+            preservedTailMaxTokens: 10_000,
+            artifactsProvider: new MetadataOperationalContextCompactionArtifactsProvider(
+                new OperationalContextCompactionOptions
+                {
+                    ModelContextWindowTokens = 3,
+                    SummaryReservedOutputTokens = 1,
+                    AutoCompactBufferTokens = 1,
+                    PreservedTailMinTokens = 1,
+                    PreservedTailMinMessages = 1,
+                    PreservedTailMaxTokens = 10_000,
+                    PostCompactAttachmentTokenBudget = 10_000,
+                }));
+
+        ChatMessage attachment = CreateArtifactMessage(
+            ChatRole.User,
+            "attachment",
+            OperationalContextCompactionArtifactMetadata.AttachmentArtifactKind);
+        ChatMessage hookResult = CreateArtifactMessage(
+            ChatRole.User,
+            "hook-result",
+            OperationalContextCompactionArtifactMetadata.HookResultArtifactKind);
+
+        ChatMessage[] reduced =
+        [
+            .. await reducer.ReduceAsync(
+                [
+                    new ChatMessage(ChatRole.System, "system-1"),
+                    attachment,
+                    hookResult,
+                    new ChatMessage(ChatRole.User, LongUserText),
+                ],
+                TestContext.CancellationToken),
+        ];
+
+        CollectionAssert.Contains(reduced, attachment);
+        CollectionAssert.Contains(reduced, hookResult);
+    }
+
     private static OperationalContextChatReducer CreateReducer(
         IOperationalContextCompactionSummarizer summarizer,
-        IOperationalContextCompactionUsageProvider usageProvider,
-        int threshold,
-        long contextWindowBufferTokens = 8_192,
-        long summaryReservedOutputTokens = 4_096,
+        long modelContextWindowTokens,
+        int? summaryReservedOutputTokens = null,
+        int? autoCompactBufferTokens = null,
+        int? preservedTailMinTokens = null,
+        int? preservedTailMinMessages = null,
+        int? preservedTailMaxTokens = null,
+        IOperationalContextCompactionArtifactsProvider? artifactsProvider = null,
         IEnumerable<IOperationalContextCompactionHook>? hooks = null,
         IEnumerable<IOperationalContextCompactionCleanupHandler>? cleanupHandlers = null) => new(
             new OperationalContextCompactionOptions
             {
-                ContextTokenThreshold = threshold,
-                ContextWindowBufferTokens = contextWindowBufferTokens,
-                SummaryReservedOutputTokens = summaryReservedOutputTokens,
+                ModelContextWindowTokens = modelContextWindowTokens,
+                SummaryReservedOutputTokens = summaryReservedOutputTokens ?? 1,
+                AutoCompactBufferTokens = autoCompactBufferTokens ?? 1,
+                PreservedTailMinTokens = preservedTailMinTokens ?? 1,
+                PreservedTailMinMessages = preservedTailMinMessages ?? 1,
+                PreservedTailMaxTokens = preservedTailMaxTokens ?? 10_000,
             },
             new StaticOperationalContextSummaryPromptProvider("summarize the current run"),
             summarizer,
-            usageProvider,
+            artifactsProvider,
             hooks: hooks,
             cleanupHandlers: cleanupHandlers);
 
-    private sealed class FixedUsageProvider(long usedTokens, long? contextWindowTokens = null) : IOperationalContextCompactionUsageProvider
+    private static ChatMessage CreateArtifactMessage(ChatRole role, string text, string artifactKind)
     {
-        public ValueTask<OperationalContextCompactionUsage?> GetUsageAsync(
-            IReadOnlyList<ChatMessage> messages,
-            CancellationToken cancellationToken) => ValueTask.FromResult<OperationalContextCompactionUsage?>(new OperationalContextCompactionUsage
+        ChatMessage message = new(role, text)
+        {
+            AdditionalProperties = new AdditionalPropertiesDictionary
             {
-                UsedTokens = usedTokens,
-                ContextWindowTokens = contextWindowTokens,
-            });
+                [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = artifactKind,
+            },
+        };
+
+        return message;
     }
 
     private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer

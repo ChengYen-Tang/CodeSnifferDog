@@ -31,7 +31,7 @@ public sealed class RepositoryPreparationWorkflowTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         CollectionAssert.AreEqual(new[] { "scan-1", "scan-2" }, plannedProjectIds);
-        Assert.AreEqual(2, result.Value.ProjectPlanResults.Count);
+        Assert.HasCount(2, result.Value.ProjectPlanResults);
         Assert.IsTrue(result.Value.ShouldEnterRuleReview);
     }
 
@@ -95,7 +95,7 @@ public sealed class RepositoryPreparationWorkflowTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(projectPlanCalled);
-        Assert.AreEqual(0, result.Value.ProjectPlanResults.Count);
+        Assert.IsEmpty(result.Value.ProjectPlanResults);
         Assert.IsFalse(result.Value.ShouldEnterRuleReview);
     }
 

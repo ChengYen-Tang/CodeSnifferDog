@@ -2,7 +2,6 @@ using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
-using System.Globalization;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
@@ -10,54 +9,82 @@ public sealed class OperationalContextChatReducer : IChatReducer
 {
     private const string SummaryOpenTag = "<summary>";
     private const string SummaryCloseTag = "</summary>";
+    private readonly OperationalContextContinuityStateBuilder _continuityStateBuilder = new();
+    private readonly IOperationalContextCompactionArtifactsProvider? _artifactsProvider;
     private readonly IReadOnlyList<IOperationalContextCompactionCleanupHandler> _cleanupHandlers;
     private readonly IReadOnlyList<IOperationalContextCompactionHook> _hooks;
     private readonly OperationalContextCompactionOptions _options;
     private readonly IOperationalContextSummaryPromptProvider _summaryPromptProvider;
     private readonly IOperationalContextCompactionSummarizer _summarizer;
-    private readonly IOperationalContextCompactionUsageProvider _usageProvider;
 
     public OperationalContextChatReducer(
         OperationalContextCompactionOptions options,
         IOperationalContextSummaryPromptProvider summaryPromptProvider,
         IOperationalContextCompactionSummarizer summarizer,
-        IOperationalContextCompactionUsageProvider usageProvider,
+        IOperationalContextCompactionArtifactsProvider? artifactsProvider = null,
         IEnumerable<IOperationalContextCompactionHook>? hooks = null,
         IEnumerable<IOperationalContextCompactionCleanupHandler>? cleanupHandlers = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(summaryPromptProvider);
         ArgumentNullException.ThrowIfNull(summarizer);
-        ArgumentNullException.ThrowIfNull(usageProvider);
 
-        if (options.ContextTokenThreshold <= 0)
-            throw new ArgumentOutOfRangeException(nameof(options), "Context token threshold must be greater than zero.");
+        if (options.ModelContextWindowTokens <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "Model context window tokens must be greater than zero.");
 
-        if (options.ContextWindowBufferTokens < 0)
-            throw new ArgumentOutOfRangeException(nameof(options), "Context window buffer tokens cannot be negative.");
-
-        if (options.SummaryReservedOutputTokens < 0)
-            throw new ArgumentOutOfRangeException(nameof(options), "Summary reserved output tokens cannot be negative.");
-
+        _artifactsProvider = artifactsProvider;
         _hooks = hooks?.ToArray() ?? [];
         _cleanupHandlers = cleanupHandlers?.ToArray() ?? [];
         _options = options;
         _summaryPromptProvider = summaryPromptProvider;
         _summarizer = summarizer;
-        _usageProvider = usageProvider;
     }
+
+    public OperationalContextCompactionOptions Options => _options;
 
     public async Task<IEnumerable<ChatMessage>> ReduceAsync(
         IEnumerable<ChatMessage> messages,
         CancellationToken cancellationToken = default) =>
-        await ReduceCoreAsync(messages, OperationalContextCompactionReason.AutomaticThreshold, cancellationToken).ConfigureAwait(false);
+        BuildMessages(await CompactAutomaticAsync(messages, cancellationToken).ConfigureAwait(false));
 
     public async Task<IEnumerable<ChatMessage>> ReduceReactiveAsync(
         IEnumerable<ChatMessage> messages,
         CancellationToken cancellationToken = default) =>
-        await ReduceCoreAsync(messages, OperationalContextCompactionReason.Reactive, cancellationToken).ConfigureAwait(false);
+        BuildMessages(await CompactReactiveAsync(messages, cancellationToken).ConfigureAwait(false));
 
-    private async Task<IEnumerable<ChatMessage>> ReduceCoreAsync(
+    public async Task<OperationalContextCompactionResult> CompactAutomaticAsync(
+        IEnumerable<ChatMessage> messages,
+        CancellationToken cancellationToken = default) =>
+        await CompactCoreAsync(messages, OperationalContextCompactionReason.AutomaticThreshold, cancellationToken).ConfigureAwait(false);
+
+    public async Task<OperationalContextCompactionResult> CompactReactiveAsync(
+        IEnumerable<ChatMessage> messages,
+        CancellationToken cancellationToken = default) =>
+        await CompactCoreAsync(messages, OperationalContextCompactionReason.Reactive, cancellationToken).ConfigureAwait(false);
+
+    public static IReadOnlyList<ChatMessage> BuildMessages(OperationalContextCompactionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        List<ChatMessage> messages = [.. result.PreservedSystemMessages];
+
+        if (!string.IsNullOrWhiteSpace(result.BoundaryMessage.Text))
+            messages.Add(result.BoundaryMessage);
+
+        if (!string.IsNullOrWhiteSpace(result.SummaryMessage.Text))
+            messages.Add(result.SummaryMessage);
+
+        if (!string.IsNullOrWhiteSpace(result.ContinuityStateMessage.Text))
+            messages.Add(result.ContinuityStateMessage);
+
+        messages.AddRange(result.MessagesToKeep);
+        messages.AddRange(result.AttachmentMessages);
+        messages.AddRange(result.HookResultMessages);
+
+        return messages;
+    }
+
+    private async Task<OperationalContextCompactionResult> CompactCoreAsync(
         IEnumerable<ChatMessage> messages,
         OperationalContextCompactionReason reason,
         CancellationToken cancellationToken)
@@ -65,16 +92,14 @@ public sealed class OperationalContextChatReducer : IChatReducer
         ArgumentNullException.ThrowIfNull(messages);
 
         List<ChatMessage> materializedMessages = [.. messages];
-
-        OperationalContextCompactionUsage? usage = await _usageProvider.GetUsageAsync(materializedMessages, cancellationToken).ConfigureAwait(false);
-
-        if (!ShouldCompact(usage, reason))
-            return materializedMessages;
+        EnsureMessageIdentities(materializedMessages);
+        if (!ShouldCompact(materializedMessages, reason))
+            return CreatePassthroughResult(materializedMessages);
 
         await RunBeforeCompactionHooksAsync(materializedMessages, reason, cancellationToken).ConfigureAwait(false);
 
         string summaryPrompt = BuildSummaryPrompt(
-            await _summaryPromptProvider.GetPromptAsync(materializedMessages, cancellationToken).ConfigureAwait(false));
+            await _summaryPromptProvider.GetPromptAsync(cancellationToken).ConfigureAwait(false));
 
         if (string.IsNullOrWhiteSpace(summaryPrompt))
             throw new OperationalContextCompactionException("Operational context compaction summary prompt provider returned empty content.");
@@ -84,13 +109,12 @@ public sealed class OperationalContextChatReducer : IChatReducer
             string summary = await _summarizer.SummarizeAsync(materializedMessages, summaryPrompt, _options, cancellationToken).ConfigureAwait(false);
             summary = NormalizeSummary(summary);
             ValidateSummary(summary);
-            IReadOnlyList<ChatMessage> compactedMessages =
-            [
-                CreateSummaryMessage(summary, reason),
-            ];
+
+            OperationalContextCompactionResult result = await CreateResultAsync(materializedMessages, summary, reason, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<ChatMessage> compactedMessages = BuildMessages(result);
             await RunAfterCompactionHooksAsync(materializedMessages, compactedMessages, reason, cancellationToken).ConfigureAwait(false);
             await RunCleanupHandlersAsync(materializedMessages, compactedMessages, reason, cancellationToken).ConfigureAwait(false);
-            return compactedMessages;
+            return result;
         }
         catch (OperationalContextCompactionException)
         {
@@ -100,6 +124,49 @@ public sealed class OperationalContextChatReducer : IChatReducer
         {
             throw new OperationalContextCompactionException("Operational context compaction summary generation failed.", ex);
         }
+    }
+
+    private async Task<OperationalContextCompactionResult> CreateResultAsync(
+        IReadOnlyList<ChatMessage> originalMessages,
+        string normalizedSummary,
+        OperationalContextCompactionReason reason,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ChatMessage> preservedSystemMessages = [.. originalMessages.Where(static message => message.Role == ChatRole.System)];
+        IReadOnlyList<ChatMessage> nonSystemMessages = [.. originalMessages.Where(static message => message.Role != ChatRole.System)];
+        IReadOnlyList<ChatMessage> messagesToKeep = SelectMessagesToKeep(nonSystemMessages);
+        IReadOnlyList<OperationalContextCompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, messagesToKeep);
+        IReadOnlyList<OperationalContextCompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, messagesToKeep);
+        OperationalContextContinuityState continuityState = _continuityStateBuilder.Build(normalizedSummary);
+        OperationalContextCompactionArtifacts artifacts = _artifactsProvider is null
+            ? OperationalContextCompactionArtifacts.Empty
+            : await _artifactsProvider.GetArtifactsAsync(
+                originalMessages,
+                messagesToKeep,
+                normalizedSummary,
+                reason,
+                cancellationToken).ConfigureAwait(false);
+
+        ChatMessage boundaryMessage = CreateBoundaryMessage(originalMessages, messageReferences, normalizedSummary, reason);
+        ChatMessage summaryMessage = CreateSummaryMessage(normalizedSummary, reason, messagesToKeep.Count > 0);
+        ChatMessage continuityStateMessage = _continuityStateBuilder.CreateMessage(continuityState, reason);
+        boundaryMessage.AdditionalProperties![OperationalContextCompactionArtifactMetadata.AttachmentsCountKey] = artifacts.AttachmentMessages.Count;
+        boundaryMessage.AdditionalProperties![OperationalContextCompactionArtifactMetadata.HookResultsCountKey] = artifacts.HookResultMessages.Count;
+
+        return new OperationalContextCompactionResult
+        {
+            WasCompacted = true,
+            PreservedSystemMessages = preservedSystemMessages,
+            BoundaryMessage = boundaryMessage,
+            SummaryMessage = summaryMessage,
+            ContinuityStateMessage = continuityStateMessage,
+            ContinuityState = continuityState,
+            MessagesToKeep = messagesToKeep,
+            MessageReferences = messageReferences,
+            ArchivedMessageReferences = archivedMessageReferences,
+            AttachmentMessages = artifacts.AttachmentMessages,
+            HookResultMessages = artifacts.HookResultMessages,
+        };
     }
 
     private void ValidateSummary(string summary)
@@ -125,8 +192,8 @@ public sealed class OperationalContextChatReducer : IChatReducer
         Summary contract:
         - Return text only.
         - Do not call tools.
-        - Put the final operational summary inside a single {SummaryOpenTag}...{SummaryCloseTag} block.
-        - The summary must retain enough detail for the next agent turn to continue work safely.
+        - Put your final answer inside a single {SummaryOpenTag}...{SummaryCloseTag} block.
+        - The summary must retain enough continuity for the next agent turn to continue safely.
         - Do not output any content after the closing summary tag.
         """;
 
@@ -151,25 +218,14 @@ public sealed class OperationalContextChatReducer : IChatReducer
     }
 
     private bool ShouldCompact(
-        OperationalContextCompactionUsage? usage,
+        IReadOnlyList<ChatMessage> messages,
         OperationalContextCompactionReason reason)
     {
         if (reason == OperationalContextCompactionReason.Reactive)
             return true;
 
-        if (usage is null)
-            return false;
-
-        if (usage.ContextWindowTokens is long contextWindowTokens)
-        {
-            long triggerThreshold = Math.Max(
-                1,
-                contextWindowTokens - _options.ContextWindowBufferTokens - _options.SummaryReservedOutputTokens);
-
-            return usage.UsedTokens >= triggerThreshold;
-        }
-
-        return usage.UsedTokens >= _options.ContextTokenThreshold;
+        int estimatedTokens = OperationalContextTokenEstimator.Estimate(messages);
+        return estimatedTokens >= _options.GetAutoCompactThreshold();
     }
 
     private async ValueTask RunBeforeCompactionHooksAsync(
@@ -201,7 +257,7 @@ public sealed class OperationalContextChatReducer : IChatReducer
             await cleanupHandler.CleanupAsync(originalMessages, compactedMessages, reason, cancellationToken).ConfigureAwait(false);
     }
 
-    private static ChatMessage CreateSummaryMessage(string summary, OperationalContextCompactionReason reason)
+    private static ChatMessage CreateSummaryMessage(string summary, OperationalContextCompactionReason reason, bool hasPreservedTail)
     {
         ChatMessage summaryMessage = new(
             ChatRole.Assistant,
@@ -213,8 +269,173 @@ public sealed class OperationalContextChatReducer : IChatReducer
             [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
             [OperationalContextCompactionArtifactMetadata.SummaryFormatVersionKey] = OperationalContextCompactionArtifactMetadata.CurrentSummaryFormatVersion,
             [OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey] = true,
+            [OperationalContextCompactionArtifactMetadata.HasPreservedTailKey] = hasPreservedTail,
         };
 
         return summaryMessage;
+    }
+
+    private ChatMessage CreateBoundaryMessage(
+        IReadOnlyList<ChatMessage> originalMessages,
+        IReadOnlyList<OperationalContextCompactionMessageReference> messageReferences,
+        string summary,
+        OperationalContextCompactionReason reason)
+    {
+        ChatMessage boundaryMessage = new(
+            ChatRole.System,
+            "Operational compact boundary");
+
+        OperationalContextCompactionMessageReference? tailReference = messageReferences.LastOrDefault();
+        OperationalContextCompactionMessageReference? headReference = messageReferences.FirstOrDefault();
+
+        boundaryMessage.AdditionalProperties = new AdditionalPropertiesDictionary
+        {
+            [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.BoundaryArtifactKind,
+            [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
+            [OperationalContextCompactionArtifactMetadata.MessagesToKeepCountKey] = messageReferences.Count,
+            [OperationalContextCompactionArtifactMetadata.BoundarySummaryKey] = summary,
+            [OperationalContextCompactionArtifactMetadata.PreservedTailCountKey] = messageReferences.Count,
+            [OperationalContextCompactionArtifactMetadata.PreservedTailIndexesKey] = messageReferences.Select(static reference => reference.MessageIndex).ToArray(),
+            [OperationalContextCompactionArtifactMetadata.PreservedTailTextsKey] = messageReferences.Select(static reference => reference.Text).ToArray(),
+            [OperationalContextCompactionArtifactMetadata.PreservedTailIdsKey] = messageReferences.Select(static reference => reference.MessageId ?? string.Empty).ToArray(),
+        };
+
+        if (headReference is not null)
+        {
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIndexKey] = headReference.MessageIndex;
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIdKey] = headReference.MessageId ?? string.Empty;
+        }
+
+        if (tailReference is not null)
+        {
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIndexKey] = tailReference.MessageIndex;
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIdKey] = tailReference.MessageId ?? string.Empty;
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorIndexKey] = tailReference.MessageIndex;
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorIdKey] = tailReference.MessageId ?? string.Empty;
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorRoleKey] = tailReference.Role.ToString();
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorTextKey] = tailReference.Text;
+        }
+        else if (originalMessages.Count > 0)
+        {
+            ChatMessage lastOriginalMessage = originalMessages[^1];
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorIndexKey] = originalMessages.Count - 1;
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorRoleKey] = lastOriginalMessage.Role.ToString();
+            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorTextKey] = lastOriginalMessage.Text ?? string.Empty;
+        }
+
+        return boundaryMessage;
+    }
+
+    private IReadOnlyList<ChatMessage> SelectMessagesToKeep(IReadOnlyList<ChatMessage> nonSystemMessages)
+    {
+        if (nonSystemMessages.Count == 0)
+            return [];
+
+        List<ChatMessage> keptMessages = [];
+        int totalTokens = 0;
+        int messageCount = 0;
+
+        for (int index = nonSystemMessages.Count - 1; index >= 0; index--)
+        {
+            ChatMessage message = nonSystemMessages[index];
+            int messageTokens = OperationalContextTokenEstimator.Estimate([message]);
+
+            if (keptMessages.Count > 0 && totalTokens >= _options.PreservedTailMaxTokens)
+                break;
+
+            keptMessages.Insert(0, message);
+            totalTokens += messageTokens;
+            messageCount++;
+
+            bool reachedMinimumTail =
+                totalTokens >= _options.PreservedTailMinTokens &&
+                messageCount >= _options.PreservedTailMinMessages;
+
+            if (reachedMinimumTail)
+                break;
+        }
+
+        return keptMessages;
+    }
+
+    private static IReadOnlyList<OperationalContextCompactionMessageReference> CreateMessageReferences(
+        IReadOnlyList<ChatMessage> sourceMessages,
+        IReadOnlyList<ChatMessage> keptMessages)
+    {
+        List<OperationalContextCompactionMessageReference> references = [];
+
+        for (int index = 0; index < sourceMessages.Count; index++)
+        {
+            if (!keptMessages.Contains(sourceMessages[index]))
+                continue;
+
+            references.Add(new OperationalContextCompactionMessageReference
+            {
+                MessageIndex = index,
+                MessageId = GetMessageIdentity(sourceMessages[index], index),
+                Role = sourceMessages[index].Role,
+                Text = sourceMessages[index].Text ?? string.Empty,
+            });
+        }
+
+        return references;
+    }
+
+    private static IReadOnlyList<OperationalContextCompactionMessageReference> CreateArchivedMessageReferences(
+        IReadOnlyList<ChatMessage> sourceMessages,
+        IReadOnlyList<ChatMessage> keptMessages)
+    {
+        List<OperationalContextCompactionMessageReference> references = [];
+
+        for (int index = 0; index < sourceMessages.Count; index++)
+        {
+            if (keptMessages.Contains(sourceMessages[index]))
+                continue;
+
+            references.Add(new OperationalContextCompactionMessageReference
+            {
+                MessageIndex = index,
+                MessageId = GetMessageIdentity(sourceMessages[index], index),
+                Role = sourceMessages[index].Role,
+                Text = sourceMessages[index].Text ?? string.Empty,
+            });
+        }
+
+        return references;
+    }
+
+    private static OperationalContextCompactionResult CreatePassthroughResult(IReadOnlyList<ChatMessage> messages) => new()
+    {
+        WasCompacted = false,
+        PreservedSystemMessages = [],
+        BoundaryMessage = new ChatMessage(ChatRole.System, string.Empty),
+        SummaryMessage = new ChatMessage(ChatRole.Assistant, string.Empty),
+        ContinuityStateMessage = new ChatMessage(ChatRole.System, string.Empty),
+        ContinuityState = new OperationalContextContinuityState(),
+        MessagesToKeep = messages,
+        MessageReferences = [],
+        ArchivedMessageReferences = [],
+        AttachmentMessages = [],
+        HookResultMessages = [],
+    };
+
+    private static void EnsureMessageIdentities(IReadOnlyList<ChatMessage> messages)
+    {
+        for (int index = 0; index < messages.Count; index++)
+            _ = GetMessageIdentity(messages[index], index);
+    }
+
+    private static string GetMessageIdentity(ChatMessage message, int index)
+    {
+        message.AdditionalProperties ??= [];
+
+        if (message.AdditionalProperties.TryGetValue(OperationalContextCompactionArtifactMetadata.MessageIdentityKey, out object? existingValue) &&
+            existingValue is string existingId &&
+            !string.IsNullOrWhiteSpace(existingId))
+            return existingId;
+
+        string generatedId = $"{index:D8}:{message.Role}:{Guid.NewGuid():N}";
+        message.AdditionalProperties[OperationalContextCompactionArtifactMetadata.MessageIdentityKey] = generatedId;
+        return generatedId;
     }
 }

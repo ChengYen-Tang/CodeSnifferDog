@@ -4,7 +4,5 @@ namespace CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 
 public interface IOperationalContextSummaryPromptProvider
 {
-    ValueTask<string> GetPromptAsync(
-        IReadOnlyList<ChatMessage> messages,
-        CancellationToken cancellationToken);
+    ValueTask<string> GetPromptAsync(CancellationToken cancellationToken);
 }

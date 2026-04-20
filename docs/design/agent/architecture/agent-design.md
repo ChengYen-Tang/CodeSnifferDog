@@ -264,6 +264,10 @@ Review 階段的平行原則如下：
 - 外部應先建立 `ReviewAgentTeam` 的組裝入口，提供 `Scan`、`Project Plan`、`Rule Flow` 對應的 workflow runners。
 - 每次 project / repo 分析開始時，再由該 team 建立一個 `Worker` 實例。
 - `Worker` 建立時就應綁定這次分析的 `repository root path` 與 `rule markdowns`。
+- `Worker` 也應接收少量明確的執行策略輸入，第一版至少包含：
+  - `MaxParallelAgents`
+  - `ExecutionProfile`
+  - `ModelContextWindowTokens`
 - `Worker` 持有該次分析專屬的共享 concurrency budget，並透過單一 `AnalyzeAsync` 入口負責串起 preparation 與 review stage。
 - `Worker` 應提供明確的 cleanup 邊界，用來釋放 team surface 持有的 runtime 資源，而不只依賴底層 workflow 的間接清理。
 - `Worker` 結束後，flow 相關的暫態狀態與 agents 應隨之清理；repo-level report snapshot 則依既有規則保留。
@@ -387,4 +391,4 @@ Report Verifier 應透過單一 verdict 工具明確決定：
 - 2026-04-19：將 review 階段的主要調度模型收斂為 rule execution lanes 與 scheduler，移除 review group 作為主要平行調度容器的舊描述。
 - 2026-04-19：補充 queue-based scheduling 與 flow 完成後的 agent / state cleanup 原則。
 - 2026-04-14：補充通用工具第一版只保留 `Shell` 與 `grep search` 的原則。
-- 2026-04-14：補充記憶與 context compaction 採用 Claude Code 類型完整機制的設計連結。
+- 2026-04-14：補充記憶與 context compaction 以 Claude Code 類型機制作為主要對齊方向的設計連結。

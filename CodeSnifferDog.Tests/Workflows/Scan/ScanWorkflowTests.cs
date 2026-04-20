@@ -425,13 +425,12 @@ public sealed class ScanWorkflowTests
         IOperationalContextCompactionSummarizer? summarizer = null) =>
         new OperationalContextAgentCompactionOptionsFactory(
             new PromptAssetReader(),
-            summarizer ?? new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"),
-            new FixedUsageProvider(usedTokens: 100))
+            summarizer ?? new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"))
             .CreateFromPromptAsset(
                 summaryPromptAssetPath,
                 new OperationalContextCompactionOptions
                 {
-                    ContextTokenThreshold = 10,
+                    ModelContextWindowTokens = 100,
                 });
 
     private static ChatResponse HandleScanInvocation(ChatInvocation invocation)
@@ -564,16 +563,6 @@ public sealed class ScanWorkflowTests
         IReadOnlyList<ChatMessage> Messages,
         ChatOptions? Options,
         int CallIndex);
-
-    private sealed class FixedUsageProvider(long usedTokens) : IOperationalContextCompactionUsageProvider
-    {
-        public ValueTask<OperationalContextCompactionUsage?> GetUsageAsync(
-            IReadOnlyList<ChatMessage> messages,
-            CancellationToken cancellationToken) => ValueTask.FromResult<OperationalContextCompactionUsage?>(new OperationalContextCompactionUsage
-            {
-                UsedTokens = usedTokens,
-            });
-    }
 
     private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer
     {

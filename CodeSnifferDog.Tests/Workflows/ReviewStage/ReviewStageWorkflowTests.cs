@@ -105,7 +105,7 @@ public sealed class ReviewStageWorkflowTests
             ["- Rule A", "- Rule B"]);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsTrue(maxObservedConcurrency > 1);
+        Assert.IsGreaterThan(1, maxObservedConcurrency);
         Assert.AreEqual(1, maxRuleConcurrency["- Rule A"]);
         Assert.AreEqual(1, maxRuleConcurrency["- Rule B"]);
     }

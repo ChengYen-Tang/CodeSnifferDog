@@ -25,7 +25,7 @@ public sealed class ChatClientOperationalContextCompactionSummarizerTests
             "summarize now",
             new OperationalContextCompactionOptions
             {
-                ContextTokenThreshold = 10,
+                ModelContextWindowTokens = 100,
             },
             TestContext.CancellationToken);
 
@@ -48,7 +48,7 @@ public sealed class ChatClientOperationalContextCompactionSummarizerTests
             "summarize now",
             new OperationalContextCompactionOptions
             {
-                ContextTokenThreshold = 10,
+                ModelContextWindowTokens = 100,
                 SummaryModelId = "summary-model",
             },
             TestContext.CancellationToken);

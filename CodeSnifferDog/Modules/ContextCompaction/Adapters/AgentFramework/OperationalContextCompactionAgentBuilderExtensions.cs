@@ -1,9 +1,11 @@
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Modules.ContextCompaction.Core;
 using System.Collections;
 using System.Globalization;
 using System.Reflection;
+using System.Threading.Channels;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 
@@ -18,32 +20,17 @@ public static class OperationalContextCompactionAgentBuilderExtensions
         ArgumentNullException.ThrowIfNull(options.Reducer);
         ArgumentNullException.ThrowIfNull(options.ReactiveExceptionDecider);
 
-        builder.UseAIContextProviders(
-            new OperationalContextCompactionMessageContextProvider(
-                options.Reducer,
-                options.AutomaticCompactionTrigger));
+        if (options.Reducer.Options.Mode == OperationalContextCompactionMode.ContextCollapse &&
+            options.CollapseController is null)
+            throw new InvalidOperationException("ContextCollapse mode requires an OperationalContextCollapseController.");
 
-        if (!options.EnableReactiveCompactionRetry)
-            return builder;
+        builder.UseAIContextProviders(new OperationalContextCompactionMessageContextProvider(options));
 
-        return builder.Use(async (messages, session, runOptions, next, cancellationToken) =>
-        {
-            try
-            {
-                await next(messages, session, runOptions, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationalContextModelInvocationException ex) when (options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(ex))
-            {
-                IReadOnlyList<ChatMessage> originalMessages = [.. messages];
-                IReadOnlyList<ChatMessage> compactedMessages =
-                    [.. await options.Reducer.ReduceReactiveAsync(originalMessages, cancellationToken).ConfigureAwait(false)];
-
-                if (MessagesAreEquivalentForRetry(originalMessages, compactedMessages))
-                    throw;
-
-                await next(compactedMessages, session, runOptions, cancellationToken).ConfigureAwait(false);
-            }
-        });
+        return builder.Use(
+            (messages, session, runOptions, innerAgent, cancellationToken) =>
+                RunAndTrackAsync(messages, session, runOptions, innerAgent, options, cancellationToken),
+            (messages, session, runOptions, innerAgent, cancellationToken) =>
+                RunStreamingAndTrackAsync(messages, session, runOptions, innerAgent, options, cancellationToken));
     }
 
     public static async Task InvokeWithReactiveCompactionRetryAsync(
@@ -64,8 +51,12 @@ public static class OperationalContextCompactionAgentBuilderExtensions
             options.EnableReactiveCompactionRetry &&
             options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(ex))
         {
-            IReadOnlyList<ChatMessage> compactedMessages =
-                [.. await options.Reducer.ReduceReactiveAsync(messages, cancellationToken).ConfigureAwait(false)];
+            ReactiveRetryPreparation retryPreparation = await PrepareReactiveRetryAsync(
+                messages,
+                null,
+                options,
+                cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<ChatMessage> compactedMessages = retryPreparation.Messages;
 
             if (MessagesAreEquivalentForRetry(messages, compactedMessages))
                 throw;
@@ -169,5 +160,273 @@ public static class OperationalContextCompactionAgentBuilderExtensions
             return formattable.ToString(null, CultureInfo.InvariantCulture);
 
         return value.ToString() ?? string.Empty;
+    }
+
+    private static async Task<AgentResponse> RunAndTrackAsync(
+        IEnumerable<ChatMessage> messages,
+        AgentSession? session,
+        AgentRunOptions? runOptions,
+        AIAgent innerAgent,
+        OperationalContextAgentCompactionOptions options,
+        CancellationToken cancellationToken)
+    {
+        HashSet<string> initialStagedCollapseIds = CaptureStagedCollapseIds(session, options);
+
+        try
+        {
+            AgentResponse response = await innerAgent.RunAsync(messages, session, runOptions, cancellationToken).ConfigureAwait(false);
+            CommitNewStagedCollapses(session, options, initialStagedCollapseIds);
+            return response;
+        }
+        catch (OperationalContextModelInvocationException ex) when (
+            options.EnableReactiveCompactionRetry &&
+            options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(ex))
+        {
+            HashSet<string> stagedCollapseIdsAfterFailure = CaptureNewStagedCollapseIds(session, options, initialStagedCollapseIds);
+            if (stagedCollapseIdsAfterFailure.Count > 0 &&
+                options.Reducer.Options.Mode == OperationalContextCompactionMode.ContextCollapse)
+            {
+                IReadOnlyList<ChatMessage> committedProjectionMessages = CommitStagedCollapsesAndPrepareRetryMessages(
+                    [.. messages],
+                    session,
+                    options,
+                    stagedCollapseIdsAfterFailure);
+
+                if (!MessagesAreEquivalentForRetry([.. messages], committedProjectionMessages))
+                {
+                    try
+                    {
+                        AgentResponse response = await innerAgent.RunAsync(committedProjectionMessages, session, runOptions, cancellationToken).ConfigureAwait(false);
+                        CommitNewStagedCollapses(session, options, initialStagedCollapseIds);
+                        return response;
+                    }
+                    catch (OperationalContextModelInvocationException retryEx) when (
+                        options.EnableReactiveCompactionRetry &&
+                        options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(retryEx))
+                    {
+                        // Fall through to a deeper collapse-owned reactive retry.
+                    }
+                }
+            }
+
+            IReadOnlyList<ChatMessage> originalMessages = [.. messages];
+            ReactiveRetryPreparation retryPreparation = await PrepareReactiveRetryAsync(
+                originalMessages,
+                session,
+                options,
+                cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<ChatMessage> compactedMessages = retryPreparation.Messages;
+
+            if (MessagesAreEquivalentForRetry(originalMessages, compactedMessages))
+                throw;
+
+            try
+            {
+                AgentResponse response = await innerAgent.RunAsync(compactedMessages, session, runOptions, cancellationToken).ConfigureAwait(false);
+                CommitNewStagedCollapses(session, options, initialStagedCollapseIds);
+                return response;
+            }
+            catch
+            {
+                DiscardNewStagedCollapses(session, options, initialStagedCollapseIds);
+                throw;
+            }
+        }
+        catch
+        {
+            DiscardNewStagedCollapses(session, options, initialStagedCollapseIds);
+            throw;
+        }
+    }
+
+    private static IAsyncEnumerable<AgentResponseUpdate> RunStreamingAndTrackAsync(
+        IEnumerable<ChatMessage> messages,
+        AgentSession? session,
+        AgentRunOptions? runOptions,
+        AIAgent innerAgent,
+        OperationalContextAgentCompactionOptions options,
+        CancellationToken cancellationToken)
+    {
+        Channel<AgentResponseUpdate> updates = Channel.CreateBounded<AgentResponseUpdate>(1);
+        HashSet<string> initialStagedCollapseIds = CaptureStagedCollapseIds(session, options);
+
+        _ = ProcessAsync();
+        return updates.Reader.ReadAllAsync(cancellationToken);
+
+        async Task ProcessAsync()
+        {
+            Exception? error = null;
+
+            try
+            {
+                await PumpAsync(messages).ConfigureAwait(false);
+                CommitNewStagedCollapses(session, options, initialStagedCollapseIds);
+            }
+            catch (OperationalContextModelInvocationException ex) when (
+                options.EnableReactiveCompactionRetry &&
+                options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(ex))
+            {
+                try
+                {
+                    HashSet<string> stagedCollapseIdsAfterFailure = CaptureNewStagedCollapseIds(session, options, initialStagedCollapseIds);
+                    if (stagedCollapseIdsAfterFailure.Count > 0 &&
+                        options.Reducer.Options.Mode == OperationalContextCompactionMode.ContextCollapse)
+                    {
+                        IReadOnlyList<ChatMessage> committedProjectionMessages = CommitStagedCollapsesAndPrepareRetryMessages(
+                            [.. messages],
+                            session,
+                            options,
+                            stagedCollapseIdsAfterFailure);
+
+                        if (!MessagesAreEquivalentForRetry([.. messages], committedProjectionMessages))
+                        {
+                            try
+                            {
+                                await PumpAsync(committedProjectionMessages).ConfigureAwait(false);
+                                CommitNewStagedCollapses(session, options, initialStagedCollapseIds);
+                                return;
+                            }
+                            catch (OperationalContextModelInvocationException retryEx) when (
+                                options.EnableReactiveCompactionRetry &&
+                                options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(retryEx))
+                            {
+                                // Fall through to a deeper collapse-owned reactive retry.
+                            }
+                        }
+                    }
+
+                    IReadOnlyList<ChatMessage> originalMessages = [.. messages];
+                    ReactiveRetryPreparation retryPreparation = await PrepareReactiveRetryAsync(
+                        originalMessages,
+                        session,
+                        options,
+                        cancellationToken).ConfigureAwait(false);
+                    IReadOnlyList<ChatMessage> compactedMessages = retryPreparation.Messages;
+
+                    if (MessagesAreEquivalentForRetry(originalMessages, compactedMessages))
+                        throw;
+
+                    try
+                    {
+                        await PumpAsync(compactedMessages).ConfigureAwait(false);
+                        CommitNewStagedCollapses(session, options, initialStagedCollapseIds);
+                    }
+                    catch
+                    {
+                        DiscardNewStagedCollapses(session, options, initialStagedCollapseIds);
+                        throw;
+                    }
+                }
+                catch (Exception retryEx)
+                {
+                    error = retryEx;
+                }
+            }
+            catch (Exception ex)
+            {
+                DiscardNewStagedCollapses(session, options, initialStagedCollapseIds);
+                error = ex;
+            }
+            finally
+            {
+                updates.Writer.TryComplete(error);
+            }
+        }
+
+        async Task PumpAsync(IEnumerable<ChatMessage> currentMessages)
+        {
+            await foreach (AgentResponseUpdate update in innerAgent.RunStreamingAsync(currentMessages, session, runOptions, cancellationToken).ConfigureAwait(false))
+            {
+                await updates.Writer.WriteAsync(update, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static HashSet<string> CaptureStagedCollapseIds(
+        AgentSession? session,
+        OperationalContextAgentCompactionOptions options) =>
+        options.CollapseController is null
+            ? []
+            : options.CollapseController.CaptureStagedCollapseIds(session);
+
+    private static HashSet<string> CaptureNewStagedCollapseIds(
+        AgentSession? session,
+        OperationalContextAgentCompactionOptions options,
+        HashSet<string> initialStagedCollapseIds)
+    {
+        if (options.CollapseController is null)
+            return [];
+
+        return options.CollapseController.CaptureNewStagedCollapseIds(session, initialStagedCollapseIds);
+    }
+
+    private static void CommitNewStagedCollapses(
+        AgentSession? session,
+        OperationalContextAgentCompactionOptions options,
+        HashSet<string> initialStagedCollapseIds)
+    {
+        if (options.CollapseController is null)
+            return;
+
+        CommitStagedCollapses(session, options, CaptureNewStagedCollapseIds(session, options, initialStagedCollapseIds));
+    }
+
+    private static void DiscardNewStagedCollapses(
+        AgentSession? session,
+        OperationalContextAgentCompactionOptions options,
+        HashSet<string> initialStagedCollapseIds)
+    {
+        if (options.CollapseController is null)
+            return;
+
+        options.CollapseController.DiscardPendingCollapses(
+            session,
+            CaptureNewStagedCollapseIds(session, options, initialStagedCollapseIds));
+    }
+
+    private static void CommitStagedCollapses(
+        AgentSession? session,
+        OperationalContextAgentCompactionOptions options,
+        IEnumerable<string> collapseIds)
+        => options.CollapseController?.CommitPendingCollapses(session, collapseIds);
+
+    private static IReadOnlyList<ChatMessage> CommitStagedCollapsesAndPrepareRetryMessages(
+        IReadOnlyList<ChatMessage> originalMessages,
+        AgentSession? session,
+        OperationalContextAgentCompactionOptions options,
+        IEnumerable<string> collapseIds)
+    {
+        CommitStagedCollapses(session, options, collapseIds);
+        return options.CollapseController?.PrepareMessages(originalMessages, session) ?? originalMessages;
+    }
+
+    private static async Task<ReactiveRetryPreparation> PrepareReactiveRetryAsync(
+        IReadOnlyList<ChatMessage> originalMessages,
+        AgentSession? session,
+        OperationalContextAgentCompactionOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (options.Reducer.Options.Mode == OperationalContextCompactionMode.ContextCollapse)
+            return new ReactiveRetryPreparation
+            {
+                Messages = await options.CollapseController!
+                    .PrepareReactiveRetryAsync(originalMessages, session, cancellationToken)
+                    .ConfigureAwait(false),
+            };
+
+        IReadOnlyList<ChatMessage> retryMessages = options.MessageShrinker.ApplySnip(originalMessages, options.Reducer.Options).Messages;
+        OperationalContextCompactionResult result =
+            await options.Reducer.CompactReactiveAsync(retryMessages, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<ChatMessage> compactedMessages = OperationalContextChatReducer.BuildMessages(result);
+
+        return new ReactiveRetryPreparation
+        {
+            Messages = compactedMessages,
+        };
+    }
+
+    private sealed class ReactiveRetryPreparation
+    {
+        public required IReadOnlyList<ChatMessage> Messages { get; init; }
     }
 }

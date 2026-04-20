@@ -330,7 +330,8 @@ public sealed class RuleReviewWorkflowTests
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsGreaterThan(0, summarizer.CallCount);
         Assert.IsGreaterThanOrEqualTo(2, reviewInvocations.Count);
-        Assert.IsTrue(summarizer.LastSummaryPrompt?.Contains("Summarize the current Rule Review-stage work", StringComparison.Ordinal) == true);
+        Assert.IsNotNull(summarizer.LastSummaryPrompt);
+        StringAssert.Contains(summarizer.LastSummaryPrompt, "Summarize the current Rule Review-stage work");
 
         ChatInvocation compactedInvocation = reviewInvocations.First(invocation =>
             invocation.Messages.Any(IsSummaryArtifactMessage));
@@ -703,13 +704,12 @@ public sealed class RuleReviewWorkflowTests
         IOperationalContextCompactionSummarizer? summarizer = null) =>
         new OperationalContextAgentCompactionOptionsFactory(
             new PromptAssetReader(),
-            summarizer ?? new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"),
-            new FixedUsageProvider(usedTokens: 100))
+            summarizer ?? new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"))
             .CreateFromPromptAsset(
                 summaryPromptAssetPath,
                 new OperationalContextCompactionOptions
                 {
-                    ContextTokenThreshold = 10,
+                    ModelContextWindowTokens = 100,
                 });
 
     private static ChatResponse CreateAssistantResponse(string text)
@@ -787,16 +787,6 @@ public sealed class RuleReviewWorkflowTests
         IReadOnlyList<ChatMessage> Messages,
         ChatOptions? Options,
         int CallIndex);
-
-    private sealed class FixedUsageProvider(long usedTokens) : IOperationalContextCompactionUsageProvider
-    {
-        public ValueTask<OperationalContextCompactionUsage?> GetUsageAsync(
-            IReadOnlyList<ChatMessage> messages,
-            CancellationToken cancellationToken) => ValueTask.FromResult<OperationalContextCompactionUsage?>(new OperationalContextCompactionUsage
-            {
-                UsedTokens = usedTokens,
-            });
-    }
 
     private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer
     {

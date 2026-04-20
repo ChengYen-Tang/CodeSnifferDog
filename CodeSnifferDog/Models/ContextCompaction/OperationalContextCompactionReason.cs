@@ -4,4 +4,5 @@ public enum OperationalContextCompactionReason
 {
     AutomaticThreshold = 0,
     Reactive = 1,
+    ContextCollapseProactive = 2,
 }

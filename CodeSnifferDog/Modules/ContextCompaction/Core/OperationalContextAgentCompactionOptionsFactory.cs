@@ -3,19 +3,16 @@ using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
-using Microsoft.Agents.AI.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
 public sealed class OperationalContextAgentCompactionOptionsFactory(
     PromptAssetReader promptAssetReader,
     IOperationalContextCompactionSummarizer summarizer,
-    IOperationalContextCompactionUsageProvider usageProvider,
     IOperationalContextReactiveCompactionExceptionDecider? reactiveExceptionDecider = null)
 {
     private readonly PromptAssetReader _promptAssetReader = promptAssetReader;
     private readonly IOperationalContextCompactionSummarizer _summarizer = summarizer;
-    private readonly IOperationalContextCompactionUsageProvider _usageProvider = usageProvider;
     private readonly IOperationalContextReactiveCompactionExceptionDecider _reactiveExceptionDecider =
         reactiveExceptionDecider ?? new DefaultOperationalContextReactiveCompactionExceptionDecider();
 
@@ -31,16 +28,19 @@ public sealed class OperationalContextAgentCompactionOptionsFactory(
 
         string promptPath = _promptAssetReader.GetRequiredPromptPath(summaryPromptAssetPath);
 
+        OperationalContextChatReducer reducer = new(
+            options,
+            new FileSystemOperationalContextSummaryPromptProvider(promptPath),
+            _summarizer,
+            artifactsProvider: new MetadataOperationalContextCompactionArtifactsProvider(options),
+            hooks,
+            cleanupHandlers);
+
         return new OperationalContextAgentCompactionOptions
         {
-            Reducer = new OperationalContextChatReducer(
-                options,
-                new FileSystemOperationalContextSummaryPromptProvider(promptPath),
-                _summarizer,
-                _usageProvider,
-                hooks,
-                cleanupHandlers),
-            AutomaticCompactionTrigger = CompactionTriggers.TokensExceed(options.ContextTokenThreshold),
+            Reducer = reducer,
+            CollapseController = new OperationalContextCollapseController(reducer),
+            MessageShrinker = new OperationalContextMessageShrinker(),
             EnableReactiveCompactionRetry = enableReactiveCompactionRetry,
             ReactiveExceptionDecider = _reactiveExceptionDecider,
         };

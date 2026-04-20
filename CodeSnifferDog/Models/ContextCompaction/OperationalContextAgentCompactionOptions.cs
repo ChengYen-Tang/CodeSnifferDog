@@ -1,4 +1,3 @@
-using Microsoft.Agents.AI.Compaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 
@@ -8,7 +7,9 @@ public sealed class OperationalContextAgentCompactionOptions
 {
     public required OperationalContextChatReducer Reducer { get; init; }
 
-    public required CompactionTrigger AutomaticCompactionTrigger { get; init; }
+    public OperationalContextCollapseController? CollapseController { get; init; }
+
+    public OperationalContextMessageShrinker MessageShrinker { get; init; } = new();
 
     public bool EnableReactiveCompactionRetry { get; init; } = true;
 

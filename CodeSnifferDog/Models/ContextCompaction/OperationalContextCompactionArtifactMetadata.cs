@@ -3,6 +3,7 @@ namespace CodeSnifferDog.Models.ContextCompaction;
 public static class OperationalContextCompactionArtifactMetadata
 {
     public const string ArtifactKindKey = "codesnifferdog.compaction.artifact_kind";
+    public const string MessageIdentityKey = "codesnifferdog.compaction.message_id";
     public const string CompactionReasonKey = "codesnifferdog.compaction.reason";
     public const string SummaryFormatVersionKey = "codesnifferdog.compaction.summary_format_version";
     public const string IsCompactionSummaryKey = "codesnifferdog.compaction.is_summary";
@@ -23,7 +24,24 @@ public static class OperationalContextCompactionArtifactMetadata
     public const string MessagesToKeepCountKey = "codesnifferdog.compaction.messages_to_keep_count";
     public const string AttachmentsCountKey = "codesnifferdog.compaction.attachments_count";
     public const string HookResultsCountKey = "codesnifferdog.compaction.hook_results_count";
+    public const string ContinuityCurrentObjectiveKey = "codesnifferdog.compaction.continuity.current_objective";
+    public const string ContinuityCompletedWorkKey = "codesnifferdog.compaction.continuity.completed_work";
+    public const string ContinuityNextStepsKey = "codesnifferdog.compaction.continuity.next_steps";
+    public const string ContinuityCriticalContextKey = "codesnifferdog.compaction.continuity.critical_context";
+    public const string ShrinkOperationKey = "codesnifferdog.compaction.shrink_operation";
+    public const string ShrunkToolResultCountKey = "codesnifferdog.compaction.shrunk_tool_result_count";
+    public const string FreedEstimatedTokensKey = "codesnifferdog.compaction.freed_estimated_tokens";
+    public const string CompactedToolCallIdKey = "codesnifferdog.compaction.compacted_tool_call_id";
+    public const string CompactedToolNameKey = "codesnifferdog.compaction.compacted_tool_name";
+    public const string CompactedToolResultKindKey = "codesnifferdog.compaction.compacted_tool_result_kind";
+    public const string CollapseCommitIdKey = "codesnifferdog.compaction.collapse_commit_id";
     public const string BoundaryArtifactKind = "boundary";
     public const string SummaryArtifactKind = "summary";
+    public const string AttachmentArtifactKind = "attachment";
+    public const string HookResultArtifactKind = "hook_result";
+    public const string ContinuityArtifactKind = "continuity_state";
+    public const string SnipBoundaryArtifactKind = "snip_boundary";
+    public const string CollapseProjectionArtifactKind = "collapse_projection";
+    public const string MicroCompactToolResultArtifactKind = "microcompact_tool_result";
     public const int CurrentSummaryFormatVersion = 1;
 }

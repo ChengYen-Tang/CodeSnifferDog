@@ -16,7 +16,6 @@ public sealed class ReviewAgentTeamWorkerTests
 {
     private const string RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
     private static readonly IReadOnlyList<string> RuleMarkdowns = ["- Rule A", "- Rule B"];
-    private static int _cleanupCallCount;
 
     [TestMethod]
     public async Task AnalyzeAsync_UsesSharedWorkerBudget_AndReturnsPreparationAndReviewResults()
@@ -28,9 +27,9 @@ public sealed class ReviewAgentTeamWorkerTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, worker.MaxParallelAgents);
-        Assert.AreEqual(1, result.Value.PreparationResult.ProjectPlanResults.Count);
-        Assert.AreEqual(1, result.Value.ReviewStageResult.ProjectResults.Count);
-        Assert.AreEqual(1, result.Value.ReviewStageResult.ProjectResults[0].ReviewGroupResults.Count);
+        Assert.HasCount(1, result.Value.PreparationResult.ProjectPlanResults);
+        Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults);
+        Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults[0].ReviewGroupResults);
     }
 
     [TestMethod]
@@ -96,27 +95,27 @@ public sealed class ReviewAgentTeamWorkerTests
     [TestMethod]
     public void Dispose_CallsCleanupHookOnce()
     {
-        _cleanupCallCount = 0;
-        ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory());
+        int cleanupCallCount = 0;
+        ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory(() => cleanupCallCount++));
 
         worker.Dispose();
         worker.Dispose();
 
-        Assert.AreEqual(1, _cleanupCallCount);
+        Assert.AreEqual(1, cleanupCallCount);
     }
 
     [TestMethod]
     public async Task DisposeAsync_CallsCleanupHookOnce()
     {
-        _cleanupCallCount = 0;
-        await using ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory());
+        int cleanupCallCount = 0;
+        await using ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory(() => cleanupCallCount++));
 
         await worker.DisposeAsync();
 
-        Assert.AreEqual(1, _cleanupCallCount);
+        Assert.AreEqual(1, cleanupCallCount);
     }
 
-    private static ReviewAgentTeamFactory CreateTeamFactory() =>
+    private static ReviewAgentTeamFactory CreateTeamFactory(Action? cleanupAction = null) =>
         new(new ReviewAgentTeamDependencies
         {
             ScanWorkflowRunner = (repositoryRootPath, cancellationToken) =>
@@ -127,7 +126,7 @@ public sealed class ReviewAgentTeamWorkerTests
                 Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown))),
             CleanupAsync = cancellationToken =>
             {
-                _cleanupCallCount++;
+                cleanupAction?.Invoke();
                 return ValueTask.CompletedTask;
             },
         });
