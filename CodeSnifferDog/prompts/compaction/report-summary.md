@@ -16,7 +16,9 @@ Your summary must include:
 - Which dedupe or merge decisions were already made
 
 3. Current state
+- What the current flow issues are for this iteration
 - What the current repository-level issue state or diff is trying to express
+- What changed in the current diff compared with the previous repository snapshot
 - Which merge decisions are stable
 - Which merge decisions are still uncertain
 

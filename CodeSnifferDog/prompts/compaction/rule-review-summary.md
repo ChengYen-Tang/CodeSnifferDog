@@ -21,6 +21,8 @@ Your summary must include:
 3. Current state
 - What evidence currently exists
 - What coverage is already achieved
+- Which scope entry files are still not inspected, if any
+- Why any scope entry file was not inspected yet
 - What cross-scope dependencies are already understood
 - What parts of the investigation are still weak or incomplete
 
