@@ -9,6 +9,6 @@ public sealed class ReviewAgentTeamFactory(ReviewAgentTeamDependencies dependenc
     public ReviewAgentTeamWorker CreateWorker(
         string repositoryRootPath,
         IReadOnlyList<string> ruleMarkdowns,
-        int maxParallelAgents) =>
-        new(repositoryRootPath, ruleMarkdowns, maxParallelAgents, _dependencies);
+        ReviewAgentTeamExecutionOptions executionOptions) =>
+        new(repositoryRootPath, ruleMarkdowns, executionOptions, _dependencies);
 }

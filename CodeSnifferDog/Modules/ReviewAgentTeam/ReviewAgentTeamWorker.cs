@@ -24,21 +24,25 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
     internal ReviewAgentTeamWorker(
         string repositoryRootPath,
         IReadOnlyList<string> ruleMarkdowns,
-        int maxParallelAgents,
+        ReviewAgentTeamExecutionOptions executionOptions,
         ReviewAgentTeamDependencies dependencies)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
         ArgumentNullException.ThrowIfNull(ruleMarkdowns);
+        ArgumentNullException.ThrowIfNull(executionOptions);
 
-        if (maxParallelAgents <= 0)
-            throw new ArgumentOutOfRangeException(nameof(maxParallelAgents), "Max parallel agents must be greater than zero.");
+        if (executionOptions.MaxParallelAgents <= 0)
+            throw new ArgumentOutOfRangeException(nameof(executionOptions), "Max parallel agents must be greater than zero.");
+        if (executionOptions.ModelContextWindowTokens <= 0)
+            throw new ArgumentOutOfRangeException(nameof(executionOptions), "Model context window tokens must be greater than zero.");
 
         _repositoryRootPath = repositoryRootPath.Trim();
         _ruleMarkdowns = ruleMarkdowns.Select(ruleMarkdown => ruleMarkdown?.Trim() ?? string.Empty).ToArray();
         _cleanupAsync = dependencies.CleanupAsync;
-        MaxParallelAgents = maxParallelAgents;
-        _concurrencyGate = new ReviewAgentConcurrencyGate(maxParallelAgents);
+        ExecutionOptions = executionOptions;
+        MaxParallelAgents = executionOptions.MaxParallelAgents;
+        _concurrencyGate = new ReviewAgentConcurrencyGate(executionOptions.MaxParallelAgents);
         ReviewGroupWorkflow reviewGroupWorkflow = new();
 
         ReviewStageRuleLaneScheduler scheduler = new(dependencies.RuleFlowWorkflowRunner, _concurrencyGate);
@@ -52,6 +56,8 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
     }
 
     public int MaxParallelAgents { get; }
+
+    public ReviewAgentTeamExecutionOptions ExecutionOptions { get; }
 
     public Task<Result<ReviewAgentTeamRunResult>> AnalyzeAsync(CancellationToken cancellationToken = default)
     {

@@ -27,6 +27,7 @@ public sealed class ReviewAgentTeamWorkerTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, worker.MaxParallelAgents);
+        Assert.AreEqual(128_000L, worker.ExecutionOptions.ModelContextWindowTokens);
         Assert.HasCount(1, result.Value.PreparationResult.ProjectPlanResults);
         Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults);
         Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults[0].ReviewGroupResults);
@@ -73,7 +74,10 @@ public sealed class ReviewAgentTeamWorkerTests
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
 
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, 0));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, new ReviewAgentTeamExecutionOptions
+        {
+            MaxParallelAgents = 0,
+        }));
     }
 
     [TestMethod]
@@ -81,7 +85,7 @@ public sealed class ReviewAgentTeamWorkerTests
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
 
-        Assert.ThrowsExactly<ArgumentException>(() => teamFactory.CreateWorker(" ", RuleMarkdowns, 2));
+        Assert.ThrowsExactly<ArgumentException>(() => teamFactory.CreateWorker(" ", RuleMarkdowns, CreateExecutionOptions()));
     }
 
     [TestMethod]
@@ -89,7 +93,19 @@ public sealed class ReviewAgentTeamWorkerTests
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
 
-        Assert.ThrowsExactly<ArgumentNullException>(() => teamFactory.CreateWorker(RepositoryRootPath, null!, 2));
+        Assert.ThrowsExactly<ArgumentNullException>(() => teamFactory.CreateWorker(RepositoryRootPath, null!, CreateExecutionOptions()));
+    }
+
+    [TestMethod]
+    public void CreateWorker_ThrowsWhenModelContextWindowTokensIsNotPositive()
+    {
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, new ReviewAgentTeamExecutionOptions
+        {
+            MaxParallelAgents = 2,
+            ModelContextWindowTokens = 0,
+        }));
     }
 
     [TestMethod]
@@ -132,7 +148,12 @@ public sealed class ReviewAgentTeamWorkerTests
         });
 
     private static ReviewAgentTeamWorker CreateWorker(ReviewAgentTeamFactory teamFactory) =>
-        teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, 2);
+        teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, CreateExecutionOptions());
+
+    private static ReviewAgentTeamExecutionOptions CreateExecutionOptions() => new()
+    {
+        MaxParallelAgents = 2,
+    };
 
     private static ScanWorkflowResult CreateScanResult(params StoredScanProject[] projects) =>
         new()

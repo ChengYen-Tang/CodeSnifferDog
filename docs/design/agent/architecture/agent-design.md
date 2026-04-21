@@ -264,10 +264,11 @@ Review 階段的平行原則如下：
 - 外部應先建立 `ReviewAgentTeam` 的組裝入口，提供 `Scan`、`Project Plan`、`Rule Flow` 對應的 workflow runners。
 - 每次 project / repo 分析開始時，再由該 team 建立一個 `Worker` 實例。
 - `Worker` 建立時就應綁定這次分析的 `repository root path` 與 `rule markdowns`。
-- `Worker` 也應接收少量明確的執行策略輸入，第一版至少包含：
+- `Worker` 也應接收一個 `ExecutionOptions` DTO，作為少量明確的執行策略輸入。
+- 第一版 `ExecutionOptions` 至少應包含：
   - `MaxParallelAgents`
-  - `ExecutionProfile`
   - `ModelContextWindowTokens`
+  - `ContextCompactionMode`
 - `Worker` 持有該次分析專屬的共享 concurrency budget，並透過單一 `AnalyzeAsync` 入口負責串起 preparation 與 review stage。
 - `Worker` 應提供明確的 cleanup 邊界，用來釋放 team surface 持有的 runtime 資源，而不只依賴底層 workflow 的間接清理。
 - `Worker` 結束後，flow 相關的暫態狀態與 agents 應隨之清理；repo-level report snapshot 則依既有規則保留。

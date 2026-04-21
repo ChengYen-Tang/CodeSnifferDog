@@ -112,6 +112,13 @@
 
 - `RepositoryRootPath` 與 `RuleMarkdowns` 屬於分析目標，應在 worker 建立時綁定。
 - `ModelContextWindowTokens` 屬於 compaction 與執行策略相關輸入。
+- 第一版正式對外暴露的 compaction 相關設定，應透過 worker 的 `ExecutionOptions` DTO 提供，而不是獨立散落。
+- 第一版 `ExecutionOptions` 至少應包含：
+  - `MaxParallelAgents`
+  - `ModelContextWindowTokens`
+  - `ContextCompactionMode`
+- `ModelContextWindowTokens` 第一版預設值為 `128_000`。
+- 其他 compaction 參數應維持內部預設值或由程式邏輯推導，不直接暴露給一般使用者。
 - 第一版的 compaction 相關內部推導值應至少包含：
   - `SummaryReservedOutputTokens`
   - `AutoCompactBufferTokens`
