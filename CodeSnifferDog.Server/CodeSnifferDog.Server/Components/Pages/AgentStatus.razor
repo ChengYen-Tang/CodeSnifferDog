@@ -1,0 +1,96 @@
+@page "/agent-status"
+
+<PageTitle>Agent Status</PageTitle>
+
+<div class="dashboard-page">
+    <div class="page-heading">
+        <h1 class="h2 mb-1">Agent Status</h1>
+        <p class="text-secondary mb-0">Trace agents, tool calls, verifier feedback, and retries.</p>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h4 mb-1">Payment.Service / Controllers + Services</h2>
+            <p class="text-secondary mb-0">Dedicated trace page for agent conversation, tool usage, verifier feedback, and retries.</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Agents</h2>
+                    <div class="list-group">
+                        <div class="list-group-item">
+                            <div class="fw-semibold">Rule Review Agent</div>
+                            <small class="text-primary">Running</small>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="fw-semibold">Review Verifier Agent</div>
+                            <small class="text-secondary">Waiting</small>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="fw-semibold">Report Aggregator</div>
+                            <small class="text-secondary">Waiting</small>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="fw-semibold">Report Verifier</div>
+                            <small class="text-secondary">Waiting</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Interaction History</h2>
+                    <div class="timeline-list">
+                        <div class="timeline-item">
+                            <div class="fw-semibold">10:14:21</div>
+                            <div class="text-secondary">Rule Review Agent started memory-leak rule.</div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="fw-semibold">10:14:24</div>
+                            <div class="text-secondary">Shell tool enumerated retry-related files.</div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="fw-semibold">10:14:28</div>
+                            <div class="text-secondary">Ripgrep searched IDisposable and cancellation paths.</div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="fw-semibold">10:14:43</div>
+                            <div class="text-secondary">CreateRuleReviewIssue inserted a new issue.</div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="fw-semibold">10:15:02</div>
+                            <div class="text-secondary">Review Verifier returned bounce: evidence too thin.</div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="fw-semibold">10:15:24</div>
+                            <div class="text-secondary">Rule Review Agent resumed with verifier feedback.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Inspector</h2>
+                    <div class="small text-uppercase fw-bold text-secondary mb-2">Latest Tool</div>
+                    <div class="border rounded p-3 bg-light mb-3">
+                        <div class="fw-semibold">RunRipgrepCommand</div>
+                        <code>rg -n "IDisposable|Dispose|cancel"</code>
+                    </div>
+                    <div class="small text-uppercase fw-bold text-secondary mb-2">Verifier Feedback</div>
+                    <div class="border rounded p-3 bg-light">
+                        Cross-scope evidence too thin. Need follow-up file justification.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

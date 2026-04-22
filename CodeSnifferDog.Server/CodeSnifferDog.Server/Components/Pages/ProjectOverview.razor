@@ -1,0 +1,128 @@
+@page "/project-overview"
+
+<PageTitle>Project Overview</PageTitle>
+
+<div class="dashboard-page">
+    <div class="page-heading">
+        <h1 class="h2 mb-1">Project Overview</h1>
+        <p class="text-secondary mb-0">Operational summary for the selected project.</p>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm border-start border-primary border-4 h-100">
+                <div class="card-body">
+                    <div class="text-uppercase small fw-bold text-primary mb-2">Status</div>
+                    <div class="h2 fw-bold mb-1">Reviewing</div>
+                    <div class="text-secondary">Active project state</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm border-start border-success border-4 h-100">
+                <div class="card-body">
+                    <div class="text-uppercase small fw-bold text-success mb-2">Uploaded</div>
+                    <div class="h2 fw-bold mb-1">10:11</div>
+                    <div class="text-secondary">Today</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm border-start border-warning border-4 h-100">
+                <div class="card-body">
+                    <div class="text-uppercase small fw-bold text-warning mb-2">Tasks</div>
+                    <div class="h2 fw-bold mb-1">8</div>
+                    <div class="text-secondary">Planned work items</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm border-start border-danger border-4 h-100">
+                <div class="card-body">
+                    <div class="text-uppercase small fw-bold text-danger mb-2">Reports</div>
+                    <div class="h2 fw-bold mb-1">2 Ready</div>
+                    <div class="text-secondary">Current output count</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Project Lifecycle</h2>
+            <div class="d-flex flex-wrap gap-2">
+                <span class="badge rounded-pill text-bg-primary px-3 py-2">Uploaded</span>
+                <span class="badge rounded-pill text-bg-primary px-3 py-2">Queued</span>
+                <span class="badge rounded-pill text-bg-primary px-3 py-2">Scan</span>
+                <span class="badge rounded-pill text-bg-primary px-3 py-2">Plan</span>
+                <span class="badge rounded-pill text-bg-primary px-3 py-2">Review</span>
+                <span class="badge rounded-pill text-bg-light text-secondary border px-3 py-2">Aggregate</span>
+                <span class="badge rounded-pill text-bg-light text-secondary border px-3 py-2">Done</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h2 class="h5 mb-1">Task Items</h2>
+                            <p class="text-secondary mb-0">Selected project scope breakdown and current rule flow status.</p>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Task Scope</th>
+                                    <th>Rule Flows</th>
+                                    <th>Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="fw-semibold">Controllers + Services</td>
+                                    <td>4 / 6</td>
+                                    <td>12s ago</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold">Repositories + Models</td>
+                                    <td>0 / 6</td>
+                                    <td>1m ago</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold">SessionCache + RetryPath</td>
+                                    <td>6 / 6</td>
+                                    <td>2m ago</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold">Interop Boundary</td>
+                                    <td>6 / 6</td>
+                                    <td>3m ago</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Available Views</h2>
+                    <p class="text-secondary">These links enable based on project lifecycle.</p>
+
+                    <div class="d-grid gap-3">
+                        <a class="btn btn-outline-primary text-start" href="agent-status">Open Agent Status</a>
+                        <a class="btn btn-outline-secondary text-start" href="reports">Open Reports</a>
+                        <button type="button" class="btn btn-outline-secondary text-start" disabled>Retry Failed Stage</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

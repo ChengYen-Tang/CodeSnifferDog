@@ -1,0 +1,192 @@
+@rendermode InteractiveServer
+
+@code {
+    private string _selectedProject = "Payment.Service";
+
+    private readonly List<ProjectGroup> _groups =
+    [
+        new("Reviewing", "R", "group-icon-reviewing", true,
+        [
+            new("Payment.Service", "uploaded 10:11",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("X", "Cancel", null)
+            ]),
+            new("Gateway.Api", "uploaded 10:03",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("X", "Cancel", null)
+            ]),
+            new("Scheduler.Worker", "uploaded 09:58",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("X", "Cancel", null)
+            ])
+        ]),
+        new("Completed", "C", "group-icon-completed", true,
+        [
+            new("Legacy.Native", "uploaded 09:47",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("R", "Report", "reports"),
+                new("D", "Delete", null)
+            ]),
+            new("Desktop.Tooling", "uploaded 09:11",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("R", "Report", "reports"),
+                new("D", "Delete", null)
+            ]),
+            new("Billing.Contracts", "uploaded 08:43",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("R", "Report", "reports"),
+                new("D", "Delete", null)
+            ])
+        ]),
+        new("Queued", "Q", "group-icon-queued", true,
+        [
+            new("Core.Engine", "uploaded 10:16",
+            [
+                new("D", "Delete", null)
+            ]),
+            new("Rules.Library", "uploaded 10:14",
+            [
+                new("D", "Delete", null)
+            ]),
+            new("Portal.Admin", "uploaded 10:12",
+            [
+                new("D", "Delete", null)
+            ])
+        ]),
+        new("Failed", "F", "group-icon-failed", false,
+        [
+            new("Portal.Web", "uploaded 09:31",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("D", "Delete", null)
+            ]),
+            new("Device.Host", "uploaded 09:08",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("D", "Delete", null)
+            ]),
+            new("Import.Tool", "uploaded 08:51",
+            [
+                new("S", "Agent Team / Worker Status", "agent-status"),
+                new("D", "Delete", null)
+            ])
+        ]),
+        new("Canceled", "C", "group-icon-canceled", false,
+        [
+            new("Bridge.Console", "uploaded 08:52",
+            [
+                new("D", "Delete", null)
+            ]),
+            new("Indexer.Job", "uploaded 08:37",
+            [
+                new("D", "Delete", null)
+            ]),
+            new("Parser.Legacy", "uploaded 08:15",
+            [
+                new("D", "Delete", null)
+            ])
+        ])
+    ];
+
+    private void ToggleGroup(ProjectGroup group)
+    {
+        group.IsExpanded = !group.IsExpanded;
+        StateHasChanged();
+    }
+
+    private void SelectProject(string projectName)
+    {
+        _selectedProject = projectName;
+    }
+
+    private sealed record ProjectAction(string IconText, string Label, string? Href);
+
+    private sealed record ProjectItem(string Name, string Meta, IReadOnlyList<ProjectAction> Actions);
+
+    private sealed class ProjectGroup(
+        string title,
+        string iconText,
+        string iconCssClass,
+        bool isExpanded,
+        IReadOnlyList<ProjectItem> items)
+    {
+        public string Title { get; } = title;
+        public string IconText { get; } = iconText;
+        public string IconCssClass { get; } = iconCssClass;
+        public bool IsExpanded { get; set; } = isExpanded;
+        public IReadOnlyList<ProjectItem> Items { get; } = items;
+    }
+}
+
+<div class="sidebar-shell">
+    <div class="sidebar-brand">
+        <div class="brand-main">
+            <img class="brand-logo" src="images/Dog.png" alt="CodeSnifferDog" />
+            <div class="brand-title">CodeSnifferDog</div>
+        </div>
+    </div>
+
+    <div class="sidebar-groups">
+        @foreach (var group in _groups)
+        {
+            <section class="status-group" @key="group.Title">
+                <div class="status-summary" role="button" tabindex="0" title="@group.Title" @onclick="() => ToggleGroup(group)">
+                    <span class="status-heading">
+                        <span class="group-icon @group.IconCssClass">@group.IconText</span>
+                        <span class="group-title">@group.Title</span>
+                    </span>
+                    <span class="group-summary-meta">
+                        <span class="group-count">@group.Items.Count</span>
+                        <span class="group-chevron">@(group.IsExpanded ? "˅" : ">")</span>
+                    </span>
+                </div>
+
+                @if (group.IsExpanded)
+                {
+                    <div class="project-list">
+                        @foreach (var item in group.Items)
+                        {
+                            <div class="project-link @(item.Name == _selectedProject ? "active" : null)" @key="item.Name">
+                                <button type="button" class="project-main" @onclick="() => SelectProject(item.Name)">
+                                    <span class="project-name">@item.Name</span>
+                                    <span class="project-meta">@item.Meta</span>
+                                </button>
+
+                                <div class="project-actions">
+                                    @foreach (var action in item.Actions)
+                                    {
+                                        if (action.Href is not null)
+                                        {
+                                            <a class="project-action-button" href="@action.Href" title="@action.Label" @onclick:stopPropagation="true">
+                                                @action.IconText
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="project-action-button" title="@action.Label" @onclick:stopPropagation="true">
+                                                @action.IconText
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+
+    <div class="sidebar-footer">
+        <button type="button" class="add-project-button">
+            <span class="add-project-plus">+</span>
+            <span>Add New Project</span>
+        </button>
+    </div>
+</div>

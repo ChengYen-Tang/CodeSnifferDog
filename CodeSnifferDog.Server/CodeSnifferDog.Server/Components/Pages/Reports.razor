@@ -1,0 +1,54 @@
+@page "/reports"
+
+<PageTitle>Reports</PageTitle>
+
+<div class="dashboard-page">
+    <div class="page-heading">
+        <h1 class="h2 mb-1">Reports</h1>
+        <p class="text-secondary mb-0">Browse generated markdown reports for the selected project.</p>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h4 mb-1">Legacy.Native / Completed</h2>
+            <p class="text-secondary mb-0">Reports are available because markdown generation has completed for this project.</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">Available Reports</h2>
+                    <div class="list-group">
+                        <a class="list-group-item list-group-item-action active" href="#">memory-leak-report.md</a>
+                        <a class="list-group-item list-group-item-action" href="#">performance-report.md</a>
+                        <a class="list-group-item list-group-item-action" href="#">resource-cleanup-report.md</a>
+                        <a class="list-group-item list-group-item-action" href="#">native-lifetime-report.md</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-9">
+            <div class="card shadow-sm h-100">
+                <div class="card-body report-reader">
+                    <h2># memory-leak-report.md</h2>
+                    <h3>Summary</h3>
+                    <p>Potential subscription retention was found when retry logic reconnects after cancellation windows.</p>
+
+                    <h3>Findings</h3>
+                    <ul>
+                        <li>Issue type: Memory leak risk</li>
+                        <li>File / function if available: SessionCache / ReconnectAsync</li>
+                        <li>Why this is a problem: retained handlers may keep worker state alive longer than intended.</li>
+                        <li>Suggested fix direction: centralize disposal and align cancellation with unsubscribe flow.</li>
+                    </ul>
+
+                    <h3>Evidence</h3>
+                    <p>The rule flow inspected scope entry files and followed calls into RetryCoordinator and WorkerSession.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

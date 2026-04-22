@@ -1,0 +1,82 @@
+@page "/"
+
+<PageTitle>New Project</PageTitle>
+
+<div class="dashboard-page">
+    <div class="page-heading">
+        <h1 class="h2 mb-1">New Project</h1>
+        <p class="text-secondary mb-0">Create a new analysis job from a zipped repository upload.</p>
+    </div>
+
+    <div class="card shadow-sm border-0 dashboard-card">
+        <div class="card-body p-4 p-xl-5">
+            <div class="row g-4">
+                <div class="col-xl-8">
+                    <div class="display-3 fw-bold text-primary mb-3">CodeSnifferDog</div>
+                    <p class="fs-4 text-secondary mb-5">
+                        Upload a zip archive, assign a project name, and let the automated review pipeline queue the project.
+                    </p>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Project Name</label>
+                        <input class="form-control form-control-lg" type="text" placeholder="Payment.Service" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Zip Archive</label>
+                        <div class="upload-dropzone">
+                            <div class="upload-title">Drop .zip here or click to browse</div>
+                            <div class="upload-subtitle">Server mode will unpack the archive, run the workflow, then remove uploaded source artifacts.</div>
+                        </div>
+                    </div>
+
+                    <p class="small text-secondary mb-4">
+                        Accepted format: <code>.zip</code>. Reports remain available online after the run completes.
+                    </p>
+
+                    <div class="d-flex flex-wrap gap-3">
+                        <button type="button" class="btn btn-primary btn-lg px-4">Create Project and Queue Analysis</button>
+                        <a class="btn btn-light btn-lg px-4 border" href="project-overview">View Projects</a>
+                    </div>
+                </div>
+
+                <div class="col-xl-4">
+                    <div class="d-grid gap-3">
+                        <div class="card shadow-sm border-start border-info border-4">
+                            <div class="card-body">
+                                <div class="text-uppercase small fw-bold text-info mb-2">Workers</div>
+                                <div class="display-5 fw-bold text-dark-emphasis mb-1">8</div>
+                                <div class="text-secondary">Max project workers</div>
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm border-start border-success border-4">
+                            <div class="card-body">
+                                <div class="text-uppercase small fw-bold text-success mb-2">Rules</div>
+                                <div class="display-5 fw-bold text-dark-emphasis mb-1">6</div>
+                                <div class="text-secondary">Auto-discovered markdown rule sets</div>
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm border-start border-warning border-4">
+                            <div class="card-body">
+                                <div class="text-uppercase small fw-bold text-warning mb-2">Reports</div>
+                                <div class="display-6 fw-bold text-dark-emphasis mb-1">Markdown</div>
+                                <div class="text-secondary">Readable online and exportable</div>
+                            </div>
+                        </div>
+
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <div class="fw-semibold mb-2">Design note</div>
+                                <p class="text-secondary mb-0">
+                                    This home page should feel simple and safe. One clear action: start a new project.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
