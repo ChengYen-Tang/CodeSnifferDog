@@ -20,36 +20,7 @@ main {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
     padding: 1.25rem 1.25rem 1.25rem 1.5rem;
-}
-
-.top-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem 1.5rem;
-    background: #fff;
-    border: 1px solid #e3e6f0;
-    border-radius: 0.75rem;
-    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.05);
-}
-
-.topbar-search {
-    flex: 1;
-    max-width: 420px;
-}
-
-.topbar-search :global(.form-control) {
-    border-radius: 999px;
-    border-color: #d1d3e2;
-    background: #f8f9fc;
-}
-
-.topbar-user {
-    font-weight: 600;
-    color: #858796;
 }
 
 .content {

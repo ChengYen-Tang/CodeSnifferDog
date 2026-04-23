@@ -15,36 +15,71 @@ a {
     gap: 1.5rem;
 }
 
-.page-heading h1 {
-    color: #5a5c69;
-    font-weight: 700;
-}
-
 .dashboard-card {
     border-radius: 0.75rem;
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.08);
 }
 
-.upload-dropzone {
-    display: grid;
-    place-items: center;
-    gap: 0.5rem;
-    min-height: 220px;
-    padding: 2rem;
-    border: 1px dashed #cbd5e1;
+.upload-panel {
+    padding: 1.5rem;
+    border: 1px solid #e8edf7;
     border-radius: 1rem;
-    background: #f8f9fc;
-    text-align: center;
+    background: linear-gradient(180deg, #f8faff 0%, #eef3ff 100%);
 }
 
-.upload-title {
-    font-size: 1.125rem;
-    font-weight: 700;
+.upload-panel-label {
+    margin-bottom: 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: #4e73df;
 }
 
+.upload-panel-title {
+    margin-bottom: 0.75rem;
+    font-size: 1.55rem;
+    font-weight: 700;
+    color: #344767;
+}
+
+.upload-panel-text {
+    color: #6c7a92;
+    line-height: 1.7;
+}
+
+.upload-dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    min-height: 240px;
+    padding: 2.5rem;
+    border: 1px dashed #c9d4ea;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, #fbfcff 0%, #f6f8fd 100%);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.upload-dropzone:hover {
+    border-color: #9db7ff;
+    box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.08);
+    transform: translateY(-1px);
+}
+
+.upload-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #2f4fbd;
+}
+
 .upload-subtitle {
-    max-width: 34rem;
-    color: #858796;
+    max-width: 30rem;
+    color: #7b8193;
+    font-size: 0.98rem;
 }
 
 .timeline-list {
@@ -89,6 +124,28 @@ a {
     border-color: #2653d4;
 }
 
+.upload-action-button {
+    min-width: 200px;
+    border-radius: 0.8rem;
+    font-weight: 700;
+    box-shadow: 0 0.35rem 0.9rem rgba(78, 115, 223, 0.22);
+}
+
 .card {
     border-color: #e3e6f0;
+}
+
+@media (max-width: 767.98px) {
+    .upload-panel {
+        padding: 1.25rem;
+    }
+
+    .upload-dropzone {
+        min-height: 200px;
+        padding: 1.5rem;
+    }
+
+    .upload-panel-title {
+        font-size: 1.35rem;
+    }
 }

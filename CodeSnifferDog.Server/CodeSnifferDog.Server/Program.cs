@@ -17,9 +17,9 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
+
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
 
@@ -29,6 +29,6 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()
-    .AddAdditionalAssemblies(typeof(CodeSnifferDog.Server.Client._Imports).Assembly);
+    .AddAdditionalAssemblies(typeof(CodeSnifferDog.Server.Client.AssemblyMarker).Assembly);
 
 app.Run();

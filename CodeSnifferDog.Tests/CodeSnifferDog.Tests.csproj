@@ -10,11 +10,26 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="coverlet.collector" Version="10.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\CodeSnifferDog\CodeSnifferDog.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="MSTest.TestAdapter" Version="4.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="MSTest.TestFramework" Version="4.2.1" />
   </ItemGroup>
 
 </Project>
