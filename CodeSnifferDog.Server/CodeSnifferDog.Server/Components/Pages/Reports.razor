@@ -1,53 +1,348 @@
 @page "/reports"
+@rendermode InteractiveServer
+@using Markdig
 
 <PageTitle>Reports</PageTitle>
 
-<div class="dashboard-page">
-    <div class="page-heading">
-        <h1 class="h2 mb-1">Reports</h1>
-        <p class="text-secondary mb-0">Browse generated markdown reports for the selected project.</p>
+@code {
+    private readonly MarkdownPipeline _markdownPipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
+
+    private readonly IReadOnlyList<ReportItem> _reports =
+    [
+        new(
+            "memory-leak-report.md",
+            "Memory Leak",
+            """
+            # memory-leak-report.md
+
+            ## Summary
+
+            Potential subscription retention was found when retry logic reconnects after cancellation windows.
+
+            ## Findings
+
+            - Issue type: Memory leak risk
+            - File / function if available: SessionCache / ReconnectAsync
+            - Relevant code pattern / expression if available: event subscription retained across reconnect flow
+            - Why this is a problem: retained handlers may keep worker state alive longer than intended
+            - Confidence: High
+            - Follow-up file(s), if any: RetryCoordinator, WorkerSession
+            - Suggested fix direction: centralize disposal and align cancellation with unsubscribe flow
+
+            ## Evidence
+
+            The rule flow inspected scope entry files and followed calls into `RetryCoordinator` and `WorkerSession`.
+
+            ```csharp
+            _session.Connected += OnConnected;
+            await RetryCoordinator.ReconnectAsync();
+            ```
+
+            ## Scope Coverage
+
+            The agent reviewed all scope entry files and then followed the reconnect path into session lifecycle code, retry orchestration, and worker state ownership.
+
+            - Scope entry files reviewed: `SessionCache`, `RetryCoordinator`
+            - Follow-up files reviewed: `WorkerSession`, `ConnectionEvents`, `SessionFactory`
+            - Coverage assessment: sufficient for the current report iteration
+
+            ## Cross-Scope Analysis
+
+            This finding could not be confirmed from the original scope alone because the retention path only becomes visible after tracing event ownership and reconnect flow transitions.
+
+            The review crossed file boundaries to verify:
+
+            - where handlers are attached
+            - whether detach happens on cancellation
+            - whether reconnect creates a new owner without disposing the previous one
+            - whether retry completion can leave stale delegates alive
+
+            ## Example Failure Path
+
+            ```text
+            Session opens
+              -> Connected handler attached
+              -> Retry starts
+              -> Cancellation arrives
+              -> Reconnect path creates replacement session
+              -> Previous handler remains attached
+              -> Old worker state stays reachable
+            ```
+
+            ## Impact
+
+            The impact is not limited to memory growth. Long-lived retained handlers can also:
+
+            - duplicate notifications
+            - trigger stale callbacks after state replacement
+            - increase debugging difficulty because object lifetime no longer matches the business flow
+
+            ## Suggested Remediation
+
+            1. Make reconnect ownership explicit.
+            2. Ensure the previous session is detached before replacement.
+            3. Move handler attach and detach into one lifecycle boundary.
+            4. Add a regression test that simulates reconnect after cancellation.
+
+            ## Regression Test Idea
+
+            ```csharp
+            [Fact]
+            public async Task Reconnect_Should_Not_Retain_Previous_Session_Handler()
+            {
+                using var harness = new SessionHarness();
+                await harness.RunReconnectAfterCancellationAsync();
+
+                harness.PreviousSession.HandlerCount.Should().Be(0);
+                harness.ActiveWorkerCount.Should().Be(1);
+            }
+            ```
+
+            ## Reviewer Notes
+
+            Confidence is high because the issue was observed through explicit ownership tracing rather than through naming heuristics alone. The verifier would likely still ask for one additional confirmation around exception-path cleanup if this were a real run instead of demo data.
+            """),
+        new(
+            "performance-report.md",
+            "Performance",
+            """
+            # performance-report.md
+
+            ## Summary
+
+            A repeated full-scan path was found inside a frequently called polling loop.
+
+            ## Findings
+
+            | Issue type | File / function | Confidence |
+            | --- | --- | --- |
+            | Performance risk | PollingWorker / TickAsync | Medium |
+
+            - Relevant code pattern / expression if available: repeated `ToList()` and `OrderBy()` in loop
+            - Why this is a problem: unnecessary allocations and sorting happen on every poll cycle
+            - Suggested fix direction: cache stable ordering or move the expensive projection outside the hot path
+
+            ## Notes
+
+            The impact is more visible when project size grows or when the worker poll interval is small.
+
+            ## Detailed Analysis
+
+            The polling path currently performs the following operations on each iteration:
+
+            1. materialize the full candidate list
+            2. project into a sortable shape
+            3. sort the full list
+            4. take a small subset for actual downstream work
+
+            This pattern is acceptable for small collections, but it becomes increasingly expensive as project size grows. The cost compounds because the loop runs frequently.
+
+            ## Why This Matters
+
+            - CPU time increases linearly with collection size before sorting is considered
+            - sorting adds additional overhead even when only a few top items are needed
+            - repeated allocations increase GC churn
+            - the overhead is hidden inside a background loop, so it may not be obvious from request latency alone
+
+            ## Suggested Alternatives
+
+            | Approach | Benefit | Tradeoff |
+            | --- | --- | --- |
+            | Cache sorted snapshot | Reduces repeated sort cost | Requires invalidation |
+            | Partial selection | Avoids full sort for top N | Slightly more complex code |
+            | Precomputed priority | Simplifies hot path | Moves cost to update path |
+            | Batched refresh | Cuts loop frequency | Higher latency between updates |
+
+            ## Benchmark Outline
+
+            ```text
+            Dataset size: 100 / 1,000 / 10,000
+            Loop interval: 250 ms
+            Compare:
+              - current full sort approach
+              - cached order approach
+              - top-N selection approach
+            Measure:
+              - average loop duration
+              - allocation volume
+              - GC count
+            ```
+            """),
+        new(
+            "resource-cleanup-report.md",
+            "Resource Cleanup",
+            """
+            # resource-cleanup-report.md
+
+            ## Summary
+
+            Several disposable resources are created under failure paths without a matching cleanup guarantee.
+
+            ## Findings
+
+            1. `NativeBridge.OpenHandle`
+            2. `ImportPipeline.CreateSession`
+            3. `ArchiveExtractor.ExtractToTemp`
+
+            > Cleanup looked correct on the success path, but verifier review flagged the exception path as incomplete.
+
+            ## Suggested Direction
+
+            Wrap the ownership boundary in a single disposable scope and move temp directory cleanup into a shared finally block.
+
+            ## Resource Inventory
+
+            | Resource | Created In | Expected Owner | Cleanup Risk |
+            | --- | --- | --- | --- |
+            | Native handle | `NativeBridge.OpenHandle` | bridge session | medium |
+            | Temp extraction path | `ArchiveExtractor.ExtractToTemp` | import job scope | high |
+            | Processing session | `ImportPipeline.CreateSession` | pipeline coordinator | medium |
+            | Stream reader | `ManifestReader.Open` | local parsing scope | low |
+
+            ## Failure Observations
+
+            The cleanup pattern was mostly consistent on success, but less consistent on early exits:
+
+            - validation failure before coordinator registration
+            - cancellation after archive extraction
+            - exception between session creation and final ownership transfer
+
+            ## Recommended Refactor Shape
+
+            ```csharp
+            await using var cleanupScope = new ImportCleanupScope();
+            cleanupScope.Track(tempDirectory);
+            cleanupScope.Track(nativeHandle);
+            cleanupScope.Track(session);
+
+            await coordinator.RunAsync(cleanupScope);
+            cleanupScope.ReleaseTo(coordinator);
+            ```
+
+            ## Expected Outcome
+
+            A single cleanup scope makes ownership explicit and reduces the chance that a newly added failure branch forgets one disposal path.
+            """),
+        new(
+            "native-lifetime-report.md",
+            "Native Lifetime",
+            """
+            # native-lifetime-report.md
+
+            ## Summary
+
+            Native lifetime transitions appear to depend on implicit ordering between managed callbacks and handle release.
+
+            ## Review Trail
+
+            ```mermaid
+            flowchart LR
+                A[Managed callback] --> B[Native handle release]
+                B --> C[Late event arrives]
+                C --> D[Potential invalid access]
+            ```
+
+            ## Why this is a problem
+
+            The late callback can observe a released native state unless the release boundary is synchronized.
+
+            ## Lifecycle Breakdown
+
+            The native bridge appears to rely on ordering assumptions that are not enforced strongly enough:
+
+            1. managed layer initiates release
+            2. native layer marks handle invalid
+            3. queued callback returns to managed layer
+            4. callback still references released state
+
+            ## Verification Questions
+
+            The following questions should be answered in a real review:
+
+            - is there a hard synchronization boundary before releasing the handle
+            - can queued native callbacks outlive the managed owner
+            - does the managed layer gate callback execution after shutdown
+            - does the verifier see any ref-count or finalizer pattern that contradicts this concern
+
+            ## Recommended Fix Direction
+
+            - add an explicit shutdown state before native release
+            - reject late callbacks after shutdown starts
+            - ensure the release path waits for callback drain if the model requires it
+            - document the ownership contract between managed and native layers
+            """)
+    ];
+
+    private ReportItem? _selectedReport;
+
+    protected override void OnInitialized()
+    {
+        _selectedReport = _reports[0];
+    }
+
+    private void SelectReport(ReportItem report)
+    {
+        _selectedReport = report;
+    }
+
+    private MarkupString RenderMarkdown(string markdown)
+    {
+        var html = Markdown.ToHtml(markdown, _markdownPipeline);
+        return new MarkupString(html);
+    }
+
+    private sealed record ReportItem(string FileName, string Category, string Content);
+}
+
+<div class="dashboard-page reports-page">
+    <div class="d-flex flex-column gap-2">
+        <h1 class="h2 mb-0 fw-bold text-dark-emphasis">Reports</h1>
     </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h2 class="h4 mb-1">Legacy.Native / Completed</h2>
-            <p class="text-secondary mb-0">Reports are available because markdown generation has completed for this project.</p>
-        </div>
-    </div>
+    <div class="card border-0 shadow-sm dashboard-card reports-explorer-card flex-grow-1">
+        <div class="row g-0 reports-explorer">
+            <div class="col-12 col-xl-3 col-xxl-2 reports-sidebar-column h-100">
+                <div class="reports-sidebar">
+                    <div class="reports-sidebar-header">
+                        <h2 class="h5 mb-1 text-dark-emphasis">Legacy.Native</h2>
+                        <p class="text-secondary mb-0">4 markdown reports available</p>
+                    </div>
 
-    <div class="row g-4">
-        <div class="col-xl-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Available Reports</h2>
-                    <div class="list-group">
-                        <a class="list-group-item list-group-item-action active" href="#">memory-leak-report.md</a>
-                        <a class="list-group-item list-group-item-action" href="#">performance-report.md</a>
-                        <a class="list-group-item list-group-item-action" href="#">resource-cleanup-report.md</a>
-                        <a class="list-group-item list-group-item-action" href="#">native-lifetime-report.md</a>
+                    <div class="reports-file-list">
+                        @foreach (var report in _reports)
+                        {
+                            <button type="button"
+                                    class="report-file-item @(ReferenceEquals(report, _selectedReport) ? "active" : null)"
+                                    @onclick="() => SelectReport(report)">
+                                <span class="report-file-icon">MD</span>
+                                <span class="report-file-body">
+                                    <span class="report-file-name">@report.FileName</span>
+                                    <span class="report-file-category">@report.Category</span>
+                                </span>
+                            </button>
+                        }
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="col-xl-9">
-            <div class="card shadow-sm h-100">
-                <div class="card-body report-reader">
-                    <h2># memory-leak-report.md</h2>
-                    <h3>Summary</h3>
-                    <p>Potential subscription retention was found when retry logic reconnects after cancellation windows.</p>
+            <div class="col-12 col-xl-9 col-xxl-10 reports-preview-column h-100">
+                @if (_selectedReport is not null)
+                {
+                    <div class="reports-preview-shell">
+                        <div class="reports-preview-toolbar">
+                            <div>
+                                <div class="reports-preview-file">@_selectedReport.FileName</div>
+                                <div class="reports-preview-meta">@_selectedReport.Category</div>
+                            </div>
+                        </div>
 
-                    <h3>Findings</h3>
-                    <ul>
-                        <li>Issue type: Memory leak risk</li>
-                        <li>File / function if available: SessionCache / ReconnectAsync</li>
-                        <li>Why this is a problem: retained handlers may keep worker state alive longer than intended.</li>
-                        <li>Suggested fix direction: centralize disposal and align cancellation with unsubscribe flow.</li>
-                    </ul>
-
-                    <h3>Evidence</h3>
-                    <p>The rule flow inspected scope entry files and followed calls into RetryCoordinator and WorkerSession.</p>
-                </div>
+                        <div class="reports-preview-body report-reader markdown-body">
+                            @RenderMarkdown(_selectedReport.Content)
+                        </div>
+                    </div>
+                }
             </div>
         </div>
     </div>
