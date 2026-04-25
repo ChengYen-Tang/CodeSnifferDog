@@ -1,15 +1,20 @@
 using CodeSnifferDog.Server.Components;
+using CodeSnifferDog.Server.Data;
+using CodeSnifferDog.Server.Endpoints;
+using CodeSnifferDog.Server.Services.ProjectIntake;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents();
+builder.Services.AddDbContext<CodeSnifferDogServerDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("CodeSnifferDogServer")));
+builder.Services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseWebAssemblyDebugging();
@@ -25,6 +30,7 @@ app.UseHttpsRedirection();
 
 app.UseAntiforgery();
 
+app.MapProjectEndpoints();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

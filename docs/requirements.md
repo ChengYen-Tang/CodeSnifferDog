@@ -5,7 +5,7 @@
 - 專案名稱：CodeSnifferDog
 - 文件目的：整理需求、假設、範圍與待確認事項，並在討論過程中持續更新
 - 文件狀態：草稿
-- 最後更新：2026-04-11
+- 最後更新：2026-04-26
 
 ## 背景
 
@@ -91,7 +91,7 @@
 - FR-037 當可用 worker 已滿時，新進 project 應進入 queue 等待處理。
 - FR-038 系統應可設定可同時存在的 project 上限，範圍包含處理中與 queue 中的 project 總數。
 - FR-039 使用者應可在任務尚未完成前主動刪除 project。
-- FR-040 Server Mode 應提供 task 狀態，至少包含 `queued`、`processing`、`completed`、`failed` 與 `deleted`。
+- FR-040 Server Mode 應提供 task 狀態，至少包含 `queued`、`reviewing`、`completed`、`failed` 與 `canceled`。
 - FR-041 CLI 與 Server Mode 都應能顯示目前執行階段與進度資訊。
 - FR-042 CLI 與 Server Mode 都應能記錄並提供本次任務中曾啟動的 Agent 清單與其行為軌跡。
 - FR-043 Agent 行為軌跡應至少包含 Agent 的活動摘要、對話內容、工具呼叫與階段性輸出。
@@ -169,7 +169,7 @@
 - Server Mode 可依設定的 worker 數量、每 worker 的最大平行 Agent 數與 project 上限處理任務。
 - 當系統忙碌時，新 project 可進入 queue 等待。
 - 使用者可在任務未完成前刪除 project。
-- 系統可提供 `queued`、`processing`、`completed`、`failed`、`deleted` 等 task 狀態。
+- 系統可提供 `queued`、`reviewing`、`completed`、`failed`、`canceled` 等 task 狀態。
 - CLI 與 Server Mode 都可查看執行進度、已啟動 Agent 與其行為軌跡。
 
 ## 風險與限制
@@ -251,6 +251,15 @@ CLI 預設設定根目錄在概念上可採用下列位置：
 
 `appsettings.json` 的具體欄位內容目前不在需求階段完全定義，原則上應保留彈性，於設計與實作階段依實際需要決定。
 
+Server Mode 的 intake 與 queue 第一版可先採用下列落地方式：
+
+- 使用者上傳 ZIP 後，系統先將原始 ZIP 暫存到 server 執行檔目錄下的暫存資料夾。
+- 暫存資料夾下第一版至少包含兩個子資料夾：
+  - `uploads/`：存放使用者上傳的原始 ZIP，檔名以資料庫中的 `ProjectId` 命名，格式為 `{ProjectId}.zip`。
+  - `extracted/`：在分析開始時，暫時存放解壓後的專案內容。
+- 系統同時在資料庫建立對應的 project 記錄，作為後續 worker 處理與 UI 查詢的主資料來源。
+- queue 第一版可先透過資料庫中的 `status` 與 queue timestamp 推導，不強制一開始就引入獨立訊息佇列基礎設施。
+
 執行產物的保留策略初步如下：
 
 - CLI 模式在任務完成後只保留最終報告，不保留中間產物。
@@ -261,7 +270,9 @@ CLI 預設設定根目錄在概念上可採用下列位置：
 
 Server Mode 需具備 worker、queue 與 project 上限控制機制，以確保多任務情境下的穩定處理能力。系統也需支援使用者在任務完成前主動刪除 project。
 
-Task 狀態在需求層至少應涵蓋 `queued`、`processing`、`completed`、`failed` 與 `deleted`，以反映排隊、執行、完成、失敗與使用者刪除等主要情境。
+Task 狀態在需求層至少應涵蓋 `queued`、`reviewing`、`completed`、`failed` 與 `canceled`，以反映排隊、執行中、完成、失敗與使用者中止等主要情境。
+
+`Delete` 在需求上應視為動作，而不是狀態。使用者執行刪除後，系統應直接刪除該 project 的資料庫資料與相關暫存內容，而不是再保留一筆 `deleted` 狀態的 project。
 
 可觀測性方面，CLI 與 Server Mode 都應讓使用者看到任務當前進度，以及本次任務中啟動過哪些 Agent、各自進行過哪些活動、產生過哪些訊息、呼叫過哪些工具與輸出過哪些結果。
 
@@ -280,3 +291,4 @@ Task 狀態在需求層至少應涵蓋 `queued`、`processing`、`completed`、`
 - 2026-04-11：補充產品目標、使用情境與高階需求草稿。
 - 2026-04-11：補充 CLI 與 Server Mode 的輸入來源。
 - 2026-04-11：補充輸出格式、報告匯出方式與規則文件驅動概念。
+- 2026-04-26：補充 Server Mode 第一版 intake 與 queue 可先以資料庫 status + timestamp 驅動的方向。

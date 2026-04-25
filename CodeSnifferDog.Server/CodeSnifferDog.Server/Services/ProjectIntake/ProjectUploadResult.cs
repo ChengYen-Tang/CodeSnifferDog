@@ -1,0 +1,18 @@
+using CodeSnifferDog.Server.Data.Entities;
+
+namespace CodeSnifferDog.Server.Services.ProjectIntake;
+
+public sealed class ProjectUploadResult
+{
+    public required Guid ProjectId { get; init; }
+
+    public required string OriginalFileName { get; init; }
+
+    public required ProjectProcessingStatus Status { get; init; }
+
+    public long FileSizeBytes { get; init; }
+
+    public required DateTimeOffset CreatedAtUtc { get; init; }
+
+    public required DateTimeOffset QueueTimestampUtc { get; init; }
+}
