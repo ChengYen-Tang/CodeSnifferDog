@@ -1,96 +1,189 @@
 @page "/agent-status"
+@rendermode InteractiveServer
 
 <PageTitle>Agent Status</PageTitle>
 
-<div class="dashboard-page">
-    <div class="page-heading">
-        <h1 class="h2 mb-1">Agent Status</h1>
-        <p class="text-secondary mb-0">Trace agents, tool calls, verifier feedback, and retries.</p>
-    </div>
+@code {
+    private readonly IReadOnlyList<AgentGroup> _agentGroups =
+    [
+        new(
+            "TG-001",
+            "Controllers + Services",
+            "Running",
+            [
+                new("Rule Review Agent", "Created 10:14", "Running"),
+                new("Review Verifier Agent", "Created 10:15", "Waiting"),
+                new("Report Aggregator", "Created 10:16", "Waiting"),
+                new("Report Verifier", "Created 10:16", "Waiting")
+            ]),
+        new(
+            "TG-002",
+            "Repositories + Models",
+            "Running",
+            [
+                new("Rule Review Agent", "Created 10:13", "Running"),
+                new("Review Verifier Agent", "Created 10:14", "Waiting")
+            ]),
+        new(
+            "TG-003",
+            "Interop Boundary",
+            "Completed",
+            [
+                new("Rule Review Agent", "Created 10:08", "Completed"),
+                new("Review Verifier Agent", "Created 10:08", "Completed"),
+                new("Report Aggregator", "Created 10:09", "Completed"),
+                new("Report Verifier", "Created 10:09", "Completed")
+            ])
+    ];
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h2 class="h4 mb-1">Payment.Service / Controllers + Services</h2>
-            <p class="text-secondary mb-0">Dedicated trace page for agent conversation, tool usage, verifier feedback, and retries.</p>
+    private readonly IReadOnlyList<HistoryEntry> _history =
+    [
+        HistoryEntry.Input("Start review for task group TG-001 using memory-leak.md."),
+        HistoryEntry.Output("I will inspect the scope entry files first, then follow ownership across reconnect, session lifecycle, and event subscription paths before submitting issues or a no-issue conclusion."),
+        HistoryEntry.Tool("RunRipgrepCommand", "rg -n \"Connected|Disconnected|Dispose|CancellationToken\" Payment.Service", "18 matches across 6 files"),
+        HistoryEntry.Tool("RunShellCommand", "Get-ChildItem Payment.Service -Recurse -Filter *.cs", "42 files"),
+        HistoryEntry.Output("The reconnect path attaches a handler in SessionCache, then replacement is delegated through RetryCoordinator. I need to inspect WorkerSession before deciding whether the old handler is detached on cancellation."),
+        HistoryEntry.Tool("RunRipgrepCommand", "rg -n \"class WorkerSession|event|OnConnected\" Payment.Service", "7 matches across 3 files"),
+        HistoryEntry.Compaction("Context automatically compacted"),
+        HistoryEntry.Input("Verifier rejected the first result. Continue with the missing cross-scope evidence."),
+        HistoryEntry.Output("Rejected. The issue is plausible, but the submitted evidence does not yet prove whether the previous session remains reachable after reconnect. Follow WorkerSession ownership and submit an updated issue with the missing evidence chain."),
+        HistoryEntry.Output("I followed WorkerSession and ConnectionEvents. The previous session remains subscribed until replacement completes, but cancellation can interrupt before detach."),
+        HistoryEntry.Tool("CreateRuleReviewIssue", "{ IssueType = \"Memory leak risk\", Confidence = \"High\" }", "Created issue RRI-1042"),
+        HistoryEntry.Tool("ListRuleReviewIssues", "No arguments", "1 issue returned"),
+        HistoryEntry.Output("I submitted one RuleReviewIssue with updated ScopeCoverage and CrossScopeAnalysis.")
+    ];
+
+    private readonly HashSet<string> _expandedToolDetails = ["tool-2", "tool-9"];
+
+    private void ToggleToolDetails(string key)
+    {
+        if (!_expandedToolDetails.Add(key))
+        {
+            _expandedToolDetails.Remove(key);
+        }
+    }
+
+    private static string StatusCss(string status) => status switch
+    {
+        "Running" => "status-running",
+        "Waiting" => "status-waiting",
+        "Completed" => "status-completed",
+        "Degraded" => "status-degraded",
+        _ => "status-waiting"
+    };
+
+    private sealed record AgentGroup(string Id, string Name, string Status, IReadOnlyList<AgentNode> Agents);
+
+    private sealed record AgentNode(string Name, string CreatedAt, string Status);
+
+    private sealed record HistoryEntry(string Kind, string Message, string? ToolName, string? Arguments, string? Result)
+    {
+        public static HistoryEntry Input(string message) => new("Input", message, null, null, null);
+
+        public static HistoryEntry Output(string message) => new("Output", message, null, null, null);
+
+        public static HistoryEntry Tool(string toolName, string arguments, string result) => new("Tool", string.Empty, toolName, arguments, result);
+
+        public static HistoryEntry Compaction(string message) => new("Compaction", message, null, null, null);
+    }
+}
+
+<div class="dashboard-page agent-status-page">
+    <div class="d-flex align-items-start justify-content-between gap-3">
+        <div>
+            <h1 class="h2 mb-0 fw-bold text-dark-emphasis">Agent Status</h1>
         </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-xl-3">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Agents</h2>
-                    <div class="list-group">
-                        <div class="list-group-item">
-                            <div class="fw-semibold">Rule Review Agent</div>
-                            <small class="text-primary">Running</small>
-                        </div>
-                        <div class="list-group-item">
-                            <div class="fw-semibold">Review Verifier Agent</div>
-                            <small class="text-secondary">Waiting</small>
-                        </div>
-                        <div class="list-group-item">
-                            <div class="fw-semibold">Report Aggregator</div>
-                            <small class="text-secondary">Waiting</small>
-                        </div>
-                        <div class="list-group-item">
-                            <div class="fw-semibold">Report Verifier</div>
-                            <small class="text-secondary">Waiting</small>
-                        </div>
-                    </div>
-                </div>
+    <div class="agent-status-console">
+        <aside class="agent-roster-pane">
+            <div class="agent-pane-header">
+                <div class="small text-uppercase fw-bold text-primary">Agents</div>
             </div>
-        </div>
 
-        <div class="col-xl-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Interaction History</h2>
-                    <div class="timeline-list">
-                        <div class="timeline-item">
-                            <div class="fw-semibold">10:14:21</div>
-                            <div class="text-secondary">Rule Review Agent started memory-leak rule.</div>
+            <div class="agent-group-list">
+                @foreach (var group in _agentGroups)
+                {
+                    <section class="agent-group-card">
+                        <div class="agent-node-list">
+                            @foreach (var agent in group.Agents)
+                            {
+                                <div class="agent-roster-node">
+                                    <div class="agent-roster-main">
+                                        <div class="agent-roster-name">@agent.Name</div>
+                                        <div class="agent-roster-rule">@agent.CreatedAt</div>
+                                    </div>
+                                    <span class="agent-status-dot @StatusCss(agent.Status)" title="@agent.Status"></span>
+                                </div>
+                            }
                         </div>
-                        <div class="timeline-item">
-                            <div class="fw-semibold">10:14:24</div>
-                            <div class="text-secondary">Shell tool enumerated retry-related files.</div>
-                        </div>
-                        <div class="timeline-item">
-                            <div class="fw-semibold">10:14:28</div>
-                            <div class="text-secondary">Ripgrep searched IDisposable and cancellation paths.</div>
-                        </div>
-                        <div class="timeline-item">
-                            <div class="fw-semibold">10:14:43</div>
-                            <div class="text-secondary">CreateRuleReviewIssue inserted a new issue.</div>
-                        </div>
-                        <div class="timeline-item">
-                            <div class="fw-semibold">10:15:02</div>
-                            <div class="text-secondary">Review Verifier returned bounce: evidence too thin.</div>
-                        </div>
-                        <div class="timeline-item">
-                            <div class="fw-semibold">10:15:24</div>
-                            <div class="text-secondary">Rule Review Agent resumed with verifier feedback.</div>
-                        </div>
-                    </div>
-                </div>
+                    </section>
+                }
             </div>
-        </div>
+        </aside>
 
-        <div class="col-xl-3">
-            <div class="card shadow-sm mb-4">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Inspector</h2>
-                    <div class="small text-uppercase fw-bold text-secondary mb-2">Latest Tool</div>
-                    <div class="border rounded p-3 bg-light mb-3">
-                        <div class="fw-semibold">RunRipgrepCommand</div>
-                        <code>rg -n "IDisposable|Dispose|cancel"</code>
-                    </div>
-                    <div class="small text-uppercase fw-bold text-secondary mb-2">Verifier Feedback</div>
-                    <div class="border rounded p-3 bg-light">
-                        Cross-scope evidence too thin. Need follow-up file justification.
-                    </div>
+        <section class="agent-history-pane">
+            <div class="agent-history-toolbar">
+                <div>
+                    <div class="agent-history-title">History</div>
                 </div>
             </div>
-        </div>
+
+            <div class="agent-chat-log">
+                @for (var index = 0; index < _history.Count; index++)
+                {
+                    var entry = _history[index];
+                    var isInput = entry.Kind == "Input";
+                    var isTool = entry.Kind == "Tool";
+                    var isCompaction = entry.Kind == "Compaction";
+                    var toolKey = $"tool-{index}";
+                    var isExpanded = _expandedToolDetails.Contains(toolKey);
+
+                    @if (isCompaction)
+                    {
+                        <div class="agent-compaction-notice">
+                            <span class="agent-compaction-rule"></span>
+                            <span class="agent-compaction-label">
+                                <svg class="agent-compaction-icon" viewBox="0 0 16 16" aria-hidden="true">
+                                    <path d="M4 1.75h5.1L12.25 4.9v9.35H4V1.75Z" />
+                                    <path d="M9 1.9V5h3.1" />
+                                    <path d="M5.75 8h4.5M5.75 10.25h4.5M5.75 12.5h3" />
+                                </svg>
+                                @entry.Message
+                            </span>
+                            <span class="agent-compaction-rule"></span>
+                        </div>
+                        continue;
+                    }
+
+                    <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)">
+                        <div class="agent-message-bubble">
+                            @if (isTool)
+                            {
+                                <button type="button" class="tool-call-summary" @onclick="() => ToggleToolDetails(toolKey)">
+                                    <span class="tool-call-chip">Tool</span>
+                                    <span class="tool-call-summary-name">@entry.ToolName</span>
+                                    <span>@(isExpanded ? "v" : ">")</span>
+                                </button>
+
+                                @if (isExpanded)
+                                {
+                                    <div class="tool-call-item">
+                                        <div class="tool-call-label">Arguments</div>
+                                        <pre>@entry.Arguments</pre>
+                                        <div class="tool-call-label">Result</div>
+                                        <pre>@entry.Result</pre>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="agent-message-text">@entry.Message</div>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
     </div>
 </div>
