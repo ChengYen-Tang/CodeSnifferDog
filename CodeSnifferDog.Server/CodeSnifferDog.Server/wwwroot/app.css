@@ -30,34 +30,6 @@ a {
     box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.08);
 }
 
-.upload-panel {
-    padding: 1.5rem;
-    border: 1px solid #e8edf7;
-    border-radius: 1rem;
-    background: linear-gradient(180deg, #f8faff 0%, #eef3ff 100%);
-}
-
-.upload-panel-label {
-    margin-bottom: 0.75rem;
-    font-size: 0.78rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #4e73df;
-}
-
-.upload-panel-title {
-    margin-bottom: 0.75rem;
-    font-size: 1.55rem;
-    font-weight: 700;
-    color: #344767;
-}
-
-.upload-panel-text {
-    color: #6c7a92;
-    line-height: 1.7;
-}
-
 .upload-dropzone {
     display: flex;
     flex-direction: column;
@@ -905,17 +877,9 @@ a {
 }
 
 @media (max-width: 767.98px) {
-    .upload-panel {
-        padding: 1.25rem;
-    }
-
     .upload-dropzone {
         min-height: 200px;
         padding: 1.5rem;
-    }
-
-    .upload-panel-title {
-        font-size: 1.35rem;
     }
 
     .reports-preview-body {

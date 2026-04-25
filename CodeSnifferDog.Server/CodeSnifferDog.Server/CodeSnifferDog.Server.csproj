@@ -11,7 +11,6 @@
 
   <ItemGroup>
     <PackageReference Include="bootstrap" Version="5.3.8" ExcludeAssets="contentFiles" GeneratePathProperty="true" />
-    <PackageReference Include="Markdig" Version="0.41.3" />
     <ProjectReference Include="..\CodeSnifferDog.Server.Client\CodeSnifferDog.Server.Client.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.7" />
   </ItemGroup>
