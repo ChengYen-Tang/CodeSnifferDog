@@ -8,6 +8,7 @@
 @code {
     private string? _selectedProjectId;
     private List<ProjectGroup> _groups = CreateEmptyGroups();
+    private readonly HashSet<string> _deletingProjectIds = [];
     private ProjectSidebarState _state = new()
     {
         IsLoading = true,
@@ -40,6 +41,25 @@
         _selectedProjectId = projectId;
     }
 
+    private async Task ExecuteActionAsync(ProjectItem item, ProjectAction action)
+    {
+        if (action.Kind is not ProjectActionKind.Delete)
+            return;
+
+        if (!Guid.TryParse(item.ProjectId, out Guid projectId) || !_deletingProjectIds.Add(item.ProjectId))
+            return;
+
+        try
+        {
+            await SidebarSyncService.DeleteProjectAsync(projectId);
+        }
+        finally
+        {
+            _deletingProjectIds.Remove(item.ProjectId);
+            StateHasChanged();
+        }
+    }
+
     private void ApplyState(ProjectSidebarState state)
     {
         _state = state;
@@ -59,7 +79,13 @@
         }
 
         _groups = groups;
-        _selectedProjectId ??= _groups
+        HashSet<string> projectIds = _groups
+            .SelectMany(group => group.Items)
+            .Select(item => item.ProjectId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (_selectedProjectId is null || !projectIds.Contains(_selectedProjectId))
+            _selectedProjectId = _groups
             .SelectMany(group => group.Items)
             .Select(item => item.ProjectId)
             .FirstOrDefault();
@@ -69,27 +95,27 @@
     {
         ProjectStatus.Reviewing =>
         [
-            new("S", "Agent Team / Worker Status", "agent-status"),
-            new("X", "Cancel", null),
+            ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
+            ProjectAction.Delete(),
         ],
         ProjectStatus.Completed =>
         [
-            new("S", "Agent Team / Worker Status", "agent-status"),
-            new("R", "Report", "reports"),
-            new("D", "Delete", null),
+            ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
+            ProjectAction.Link("R", "Report", "reports"),
+            ProjectAction.Delete(),
         ],
         ProjectStatus.Failed =>
         [
-            new("S", "Agent Team / Worker Status", "agent-status"),
-            new("D", "Delete", null),
+            ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
+            ProjectAction.Delete(),
         ],
         ProjectStatus.Canceled =>
         [
-            new("D", "Delete", null),
+            ProjectAction.Delete(),
         ],
         _ =>
         [
-            new("D", "Delete", null),
+            ProjectAction.Delete(),
         ],
     };
 
@@ -102,7 +128,24 @@
         new("Canceled", ProjectStatus.Canceled, "C", "group-icon-canceled", false),
     ];
 
-    private sealed record ProjectAction(string IconText, string Label, string? Href);
+    private sealed record ProjectAction(string IconText, string Label, ProjectActionKind Kind, string? Href)
+    {
+        public static ProjectAction Link(string iconText, string label, string href) =>
+            new(iconText, label, ProjectActionKind.Link, href);
+
+        public static ProjectAction Delete() =>
+            new("D", "Delete", ProjectActionKind.Delete, null);
+
+        public static ProjectAction Disabled(string iconText, string label) =>
+            new(iconText, label, ProjectActionKind.Disabled, null);
+    }
+
+    private enum ProjectActionKind
+    {
+        Link,
+        Delete,
+        Disabled,
+    }
 
     private sealed record ProjectItem(string ProjectId, string Name, string Meta, IReadOnlyList<ProjectAction> Actions);
 
@@ -185,7 +228,13 @@
                                         }
                                         else
                                         {
-                                            <button type="button" class="project-action-button" title="@action.Label" @onclick:stopPropagation="true">
+                                            <button
+                                                type="button"
+                                                class="project-action-button"
+                                                title="@action.Label"
+                                                disabled="@(action.Kind is ProjectActionKind.Disabled || _deletingProjectIds.Contains(item.ProjectId))"
+                                                @onclick="() => ExecuteActionAsync(item, action)"
+                                                @onclick:stopPropagation="true">
                                                 @action.IconText
                                             </button>
                                         }

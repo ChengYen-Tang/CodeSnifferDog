@@ -8,7 +8,8 @@ namespace CodeSnifferDog.Server.Services.ProjectIntake;
 
 public sealed class ProjectIntakeService(
     CodeSnifferDogServerDbContext dbContext,
-    IProjectChangePublisher projectChangePublisher) : IProjectIntakeService
+    IProjectChangePublisher projectChangePublisher,
+    ILogger<ProjectIntakeService> logger) : IProjectIntakeService
 {
     private const string TemporaryStorageDirectoryName = "TemporaryStorage";
     private const string UploadedZipDirectoryName = "uploads";
@@ -16,6 +17,7 @@ public sealed class ProjectIntakeService(
 
     private readonly CodeSnifferDogServerDbContext _dbContext = dbContext;
     private readonly IProjectChangePublisher _projectChangePublisher = projectChangePublisher;
+    private readonly ILogger<ProjectIntakeService> _logger = logger;
 
     public async Task<ProjectUploadResult> UploadAsync(IFormFile zipFile, CancellationToken cancellationToken = default)
     {
@@ -81,7 +83,7 @@ public sealed class ProjectIntakeService(
         }
         catch
         {
-            TryDeleteFile(storedFilePath);
+            TryDeleteFileIfExists(storedFilePath);
             throw;
         }
     }
@@ -112,8 +114,35 @@ public sealed class ProjectIntakeService(
         return project is null ? null : Map(project);
     }
 
+    public async Task<bool> DeleteAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        ProjectRecord? project = await _dbContext.Projects
+            .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
+
+        if (project is null)
+            return false;
+
+        string storageRootPath = ResolveTemporaryStorageRootPath();
+        string uploadedZipPath = ResolveStoredZipPath(storageRootPath, project.StoredZipRelativePath);
+        string extractedProjectPath = ResolveExtractedProjectPath(storageRootPath, project.Id);
+
+        DeleteFileIfExists(uploadedZipPath);
+        DeleteDirectoryIfExists(extractedProjectPath);
+
+        _dbContext.Projects.Remove(project);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
+        return true;
+    }
+
     private static string ResolveTemporaryStorageRootPath() =>
         Path.Combine(AppContext.BaseDirectory, TemporaryStorageDirectoryName);
+
+    private static string ResolveStoredZipPath(string storageRootPath, string storedZipRelativePath) =>
+        Path.Combine(storageRootPath, storedZipRelativePath.Replace('/', Path.DirectorySeparatorChar));
+
+    private static string ResolveExtractedProjectPath(string storageRootPath, Guid projectId) =>
+        Path.Combine(storageRootPath, ExtractedProjectDirectoryName, projectId.ToString("N"));
 
     private static ProjectSummaryDto Map(ProjectRecord project) => new()
     {
@@ -147,16 +176,27 @@ public sealed class ProjectIntakeService(
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unsupported project status."),
     };
 
-    private static void TryDeleteFile(string filePath)
+    private void DeleteFileIfExists(string filePath)
+    {
+        if (File.Exists(filePath))
+            File.Delete(filePath);
+    }
+
+    private static void DeleteDirectoryIfExists(string directoryPath)
+    {
+        if (Directory.Exists(directoryPath))
+            Directory.Delete(directoryPath, recursive: true);
+    }
+
+    private void TryDeleteFileIfExists(string filePath)
     {
         try
         {
-            if (File.Exists(filePath))
-                File.Delete(filePath);
+            DeleteFileIfExists(filePath);
         }
-        catch
+        catch (Exception exception)
         {
+            _logger.LogWarning(exception, "Failed to delete project temporary file {FilePath}.", filePath);
         }
     }
-
 }

@@ -9,4 +9,6 @@ public interface IProjectIntakeService
     Task<IReadOnlyList<ProjectListItemDto>> ListAsync(CancellationToken cancellationToken = default);
 
     Task<ProjectSummaryDto?> GetAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteAsync(Guid projectId, CancellationToken cancellationToken = default);
 }

@@ -272,7 +272,7 @@ Server Mode 需具備 worker、queue 與 project 上限控制機制，以確保�
 
 Task 狀態在需求層至少應涵蓋 `queued`、`reviewing`、`completed`、`failed` 與 `canceled`，以反映排隊、執行中、完成、失敗與使用者中止等主要情境。
 
-`Delete` 在需求上應視為動作，而不是狀態。使用者執行刪除後，系統應直接刪除該 project 的資料庫資料與相關暫存內容，而不是再保留一筆 `deleted` 狀態的 project。
+`Delete` 在需求上應視為動作，而不是狀態。使用者執行刪除後，系統應直接刪除該 project 的資料庫資料與相關暫存內容，而不是再保留一筆 `deleted` 狀態的 project。相關暫存內容包含尚未分析前保留的上傳 zip，以及分析流程解壓後可能存在的 project 暫存目錄；若 zip 已在解壓後被流程刪除，刪除動作應視為正常完成。
 
 可觀測性方面，CLI 與 Server Mode 都應讓使用者看到任務當前進度，以及本次任務中啟動過哪些 Agent、各自進行過哪些活動、產生過哪些訊息、呼叫過哪些工具與輸出過哪些結果。
 

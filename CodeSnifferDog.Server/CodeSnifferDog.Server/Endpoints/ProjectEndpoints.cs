@@ -19,6 +19,9 @@ public static class ProjectEndpoints
         group.MapGet("/{projectId:guid}", GetProjectAsync)
             .WithName("GetProject");
 
+        group.MapDelete("/{projectId:guid}", DeleteProjectAsync)
+            .WithName("DeleteProject");
+
         return endpoints;
     }
 
@@ -58,5 +61,14 @@ public static class ProjectEndpoints
     {
         ProjectSummaryDto? project = await projectIntakeService.GetAsync(projectId, cancellationToken);
         return project is null ? Results.NotFound() : Results.Ok(project);
+    }
+
+    private static async Task<IResult> DeleteProjectAsync(
+        Guid projectId,
+        IProjectIntakeService projectIntakeService,
+        CancellationToken cancellationToken)
+    {
+        bool deleted = await projectIntakeService.DeleteAsync(projectId, cancellationToken);
+        return deleted ? Results.NoContent() : Results.NotFound();
     }
 }

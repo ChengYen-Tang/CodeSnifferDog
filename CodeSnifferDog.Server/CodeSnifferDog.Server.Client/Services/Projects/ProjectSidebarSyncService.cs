@@ -25,6 +25,23 @@ public sealed class ProjectSidebarSyncService(HttpClient httpClient) : IAsyncDis
 
     public event Action? Changed;
 
+    public Task RefreshAsync(CancellationToken cancellationToken = default) =>
+        ReloadAsync(isInitialLoad: false, cancellationToken);
+
+    public async Task<bool> DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await _httpClient.DeleteAsync($"/api/projects/{projectId}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            await ReloadAsync(isInitialLoad: false, cancellationToken);
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        await ReloadAsync(isInitialLoad: false, cancellationToken);
+        return true;
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_started)
