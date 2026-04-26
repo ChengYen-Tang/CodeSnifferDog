@@ -1,98 +1,33 @@
-@rendermode InteractiveAuto
+@rendermode InteractiveWebAssembly
+@using CodeSnifferDog.Server.Client.Services.Projects
+@using CodeSnifferDog.Server.Shared.Projects
+@inject ProjectSidebarSyncService SidebarSyncService
+
+@implements IDisposable
 
 @code {
-    private string _selectedProject = "Payment.Service";
+    private string? _selectedProjectId;
+    private List<ProjectGroup> _groups = CreateEmptyGroups();
+    private ProjectSidebarState _state = new()
+    {
+        IsLoading = true,
+    };
 
-    private readonly List<ProjectGroup> _groups =
-    [
-        new("Reviewing", "R", "group-icon-reviewing", true,
-        [
-            new("Payment.Service", "uploaded 10:11",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("X", "Cancel", null)
-            ]),
-            new("Gateway.Api", "uploaded 10:03",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("X", "Cancel", null)
-            ]),
-            new("Scheduler.Worker", "uploaded 09:58",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("X", "Cancel", null)
-            ])
-        ]),
-        new("Completed", "C", "group-icon-completed", true,
-        [
-            new("Legacy.Native", "uploaded 09:47",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("R", "Report", "reports"),
-                new("D", "Delete", null)
-            ]),
-            new("Desktop.Tooling", "uploaded 09:11",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("R", "Report", "reports"),
-                new("D", "Delete", null)
-            ]),
-            new("Billing.Contracts", "uploaded 08:43",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("R", "Report", "reports"),
-                new("D", "Delete", null)
-            ])
-        ]),
-        new("Queued", "Q", "group-icon-queued", true,
-        [
-            new("Core.Engine", "uploaded 10:16",
-            [
-                new("D", "Delete", null)
-            ]),
-            new("Rules.Library", "uploaded 10:14",
-            [
-                new("D", "Delete", null)
-            ]),
-            new("Portal.Admin", "uploaded 10:12",
-            [
-                new("D", "Delete", null)
-            ])
-        ]),
-        new("Failed", "F", "group-icon-failed", false,
-        [
-            new("Portal.Web", "uploaded 09:31",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("D", "Delete", null)
-            ]),
-            new("Device.Host", "uploaded 09:08",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("D", "Delete", null)
-            ]),
-            new("Import.Tool", "uploaded 08:51",
-            [
-                new("S", "Agent Team / Worker Status", "agent-status"),
-                new("D", "Delete", null)
-            ])
-        ]),
-        new("Canceled", "C", "group-icon-canceled", false,
-        [
-            new("Bridge.Console", "uploaded 08:52",
-            [
-                new("D", "Delete", null)
-            ]),
-            new("Indexer.Job", "uploaded 08:37",
-            [
-                new("D", "Delete", null)
-            ]),
-            new("Parser.Legacy", "uploaded 08:15",
-            [
-                new("D", "Delete", null)
-            ])
-        ])
-    ];
+    protected override async Task OnInitializedAsync()
+    {
+        SidebarSyncService.Changed += OnSidebarStateChanged;
+        await SidebarSyncService.StartAsync();
+        ApplyState(SidebarSyncService.Current);
+    }
+
+    private void OnSidebarStateChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            ApplyState(SidebarSyncService.Current);
+            StateHasChanged();
+        });
+    }
 
     private void ToggleGroup(ProjectGroup group)
     {
@@ -100,27 +35,95 @@
         StateHasChanged();
     }
 
-    private void SelectProject(string projectName)
+    private void SelectProject(string projectId)
     {
-        _selectedProject = projectName;
+        _selectedProjectId = projectId;
     }
+
+    private void ApplyState(ProjectSidebarState state)
+    {
+        _state = state;
+        List<ProjectGroup> groups = CreateEmptyGroups();
+
+        foreach (ProjectListItemDto project in state.Projects)
+        {
+            ProjectGroup? group = groups.SingleOrDefault(projectGroup => projectGroup.Status == project.Status);
+            if (group is null)
+                continue;
+
+            group.Items.Add(new ProjectItem(
+                project.ProjectId.ToString(),
+                project.OriginalFileName,
+                $"uploaded {project.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
+                CreateActions(project.Status)));
+        }
+
+        _groups = groups;
+        _selectedProjectId ??= _groups
+            .SelectMany(group => group.Items)
+            .Select(item => item.ProjectId)
+            .FirstOrDefault();
+    }
+
+    private static IReadOnlyList<ProjectAction> CreateActions(ProjectStatus status) => status switch
+    {
+        ProjectStatus.Reviewing =>
+        [
+            new("S", "Agent Team / Worker Status", "agent-status"),
+            new("X", "Cancel", null),
+        ],
+        ProjectStatus.Completed =>
+        [
+            new("S", "Agent Team / Worker Status", "agent-status"),
+            new("R", "Report", "reports"),
+            new("D", "Delete", null),
+        ],
+        ProjectStatus.Failed =>
+        [
+            new("S", "Agent Team / Worker Status", "agent-status"),
+            new("D", "Delete", null),
+        ],
+        ProjectStatus.Canceled =>
+        [
+            new("D", "Delete", null),
+        ],
+        _ =>
+        [
+            new("D", "Delete", null),
+        ],
+    };
+
+    private static List<ProjectGroup> CreateEmptyGroups() =>
+    [
+        new("Reviewing", ProjectStatus.Reviewing, "R", "group-icon-reviewing", true),
+        new("Completed", ProjectStatus.Completed, "C", "group-icon-completed", true),
+        new("Queued", ProjectStatus.Queued, "Q", "group-icon-queued", true),
+        new("Failed", ProjectStatus.Failed, "F", "group-icon-failed", false),
+        new("Canceled", ProjectStatus.Canceled, "C", "group-icon-canceled", false),
+    ];
 
     private sealed record ProjectAction(string IconText, string Label, string? Href);
 
-    private sealed record ProjectItem(string Name, string Meta, IReadOnlyList<ProjectAction> Actions);
+    private sealed record ProjectItem(string ProjectId, string Name, string Meta, IReadOnlyList<ProjectAction> Actions);
 
     private sealed class ProjectGroup(
         string title,
+        ProjectStatus status,
         string iconText,
         string iconCssClass,
-        bool isExpanded,
-        IReadOnlyList<ProjectItem> items)
+        bool isExpanded)
     {
         public string Title { get; } = title;
+        public ProjectStatus Status { get; } = status;
         public string IconText { get; } = iconText;
         public string IconCssClass { get; } = iconCssClass;
         public bool IsExpanded { get; set; } = isExpanded;
-        public IReadOnlyList<ProjectItem> Items { get; } = items;
+        public List<ProjectItem> Items { get; } = [];
+    }
+
+    public void Dispose()
+    {
+        SidebarSyncService.Changed -= OnSidebarStateChanged;
     }
 }
 
@@ -133,6 +136,19 @@
     </div>
 
     <div class="sidebar-groups">
+        @if (_state.IsLoading)
+        {
+            <div class="sidebar-status-message">Loading projects...</div>
+        }
+        else if (!string.IsNullOrWhiteSpace(_state.ErrorMessage))
+        {
+            <div class="sidebar-status-message sidebar-status-error">@_state.ErrorMessage</div>
+        }
+        else if (!string.IsNullOrWhiteSpace(_state.HubErrorMessage))
+        {
+            <div class="sidebar-status-message sidebar-status-warning">@_state.HubErrorMessage</div>
+        }
+
         @foreach (var group in _groups)
         {
             <section class="status-group" @key="group.Title">
@@ -152,8 +168,8 @@
                     <div class="project-list">
                         @foreach (var item in group.Items)
                         {
-                            <div class="project-link @(item.Name == _selectedProject ? "active" : null)" @key="item.Name">
-                                <button type="button" class="project-main" @onclick="() => SelectProject(item.Name)">
+                            <div class="project-link @(item.ProjectId == _selectedProjectId ? "active" : null)" @key="item.ProjectId">
+                                <button type="button" class="project-main" @onclick="() => SelectProject(item.ProjectId)">
                                     <span class="project-name">@item.Name</span>
                                     <span class="project-meta">@item.Meta</span>
                                 </button>

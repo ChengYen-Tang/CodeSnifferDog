@@ -1,4 +1,5 @@
 using CodeSnifferDog.Server.Services.ProjectIntake;
+using CodeSnifferDog.Server.Shared.Projects;
 
 namespace CodeSnifferDog.Server.Endpoints;
 
@@ -46,7 +47,7 @@ public static class ProjectEndpoints
         IProjectIntakeService projectIntakeService,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<ProjectSummaryDto> projects = await projectIntakeService.ListAsync(cancellationToken);
+        IReadOnlyList<ProjectListItemDto> projects = await projectIntakeService.ListAsync(cancellationToken);
         return Results.Ok(projects);
     }
 

@@ -16,6 +16,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.7" />
+    <ProjectReference Include="..\CodeSnifferDog.Server.Shared\CodeSnifferDog.Server.Shared.csproj" />
     <ProjectReference Include="..\CodeSnifferDog.Server.Client\CodeSnifferDog.Server.Client.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.7" />
   </ItemGroup>

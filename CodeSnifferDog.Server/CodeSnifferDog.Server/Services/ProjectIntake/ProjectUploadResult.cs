@@ -1,4 +1,4 @@
-using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Shared.Projects;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake;
 
@@ -8,7 +8,7 @@ public sealed class ProjectUploadResult
 
     public required string OriginalFileName { get; init; }
 
-    public required ProjectProcessingStatus Status { get; init; }
+    public required ProjectStatus Status { get; init; }
 
     public long FileSizeBytes { get; init; }
 

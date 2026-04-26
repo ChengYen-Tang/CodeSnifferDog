@@ -1,17 +1,21 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake;
 
 public sealed class ProjectIntakeService(
-    CodeSnifferDogServerDbContext dbContext) : IProjectIntakeService
+    CodeSnifferDogServerDbContext dbContext,
+    IProjectChangePublisher projectChangePublisher) : IProjectIntakeService
 {
     private const string TemporaryStorageDirectoryName = "TemporaryStorage";
     private const string UploadedZipDirectoryName = "uploads";
     private const string ExtractedProjectDirectoryName = "extracted";
 
     private readonly CodeSnifferDogServerDbContext _dbContext = dbContext;
+    private readonly IProjectChangePublisher _projectChangePublisher = projectChangePublisher;
 
     public async Task<ProjectUploadResult> UploadAsync(IFormFile zipFile, CancellationToken cancellationToken = default)
     {
@@ -62,15 +66,18 @@ public sealed class ProjectIntakeService(
             _dbContext.Projects.Add(project);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            return new ProjectUploadResult
+            ProjectUploadResult result = new()
             {
                 ProjectId = project.Id,
                 OriginalFileName = project.OriginalFileName,
-                Status = project.Status,
+                Status = MapStatus(project.Status),
                 FileSizeBytes = project.FileSizeBytes,
                 CreatedAtUtc = project.CreatedAtUtc,
                 QueueTimestampUtc = project.QueueTimestampUtc,
             };
+
+            await _projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
+            return result;
         }
         catch
         {
@@ -79,7 +86,7 @@ public sealed class ProjectIntakeService(
         }
     }
 
-    public async Task<IReadOnlyList<ProjectSummaryDto>> ListAsync(CancellationToken cancellationToken = default) =>
+    public async Task<IReadOnlyList<ProjectListItemDto>> ListAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Projects
             .AsNoTracking()
             .OrderBy(project =>
@@ -93,7 +100,7 @@ public sealed class ProjectIntakeService(
                     ? project.QueueTimestampUtc
                     : project.FinishedAtUtc ?? project.UpdatedAtUtc)
             .ThenBy(project => project.CreatedAtUtc)
-            .Select(project => Map(project))
+            .Select(project => MapListItem(project))
             .ToListAsync(cancellationToken);
 
     public async Task<ProjectSummaryDto?> GetAsync(Guid projectId, CancellationToken cancellationToken = default)
@@ -112,7 +119,7 @@ public sealed class ProjectIntakeService(
     {
         ProjectId = project.Id,
         OriginalFileName = project.OriginalFileName,
-        Status = project.Status,
+        Status = MapStatus(project.Status),
         FileSizeBytes = project.FileSizeBytes,
         CreatedAtUtc = project.CreatedAtUtc,
         UpdatedAtUtc = project.UpdatedAtUtc,
@@ -120,6 +127,24 @@ public sealed class ProjectIntakeService(
         ProcessingStartedAtUtc = project.ProcessingStartedAtUtc,
         FinishedAtUtc = project.FinishedAtUtc,
         FailureReason = project.FailureReason,
+    };
+
+    private static ProjectListItemDto MapListItem(ProjectRecord project) => new()
+    {
+        ProjectId = project.Id,
+        OriginalFileName = project.OriginalFileName,
+        Status = MapStatus(project.Status),
+        CreatedAtUtc = project.CreatedAtUtc,
+    };
+
+    private static ProjectStatus MapStatus(ProjectProcessingStatus status) => status switch
+    {
+        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
+        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
+        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
+        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
+        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unsupported project status."),
     };
 
     private static void TryDeleteFile(string filePath)
@@ -133,4 +158,5 @@ public sealed class ProjectIntakeService(
         {
         }
     }
+
 }

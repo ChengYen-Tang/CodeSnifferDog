@@ -70,6 +70,24 @@
     background-clip: padding-box;
 }
 
+.sidebar-status-message {
+    padding: 0.85rem 0.95rem;
+    border-radius: 0.8rem;
+    background: rgba(255, 255, 255, 0.12);
+    color: #eef3ff;
+    font-size: 0.9rem;
+}
+
+.sidebar-status-error {
+    background: rgba(231, 74, 59, 0.2);
+    color: #fff1f0;
+}
+
+.sidebar-status-warning {
+    background: rgba(246, 194, 62, 0.2);
+    color: #fff7db;
+}
+
 .status-group {
     padding-top: 1rem;
 }
