@@ -8,7 +8,7 @@
 @code {
     private string? _selectedProjectId;
     private List<ProjectGroup> _groups = CreateEmptyGroups();
-    private readonly HashSet<string> _deletingProjectIds = [];
+    private readonly HashSet<string> _actingProjectIds = [];
     private ProjectSidebarState _state = new()
     {
         IsLoading = true,
@@ -43,19 +43,24 @@
 
     private async Task ExecuteActionAsync(ProjectItem item, ProjectAction action)
     {
-        if (action.Kind is not ProjectActionKind.Delete)
-            return;
-
-        if (!Guid.TryParse(item.ProjectId, out Guid projectId) || !_deletingProjectIds.Add(item.ProjectId))
+        if (!Guid.TryParse(item.ProjectId, out Guid projectId) || !_actingProjectIds.Add(item.ProjectId))
             return;
 
         try
         {
-            await SidebarSyncService.DeleteProjectAsync(projectId);
+            switch (action.Kind)
+            {
+                case ProjectActionKind.Cancel:
+                    await SidebarSyncService.CancelProjectAsync(projectId);
+                    break;
+                case ProjectActionKind.Delete:
+                    await SidebarSyncService.DeleteProjectAsync(projectId);
+                    break;
+            }
         }
         finally
         {
-            _deletingProjectIds.Remove(item.ProjectId);
+            _actingProjectIds.Remove(item.ProjectId);
             StateHasChanged();
         }
     }
@@ -96,21 +101,12 @@
         ProjectStatus.Reviewing =>
         [
             ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
-            ProjectAction.Delete(),
+            ProjectAction.Cancel(),
         ],
         ProjectStatus.Completed =>
         [
             ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
             ProjectAction.Link("R", "Report", "reports"),
-            ProjectAction.Delete(),
-        ],
-        ProjectStatus.Failed =>
-        [
-            ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
-            ProjectAction.Delete(),
-        ],
-        ProjectStatus.Canceled =>
-        [
             ProjectAction.Delete(),
         ],
         _ =>
@@ -136,6 +132,9 @@
         public static ProjectAction Delete() =>
             new("D", "Delete", ProjectActionKind.Delete, null);
 
+        public static ProjectAction Cancel() =>
+            new("X", "Cancel", ProjectActionKind.Cancel, null);
+
         public static ProjectAction Disabled(string iconText, string label) =>
             new(iconText, label, ProjectActionKind.Disabled, null);
     }
@@ -143,6 +142,7 @@
     private enum ProjectActionKind
     {
         Link,
+        Cancel,
         Delete,
         Disabled,
     }
@@ -232,7 +232,7 @@
                                                 type="button"
                                                 class="project-action-button"
                                                 title="@action.Label"
-                                                disabled="@(action.Kind is ProjectActionKind.Disabled || _deletingProjectIds.Contains(item.ProjectId))"
+                                                disabled="@(action.Kind is ProjectActionKind.Disabled || _actingProjectIds.Contains(item.ProjectId))"
                                                 @onclick="() => ExecuteActionAsync(item, action)"
                                                 @onclick:stopPropagation="true">
                                                 @action.IconText

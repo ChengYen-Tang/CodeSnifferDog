@@ -76,6 +76,10 @@
 - FR-026A CLI 模式應提供初始化參數，可自動在預設的使用者家目錄設定位置建立設定檔、目錄結構與規則範本。
 - FR-027 系統應支援採用 OpenAI 相容協定的推理提供商設定，至少包含 OpenAI、Azure OpenAI 與本地部署提供商。
 - FR-028 本地部署提供商應至少涵蓋 `vllm`、`sglang` 與其他 OpenAI 相容 LLM 服務。
+- FR-029 `Inference` 設定應支援 `extra_body` 物件，讓使用者可傳遞 provider-specific request body 欄位；系統應將其展開並轉發到推理請求根層級。
+- FR-030 `Inference:extra_body` 應保留使用者在 JSON 設定中的原始型別語意，不應在轉發前自行將字串值猜測並改寫為數字或布林值。
+- FR-031 對於本地或自架的 OpenAI-compatible 提供商，系統不應強制要求 `ApiKey` 為必填欄位；若底層 SDK 需要 credential 物件，實作可使用內部保底值處理，但不應要求使用者額外配置無意義金鑰。
+- FR-032 Server Mode 應支援 queue 容量上限設定；當 `Queued` 狀態的 project 數量已達上限時，系統不應再接受新的上傳任務。
 ### 資料保留與清理
 
 - FR-029 CLI 模式下，任務完成後應僅保留最終報告，不保留中間分析產物。
@@ -230,7 +234,7 @@ rules/
   性能.md
 ```
 
-其中 `appsettings.json` 用於設定推理提供商等系統參數，`rules/` 目錄則用於存放可由使用者維護的 Review 規則文件。
+其中 `appsettings.json` 用於設定推理提供商等系統參數，`rules/` 目錄則用於存放可由使用者維護的 Review 規則文件。Server Mode 第一版固定讀取應用程式目錄下的 `rules/`。
 
 初步方向上，Server Mode 預設將這些檔案放在應用程式子目錄中的固定資料夾；CLI 模式則預設使用者家目錄下的專用資料夾，以符合本機工具的使用慣例。
 
@@ -259,6 +263,11 @@ Server Mode 的 intake 與 queue 第一版可先採用下列落地方式：
   - `extracted/`：在分析開始時，暫時存放解壓後的專案內容。
 - 系統同時在資料庫建立對應的 project 記錄，作為後續 worker 處理與 UI 查詢的主資料來源。
 - queue 第一版可先透過資料庫中的 `status` 與 queue timestamp 推導，不強制一開始就引入獨立訊息佇列基礎設施。
+- Server Mode 的 executor 應依 `ProjectExecution:MaxConcurrentWorkers` 控制同時分析的 project 數量。
+- 單一 Agent Team Worker 的執行策略應由 `ProjectExecution:ExecutionOptions` 管理，第一版對外設定包含 `MaxParallelAgents`、`ModelContextWindowTokens`、`ContextCompactionMode`。
+- executor 有空閒 worker 時，應挑選 `queued` 且 queue timestamp 最早的 project 開始處理。
+- executor 開始處理 project 時，應在 `extracted/{ProjectId}/` 建立解壓目錄，將對應 ZIP 解壓到該目錄，刪除原始 ZIP，並進入分析流程。
+- 真正的 Agent Team 分析應透過獨立 runner 邊界接入，避免 queue / worker / 暫存檔生命週期與推理 provider 組裝耦合；runner 尚未就緒時，executor 不應 claim queued project，也不應把 project 偽裝成已分析或失敗。
 
 執行產物的保留策略初步如下：
 

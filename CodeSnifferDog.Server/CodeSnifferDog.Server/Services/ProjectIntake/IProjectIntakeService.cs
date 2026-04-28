@@ -10,5 +10,7 @@ public interface IProjectIntakeService
 
     Task<ProjectSummaryDto?> GetAsync(Guid projectId, CancellationToken cancellationToken = default);
 
+    Task<bool> CancelAsync(Guid projectId, CancellationToken cancellationToken = default);
+
     Task<bool> DeleteAsync(Guid projectId, CancellationToken cancellationToken = default);
 }

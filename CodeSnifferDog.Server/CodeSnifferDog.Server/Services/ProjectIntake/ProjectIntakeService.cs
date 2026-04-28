@@ -1,22 +1,29 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake;
 
 public sealed class ProjectIntakeService(
     CodeSnifferDogServerDbContext dbContext,
     IProjectChangePublisher projectChangePublisher,
+    ProjectTemporaryStoragePaths storagePaths,
+    IProjectExecutionLeaseRegistry executionLeaseRegistry,
+    IProjectExecutionQueueLock queueLock,
+    IOptions<ProjectExecutionOptions> projectExecutionOptions,
     ILogger<ProjectIntakeService> logger) : IProjectIntakeService
 {
-    private const string TemporaryStorageDirectoryName = "TemporaryStorage";
-    private const string UploadedZipDirectoryName = "uploads";
-    private const string ExtractedProjectDirectoryName = "extracted";
-
     private readonly CodeSnifferDogServerDbContext _dbContext = dbContext;
     private readonly IProjectChangePublisher _projectChangePublisher = projectChangePublisher;
+    private readonly ProjectTemporaryStoragePaths _storagePaths = storagePaths;
+    private readonly IProjectExecutionLeaseRegistry _executionLeaseRegistry = executionLeaseRegistry;
+    private readonly IProjectExecutionQueueLock _queueLock = queueLock;
+    private readonly ProjectExecutionOptions _projectExecutionOptions = projectExecutionOptions.Value;
     private readonly ILogger<ProjectIntakeService> _logger = logger;
 
     public async Task<ProjectUploadResult> UploadAsync(IFormFile zipFile, CancellationToken cancellationToken = default)
@@ -31,14 +38,10 @@ public sealed class ProjectIntakeService(
 
         Guid projectId = Guid.NewGuid();
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-        string storageRootPath = ResolveTemporaryStorageRootPath();
-        string uploadedZipDirectoryPath = Path.Combine(storageRootPath, UploadedZipDirectoryName);
-        string storedFileName = $"{projectId:N}.zip";
-        string storedFilePath = Path.Combine(uploadedZipDirectoryPath, storedFileName);
-        string storedZipRelativePath = Path.GetRelativePath(storageRootPath, storedFilePath);
+        string storedFilePath = _storagePaths.ResolveUploadedZipPath(projectId);
+        string storedZipRelativePath = _storagePaths.ResolveUploadedZipRelativePath(projectId);
 
-        Directory.CreateDirectory(uploadedZipDirectoryPath);
-        Directory.CreateDirectory(Path.Combine(storageRootPath, ExtractedProjectDirectoryName));
+        _storagePaths.EnsureStorageDirectories();
 
         try
         {
@@ -53,30 +56,14 @@ public sealed class ProjectIntakeService(
                 await zipFile.CopyToAsync(stream, cancellationToken);
             }
 
-            ProjectRecord project = new()
-            {
-                Id = projectId,
-                OriginalFileName = Path.GetFileName(zipFile.FileName),
-                StoredZipRelativePath = storedZipRelativePath.Replace('\\', '/'),
-                Status = ProjectProcessingStatus.Queued,
-                FileSizeBytes = zipFile.Length,
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                QueueTimestampUtc = nowUtc,
-            };
-
-            _dbContext.Projects.Add(project);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-
-            ProjectUploadResult result = new()
-            {
-                ProjectId = project.Id,
-                OriginalFileName = project.OriginalFileName,
-                Status = MapStatus(project.Status),
-                FileSizeBytes = project.FileSizeBytes,
-                CreatedAtUtc = project.CreatedAtUtc,
-                QueueTimestampUtc = project.QueueTimestampUtc,
-            };
+            using IDisposable queueLease = await _queueLock.AcquireAsync(cancellationToken);
+            ProjectUploadResult result = await QueueProjectAsync(
+                projectId,
+                zipFile.FileName,
+                zipFile.Length,
+                storedZipRelativePath,
+                nowUtc,
+                cancellationToken);
 
             await _projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
             return result;
@@ -86,6 +73,49 @@ public sealed class ProjectIntakeService(
             TryDeleteFileIfExists(storedFilePath);
             throw;
         }
+    }
+
+    private async Task<ProjectUploadResult> QueueProjectAsync(
+        Guid projectId,
+        string originalFileName,
+        long fileSizeBytes,
+        string storedZipRelativePath,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (_projectExecutionOptions.MaxQueuedProjects <= 0)
+            throw new InvalidOperationException("ProjectExecution:MaxQueuedProjects must be greater than zero.");
+
+        int queuedProjects = await _dbContext.Projects
+            .CountAsync(project => project.Status == ProjectProcessingStatus.Queued, cancellationToken);
+
+        if (queuedProjects >= _projectExecutionOptions.MaxQueuedProjects)
+            throw new InvalidOperationException("The project queue is full.");
+
+        ProjectRecord project = new()
+        {
+            Id = projectId,
+            OriginalFileName = Path.GetFileName(originalFileName),
+            StoredZipRelativePath = storedZipRelativePath.Replace('\\', '/'),
+            Status = ProjectProcessingStatus.Queued,
+            FileSizeBytes = fileSizeBytes,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            QueueTimestampUtc = nowUtc,
+        };
+
+        _dbContext.Projects.Add(project);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new ProjectUploadResult
+        {
+            ProjectId = project.Id,
+            OriginalFileName = project.OriginalFileName,
+            Status = MapStatus(project.Status),
+            FileSizeBytes = project.FileSizeBytes,
+            CreatedAtUtc = project.CreatedAtUtc,
+            QueueTimestampUtc = project.QueueTimestampUtc,
+        };
     }
 
     public async Task<IReadOnlyList<ProjectListItemDto>> ListAsync(CancellationToken cancellationToken = default) =>
@@ -114,7 +144,39 @@ public sealed class ProjectIntakeService(
         return project is null ? null : Map(project);
     }
 
+    public async Task<bool> CancelAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using IDisposable queueLease = await _queueLock.AcquireAsync(cancellationToken);
+
+        ProjectRecord? project = await _dbContext.Projects
+            .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
+
+        if (project is null)
+            return false;
+
+        if (project.Status != ProjectProcessingStatus.Reviewing)
+            throw new InvalidOperationException("Only reviewing projects can be canceled.");
+
+        if (_executionLeaseRegistry.TryCancel(projectId, out _))
+            _logger.LogInformation("Project {ProjectId} cancellation was requested.", projectId);
+        else
+            throw new InvalidOperationException("The reviewing project is not actively running.");
+
+        await _projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
+        return true;
+    }
+
     public async Task<bool> DeleteAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using IDisposable queueLease = await _queueLock.AcquireAsync(cancellationToken);
+        return await DeleteStoredProjectAsync(projectId, CancellationToken.None);
+    }
+
+    private async Task<bool> DeleteStoredProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
         ProjectRecord? project = await _dbContext.Projects
             .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
@@ -122,9 +184,11 @@ public sealed class ProjectIntakeService(
         if (project is null)
             return false;
 
-        string storageRootPath = ResolveTemporaryStorageRootPath();
-        string uploadedZipPath = ResolveStoredZipPath(storageRootPath, project.StoredZipRelativePath);
-        string extractedProjectPath = ResolveExtractedProjectPath(storageRootPath, project.Id);
+        if (project.Status == ProjectProcessingStatus.Reviewing)
+            throw new InvalidOperationException("Reviewing projects must be canceled before deletion.");
+
+        string uploadedZipPath = _storagePaths.ResolveStoredZipPath(project.StoredZipRelativePath);
+        string extractedProjectPath = _storagePaths.ResolveExtractedProjectPath(project.Id);
 
         DeleteFileIfExists(uploadedZipPath);
         DeleteDirectoryIfExists(extractedProjectPath);
@@ -134,15 +198,6 @@ public sealed class ProjectIntakeService(
         await _projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
         return true;
     }
-
-    private static string ResolveTemporaryStorageRootPath() =>
-        Path.Combine(AppContext.BaseDirectory, TemporaryStorageDirectoryName);
-
-    private static string ResolveStoredZipPath(string storageRootPath, string storedZipRelativePath) =>
-        Path.Combine(storageRootPath, storedZipRelativePath.Replace('/', Path.DirectorySeparatorChar));
-
-    private static string ResolveExtractedProjectPath(string storageRootPath, Guid projectId) =>
-        Path.Combine(storageRootPath, ExtractedProjectDirectoryName, projectId.ToString("N"));
 
     private static ProjectSummaryDto Map(ProjectRecord project) => new()
     {

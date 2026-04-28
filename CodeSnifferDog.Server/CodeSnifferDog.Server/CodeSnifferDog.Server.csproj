@@ -7,15 +7,21 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <NoWarn>$(NoWarn);OPENAI001;SCME0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="bootstrap" Version="5.3.8" ExcludeAssets="contentFiles" GeneratePathProperty="true" />
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <PackageReference Include="Azure.Core" Version="1.54.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.5.0" />
+    <PackageReference Include="OpenAI" Version="2.10.0" />
+    <ProjectReference Include="..\..\CodeSnifferDog\CodeSnifferDog.csproj" />
     <ProjectReference Include="..\CodeSnifferDog.Server.Shared\CodeSnifferDog.Server.Shared.csproj" />
     <ProjectReference Include="..\CodeSnifferDog.Server.Client\CodeSnifferDog.Server.Client.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.7" />

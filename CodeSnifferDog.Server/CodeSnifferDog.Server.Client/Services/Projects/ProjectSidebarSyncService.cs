@@ -42,6 +42,20 @@ public sealed class ProjectSidebarSyncService(HttpClient httpClient) : IAsyncDis
         return true;
     }
 
+    public async Task<bool> CancelProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        using HttpResponseMessage response = await _httpClient.PostAsync($"/api/projects/{projectId}/cancel", content: null, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            await ReloadAsync(isInitialLoad: false, cancellationToken);
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        await ReloadAsync(isInitialLoad: false, cancellationToken);
+        return true;
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_started)

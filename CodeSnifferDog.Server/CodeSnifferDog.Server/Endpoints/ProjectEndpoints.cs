@@ -19,6 +19,9 @@ public static class ProjectEndpoints
         group.MapGet("/{projectId:guid}", GetProjectAsync)
             .WithName("GetProject");
 
+        group.MapPost("/{projectId:guid}/cancel", CancelProjectAsync)
+            .WithName("CancelProject");
+
         group.MapDelete("/{projectId:guid}", DeleteProjectAsync)
             .WithName("DeleteProject");
 
@@ -68,7 +71,30 @@ public static class ProjectEndpoints
         IProjectIntakeService projectIntakeService,
         CancellationToken cancellationToken)
     {
-        bool deleted = await projectIntakeService.DeleteAsync(projectId, cancellationToken);
-        return deleted ? Results.NoContent() : Results.NotFound();
+        try
+        {
+            bool deleted = await projectIntakeService.DeleteAsync(projectId, cancellationToken);
+            return deleted ? Results.NoContent() : Results.NotFound();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.BadRequest(new { message = exception.Message });
+        }
+    }
+
+    private static async Task<IResult> CancelProjectAsync(
+        Guid projectId,
+        IProjectIntakeService projectIntakeService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            bool canceled = await projectIntakeService.CancelAsync(projectId, cancellationToken);
+            return canceled ? Results.NoContent() : Results.NotFound();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.BadRequest(new { message = exception.Message });
+        }
     }
 }
