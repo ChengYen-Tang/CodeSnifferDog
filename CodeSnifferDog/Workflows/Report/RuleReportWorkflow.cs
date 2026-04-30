@@ -13,15 +13,15 @@ using Microsoft.Extensions.AI;
 namespace CodeSnifferDog.Workflows.Report;
 
 public sealed class RuleReportWorkflow(
-    Func<string, string, StoredProjectPlanTaskItem, AIAgent> reportAggregatorAgentFactory,
-    Func<string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, AIAgent> reportVerifierAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> reportAggregatorAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, AIAgent> reportVerifierAgentFactory,
     IRuleReportIssueStore reportIssueStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     RuleReportWorkflowOptions? options = null)
 {
-    private readonly Func<string, string, StoredProjectPlanTaskItem, AIAgent> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
-    private readonly Func<string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, AIAgent> _reportVerifierAgentFactory = reportVerifierAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, AIAgent> _reportVerifierAgentFactory = reportVerifierAgentFactory;
     private readonly IRuleReportIssueStore _reportIssueStore = reportIssueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly RuleReportWorkflowMessageTemplates _messageTemplates =
@@ -30,6 +30,7 @@ public sealed class RuleReportWorkflow(
 
     public async Task<Result<RuleReportWorkflowResult>> RunAsync(
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
@@ -41,6 +42,9 @@ public sealed class RuleReportWorkflow(
         if (string.IsNullOrWhiteSpace(ruleMarkdown))
             return Result.Fail<RuleReportWorkflowResult>("Rule markdown is required.");
 
+        if (string.IsNullOrWhiteSpace(ruleKey))
+            return Result.Fail<RuleReportWorkflowResult>("Rule key is required.");
+
         ArgumentNullException.ThrowIfNull(taskItem);
         ArgumentNullException.ThrowIfNull(currentFlowIssues);
 
@@ -48,25 +52,26 @@ public sealed class RuleReportWorkflow(
             return Result.Fail<RuleReportWorkflowResult>("Current flow issues are required for report aggregation.");
 
         repositoryRootPath = repositoryRootPath.Trim();
+        ruleKey = ruleKey.Trim();
         ruleMarkdown = ruleMarkdown.Trim();
         RuleFlowKey ruleFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
-        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleMarkdown);
+            RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
+        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
         string reportVerdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
-        await _reportIssueStore.InitializeWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+        await _reportIssueStore.InitializeWorkingReportAsync(ruleReportKey, ruleKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
         _verdictBuffer.Reset(reportVerdictScopeKey);
 
         try
         {
             Result<AIAgent> createAggregatorResult = TryCreateAgent(
-                () => _reportAggregatorAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
                 "Report Aggregator Agent");
 
             if (createAggregatorResult.IsFailed)
                 return createAggregatorResult.ToResult<RuleReportWorkflowResult>();
 
             Result<AIAgent> createVerifierResult = TryCreateAgent(
-                () => _reportVerifierAgentFactory(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues),
+                () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues),
                 "Report Verifier Agent");
 
             if (createVerifierResult.IsFailed)
@@ -115,8 +120,8 @@ public sealed class RuleReportWorkflow(
 
                     return Result.Ok(new RuleReportWorkflowResult
                     {
+                        RuleKey = ruleKey,
                         TaskItem = taskItem,
-                        RuleMarkdown = ruleMarkdown,
                         CurrentFlowIssues = currentFlowIssues,
                         Diff = diff,
                         RepositoryIssues = repositoryIssues,
@@ -138,8 +143,8 @@ public sealed class RuleReportWorkflow(
 
                     return Result.Ok(new RuleReportWorkflowResult
                     {
+                        RuleKey = ruleKey,
                         TaskItem = taskItem,
-                        RuleMarkdown = ruleMarkdown,
                         CurrentFlowIssues = currentFlowIssues,
                         Diff = diff,
                         RepositoryIssues = repositoryIssues,

@@ -9,13 +9,15 @@ namespace CodeSnifferDog.Tests.Modules.Tools.RuleReview;
 [TestClass]
 public sealed class RuleReviewToolSetTests
 {
+    private const string RuleFileName = "performance";
+
     [TestMethod]
     public async Task SubmitNoIssueConclusionAsync_Fails_WhenIssuesExist()
     {
         RuleReviewToolSet toolSet = new(
             new InMemoryRuleReviewIssueStore(),
             new ReviewVerdictBuffer(),
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues."));
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
 
         await toolSet.CreateRuleReviewIssueAsync(
             new CreateRuleReviewIssueArgs
@@ -50,7 +52,7 @@ public sealed class RuleReviewToolSetTests
         RuleReviewToolSet toolSet = new(
             new InMemoryRuleReviewIssueStore(),
             new ReviewVerdictBuffer(),
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues."));
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
 
         await toolSet.SubmitNoIssueConclusionAsync(
             new SubmitNoIssueConclusionArgs
@@ -93,11 +95,11 @@ public sealed class RuleReviewToolSetTests
         RuleReviewToolSet firstToolSet = new(
             store,
             verdictBuffer,
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues."));
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
         RuleReviewToolSet secondToolSet = new(
             store,
             verdictBuffer,
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", "- Detect performance issues."));
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", RuleFileName));
 
         await firstToolSet.CreateRuleReviewIssueAsync(
             new CreateRuleReviewIssueArgs

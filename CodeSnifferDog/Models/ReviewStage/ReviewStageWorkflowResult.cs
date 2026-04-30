@@ -8,7 +8,7 @@ public sealed class ReviewStageWorkflowResult
 
     public required IReadOnlyList<ReviewStageProjectResult> ProjectResults { get; init; }
 
-    public required IReadOnlyList<string> RuleMarkdowns { get; init; }
+    public required IReadOnlyList<string> RuleKeys { get; init; }
 
     public required bool HasAnyReviewGroups { get; init; }
 

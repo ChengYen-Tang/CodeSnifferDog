@@ -7,7 +7,7 @@ public sealed class ReviewGroupWorkflowResult
 {
     public required StoredProjectPlanTaskItem TaskItem { get; init; }
 
-    public required IReadOnlyList<string> RuleMarkdowns { get; init; }
+    public required IReadOnlyList<string> RuleKeys { get; init; }
 
     public required IReadOnlyList<RuleFlowWorkflowResult> FlowResults { get; init; }
 

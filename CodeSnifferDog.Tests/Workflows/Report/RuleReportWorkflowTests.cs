@@ -22,6 +22,8 @@ namespace CodeSnifferDog.Tests.Workflows.Report;
 [DoNotParallelize]
 public sealed class RuleReportWorkflowTests
 {
+    private const string RuleFileName = "performance";
+
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
@@ -35,6 +37,7 @@ public sealed class RuleReportWorkflowTests
 
         Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             CreateCurrentFlowIssues(),
@@ -69,16 +72,17 @@ public sealed class RuleReportWorkflowTests
 
         Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             CreateCurrentFlowIssues(),
             TestContext.CancellationToken);
 
         IReadOnlyList<StoredRuleReportIssue> latestSnapshot = await reportIssueStore.GetLatestSnapshotAsync(
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", "- Detect performance issues."),
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", RuleFileName),
             TestContext.CancellationToken);
         IReadOnlyList<StoredRuleReportIssue> clearedWorkingIssues = await reportIssueStore.ListAsync(
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", "- Detect performance issues."),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", RuleFileName),
             TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
@@ -99,6 +103,7 @@ public sealed class RuleReportWorkflowTests
 
         Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             CreateCurrentFlowIssues(),
@@ -125,6 +130,7 @@ public sealed class RuleReportWorkflowTests
 
         Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             CreateCurrentFlowIssues(),
@@ -169,16 +175,18 @@ public sealed class RuleReportWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         RuleReportWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) => new ReportAggregatorAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => new ReportAggregatorAgentFactory(compactionOptions).Create(
                 aggregatorChatClient,
                 repositoryRootPath,
+                ruleFileName,
                 ruleMarkdown,
                 taskItem,
                 reportIssueStore,
                 verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues) => new ReportVerifierAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) => new ReportVerifierAgentFactory(compactionOptions).Create(
                 verifierChatClient,
                 repositoryRootPath,
+                ruleFileName,
                 ruleMarkdown,
                 taskItem,
                 currentFlowIssues,
@@ -190,6 +198,7 @@ public sealed class RuleReportWorkflowTests
 
         Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             CreateCurrentFlowIssues(),
@@ -222,12 +231,14 @@ public sealed class RuleReportWorkflowTests
 
         Task<Result<RuleReportWorkflowResult>> firstRun = firstWorkflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             CreateCurrentFlowIssues(),
             TestContext.CancellationToken);
         Task<Result<RuleReportWorkflowResult>> secondRun = secondWorkflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             new StoredProjectPlanTaskItem
             {
@@ -257,10 +268,10 @@ public sealed class RuleReportWorkflowTests
         InMemoryRuleReportIssueStore reportIssueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReportWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateAggregatorAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(HandleVerifierInvocation), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(HandleVerifierInvocation), reportIssueStore, verdictBuffer),
             reportIssueStore,
             verdictBuffer,
             new PromptAssetReader());
@@ -270,12 +281,13 @@ public sealed class RuleReportWorkflowTests
 
         Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
             repositoryRootPath,
+            RuleFileName,
             ruleMarkdown,
             taskItem,
             CreateCurrentFlowIssues(),
             TestContext.CancellationToken);
 
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, RuleFileName);
         string verdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
@@ -290,10 +302,10 @@ public sealed class RuleReportWorkflowTests
         InMemoryRuleReportIssueStore reportIssueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReportWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateAggregatorAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), reportIssueStore, verdictBuffer),
             reportIssueStore,
             verdictBuffer,
             new PromptAssetReader());
@@ -303,12 +315,13 @@ public sealed class RuleReportWorkflowTests
 
         Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
             repositoryRootPath,
+            RuleFileName,
             ruleMarkdown,
             taskItem,
             CreateCurrentFlowIssues(),
             TestContext.CancellationToken);
 
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, RuleFileName);
         string verdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsFailed);
@@ -330,10 +343,10 @@ public sealed class RuleReportWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         return new RuleReportWorkflow(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateAggregatorAgent(repositoryRootPath, ruleMarkdown, taskItem, aggregatorChatClient, store, verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, verifierChatClient, store, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, aggregatorChatClient, store, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, verifierChatClient, store, verdictBuffer),
             store,
             verdictBuffer,
             promptAssetReader,
@@ -342,16 +355,18 @@ public sealed class RuleReportWorkflowTests
 
     private static AIAgent CreateAggregatorAgent(
         string repositoryRootPath,
+        string ruleFileName,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IChatClient chatClient,
         IRuleReportIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer) =>
         new ReportAggregatorAgentFactory(CreateCompactionOptions(ReportPromptAssetPaths.ReportSummaryPrompt))
-            .Create(chatClient, repositoryRootPath, ruleMarkdown, taskItem, reportIssueStore, verdictBuffer);
+            .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reportIssueStore, verdictBuffer);
 
     private static AIAgent CreateVerifierAgent(
         string repositoryRootPath,
+        string ruleFileName,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
@@ -359,16 +374,16 @@ public sealed class RuleReportWorkflowTests
         IRuleReportIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer) =>
         new ReportVerifierAgentFactory(CreateCompactionOptions(ReportPromptAssetPaths.ReportSummaryPrompt))
-            .Create(chatClient, repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, reportIssueStore, verdictBuffer);
+            .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, reportIssueStore, verdictBuffer);
 
     private static async Task<InMemoryRuleReportIssueStore> CreateSeededReportStoreAsync(CancellationToken cancellationToken)
     {
         InMemoryRuleReportIssueStore store = new();
         RuleReportKey ruleReportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", RuleFileName);
         RuleFlowKey ruleFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "seed-task-item", "- Detect performance issues.");
-        await store.InitializeWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken);
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "seed-task-item", RuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, RuleFileName, ruleFlowKey, cancellationToken);
         await store.AddAsync(
             ruleFlowKey,
             new RuleReviewIssue
@@ -453,7 +468,7 @@ public sealed class RuleReportWorkflowTests
             return CreateAssistantResponse("Aggregation update recorded.");
 
         RuleReportKey ruleReportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", RuleFileName);
         IReadOnlyList<StoredRuleReportIssue> latestSnapshot =
             reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, CancellationToken.None).AsTask().GetAwaiter().GetResult();
 
@@ -484,9 +499,9 @@ public sealed class RuleReportWorkflowTests
         if (HasCorrectionInstruction(invocation.Messages))
         {
             RuleReportKey ruleReportKey =
-                RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", "- Detect performance issues.");
+                RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", RuleFileName);
             RuleFlowKey ruleFlowKey =
-                RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", "- Detect performance issues.");
+                RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", RuleFileName);
             IReadOnlyList<StoredRuleReportIssue> workingIssues =
                 reportIssueStore.ListAsync(ruleFlowKey, CancellationToken.None).AsTask().GetAwaiter().GetResult();
 

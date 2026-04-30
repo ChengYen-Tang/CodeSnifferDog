@@ -29,6 +29,7 @@ public sealed class RuleReviewAgentFactory(
     public AIAgent Create(
         IChatClient chatClient,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IRuleReviewIssueStore issueStore,
@@ -37,6 +38,7 @@ public sealed class RuleReviewAgentFactory(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(RuleReviewPromptAssetPaths.RuleReviewAgentPrompt),
             repositoryRootPath,
+            ruleKey,
             ruleMarkdown,
             taskItem,
             issueStore,
@@ -46,6 +48,7 @@ public sealed class RuleReviewAgentFactory(
         IChatClient chatClient,
         string promptTemplate,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IRuleReviewIssueStore issueStore,
@@ -54,13 +57,14 @@ public sealed class RuleReviewAgentFactory(
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(promptTemplate);
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ruleKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleMarkdown);
         ArgumentNullException.ThrowIfNull(taskItem);
         ArgumentNullException.ThrowIfNull(issueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
         CommonToolSet commonToolSet = new(repositoryRootPath);
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReviewToolSet toolSet = new(issueStore, verdictBuffer, ruleFlowKey);
         AIAgent agent = chatClient.AsAIAgent(
             RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, taskItem),

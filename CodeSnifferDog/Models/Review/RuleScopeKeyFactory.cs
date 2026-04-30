@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace CodeSnifferDog.Models.Review;
 
 public static class RuleScopeKeyFactory
@@ -8,28 +5,28 @@ public static class RuleScopeKeyFactory
     public static RuleFlowKey CreateRuleFlowKey(
         string repositoryRootPath,
         string projectPlanTaskItemId,
-        string ruleMarkdown)
+        string ruleKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPlanTaskItemId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(ruleMarkdown);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ruleKey);
 
         return new RuleFlowKey(
             repositoryRootPath.Trim(),
             projectPlanTaskItemId.Trim(),
-            CreateRuleKey(ruleMarkdown));
+            ruleKey.Trim());
     }
 
     public static RuleReportKey CreateRuleReportKey(
         string repositoryRootPath,
-        string ruleMarkdown)
+        string ruleKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(ruleMarkdown);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ruleKey);
 
         return new RuleReportKey(
             repositoryRootPath.Trim(),
-            CreateRuleKey(ruleMarkdown));
+            ruleKey.Trim());
     }
 
     public static string CreateReviewVerdictScopeKey(RuleFlowKey ruleFlowKey)
@@ -37,10 +34,4 @@ public static class RuleScopeKeyFactory
 
     public static string CreateReportVerdictScopeKey(RuleFlowKey ruleFlowKey)
         => $"report-verdict::{ruleFlowKey.RepositoryRootPath}::{ruleFlowKey.ProjectPlanTaskItemId}::{ruleFlowKey.RuleKey}";
-
-    private static string CreateRuleKey(string ruleMarkdown)
-    {
-        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(ruleMarkdown.Trim()));
-        return Convert.ToHexStringLower(hash);
-    }
 }

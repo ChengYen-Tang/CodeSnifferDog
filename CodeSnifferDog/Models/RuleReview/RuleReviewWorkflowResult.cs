@@ -7,7 +7,7 @@ public sealed class RuleReviewWorkflowResult
 {
     public required StoredProjectPlanTaskItem TaskItem { get; init; }
 
-    public required string RuleMarkdown { get; init; }
+    public required string RuleKey { get; init; }
 
     public required IReadOnlyList<StoredRuleReviewIssue> Issues { get; init; }
 

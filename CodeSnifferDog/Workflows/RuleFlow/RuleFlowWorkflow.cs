@@ -7,14 +7,15 @@ using FluentResults;
 namespace CodeSnifferDog.Workflows.RuleFlow;
 
 public sealed class RuleFlowWorkflow(
-    Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleReviewWorkflowResult>>> ruleReviewWorkflowRunner,
-    Func<string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, CancellationToken, Task<Result<RuleReportWorkflowResult>>> ruleReportWorkflowRunner)
+    Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleReviewWorkflowResult>>> ruleReviewWorkflowRunner,
+    Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, CancellationToken, Task<Result<RuleReportWorkflowResult>>> ruleReportWorkflowRunner)
 {
-    private readonly Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleReviewWorkflowResult>>> _ruleReviewWorkflowRunner = ruleReviewWorkflowRunner;
-    private readonly Func<string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, CancellationToken, Task<Result<RuleReportWorkflowResult>>> _ruleReportWorkflowRunner = ruleReportWorkflowRunner;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleReviewWorkflowResult>>> _ruleReviewWorkflowRunner = ruleReviewWorkflowRunner;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, CancellationToken, Task<Result<RuleReportWorkflowResult>>> _ruleReportWorkflowRunner = ruleReportWorkflowRunner;
 
     public async Task<Result<RuleFlowWorkflowResult>> RunAsync(
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         CancellationToken cancellationToken = default)
@@ -25,19 +26,31 @@ public sealed class RuleFlowWorkflow(
         if (string.IsNullOrWhiteSpace(ruleMarkdown))
             return Result.Fail<RuleFlowWorkflowResult>("Rule markdown is required.");
 
+        if (string.IsNullOrWhiteSpace(ruleKey))
+            return Result.Fail<RuleFlowWorkflowResult>("Rule key is required.");
+
         ArgumentNullException.ThrowIfNull(taskItem);
 
         repositoryRootPath = repositoryRootPath.Trim();
+        ruleKey = ruleKey.Trim();
         ruleMarkdown = ruleMarkdown.Trim();
 
         Result<RuleReviewWorkflowResult> reviewResult =
-            await _ruleReviewWorkflowRunner(repositoryRootPath, ruleMarkdown, taskItem, cancellationToken).ConfigureAwait(false);
+            await _ruleReviewWorkflowRunner(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken).ConfigureAwait(false);
 
         if (reviewResult.IsFailed)
             return reviewResult.ToResult<RuleFlowWorkflowResult>();
 
         if (reviewResult.Value.StoppedAfterMissingSubmissionLimit)
-            return Result.Ok(CreateResult(taskItem, ruleMarkdown, reviewResult.Value, reportResult: null, enteredReportAggregation: false, RuleFlowCompletionState.DegradedMissingSubmission));
+        {
+            return Result.Ok(CreateResult(
+                taskItem,
+                ruleKey,
+                reviewResult.Value,
+                reportResult: null,
+                enteredReportAggregation: false,
+                RuleFlowCompletionState.DegradedMissingSubmission));
+        }
 
         if (!reviewResult.Value.ShouldEnterReportAggregation)
         {
@@ -45,11 +58,18 @@ public sealed class RuleFlowWorkflow(
                 ? RuleFlowCompletionState.ApprovedNoIssue
                 : RuleFlowCompletionState.DegradedNoIssue;
 
-            return Result.Ok(CreateResult(taskItem, ruleMarkdown, reviewResult.Value, reportResult: null, enteredReportAggregation: false, completionState));
+            return Result.Ok(CreateResult(
+                taskItem,
+                ruleKey,
+                reviewResult.Value,
+                reportResult: null,
+                enteredReportAggregation: false,
+                completionState));
         }
 
         Result<RuleReportWorkflowResult> reportResult = await _ruleReportWorkflowRunner(
             repositoryRootPath,
+            ruleKey,
             ruleMarkdown,
             taskItem,
             reviewResult.Value.Issues,
@@ -63,12 +83,18 @@ public sealed class RuleFlowWorkflow(
                 ? RuleFlowCompletionState.ApprovedWithReport
                 : RuleFlowCompletionState.DegradedWithReport;
 
-        return Result.Ok(CreateResult(taskItem, ruleMarkdown, reviewResult.Value, reportResult.Value, enteredReportAggregation: true, reportCompletionState));
+        return Result.Ok(CreateResult(
+            taskItem,
+            ruleKey,
+            reviewResult.Value,
+            reportResult.Value,
+            enteredReportAggregation: true,
+            reportCompletionState));
     }
 
     private static RuleFlowWorkflowResult CreateResult(
         StoredProjectPlanTaskItem taskItem,
-        string ruleMarkdown,
+        string ruleKey,
         RuleReviewWorkflowResult reviewResult,
         RuleReportWorkflowResult? reportResult,
         bool enteredReportAggregation,
@@ -76,7 +102,7 @@ public sealed class RuleFlowWorkflow(
         new()
         {
             TaskItem = taskItem,
-            RuleMarkdown = ruleMarkdown,
+            RuleKey = ruleKey,
             ReviewResult = reviewResult,
             ReportResult = reportResult,
             EnteredReportAggregation = enteredReportAggregation,

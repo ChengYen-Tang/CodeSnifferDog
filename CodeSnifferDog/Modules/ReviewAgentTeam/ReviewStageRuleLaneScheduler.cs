@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Modules.Concurrency;
@@ -7,23 +8,23 @@ using FluentResults;
 namespace CodeSnifferDog.Modules.ReviewAgentTeam;
 
 internal sealed class ReviewStageRuleLaneScheduler(
-    Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
+    Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
     IReviewAgentConcurrencyGate concurrencyGate)
 {
-    private readonly Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> _ruleFlowWorkflowRunner = ruleFlowWorkflowRunner;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> _ruleFlowWorkflowRunner = ruleFlowWorkflowRunner;
     private readonly IReviewAgentConcurrencyGate _concurrencyGate = concurrencyGate;
 
     public async Task<Result<IReadOnlyList<ReviewStageProjectFlowResult>>> RunAsync(
         string repositoryRootPath,
         IReadOnlyList<ProjectPlanWorkflowResult> projectPlanResults,
-        IReadOnlyList<string> ruleMarkdowns,
+        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repositoryRootPath))
             return Result.Fail<IReadOnlyList<ReviewStageProjectFlowResult>>("Repository root path is required.");
 
         ArgumentNullException.ThrowIfNull(projectPlanResults);
-        ArgumentNullException.ThrowIfNull(ruleMarkdowns);
+        ArgumentNullException.ThrowIfNull(ruleDefinitions);
 
         repositoryRootPath = repositoryRootPath.Trim();
 
@@ -35,18 +36,18 @@ internal sealed class ReviewStageRuleLaneScheduler(
                     .Select(taskItem => new ReviewStageTaskItemFlowResult
                     {
                         TaskItem = taskItem,
-                        FlowResults = new RuleFlowWorkflowResult[ruleMarkdowns.Count],
+                        FlowResults = new RuleFlowWorkflowResult[ruleDefinitions.Count],
                     })
                     .ToArray(),
             })
             .ToArray();
 
-        if (ruleMarkdowns.Count == 0)
+        if (ruleDefinitions.Count == 0)
             return Result.Ok<IReadOnlyList<ReviewStageProjectFlowResult>>(projectResults);
 
         List<IError> errors = [];
-        RuleLaneState[] laneStates = ruleMarkdowns
-            .Select((ruleMarkdown, ruleIndex) => new RuleLaneState(ruleIndex, ruleMarkdown))
+        RuleLaneState[] laneStates = ruleDefinitions
+            .Select((ruleDefinition, ruleIndex) => new RuleLaneState(ruleIndex, ruleDefinition))
             .ToArray();
 
         for (int projectIndex = 0; projectIndex < projectResults.Length; projectIndex++)
@@ -74,7 +75,7 @@ internal sealed class ReviewStageRuleLaneScheduler(
                 runningFlows.Add(new RunningRuleFlow(
                     laneState,
                     workItem,
-                    RunRuleFlowAsync(lease!, repositoryRootPath, laneState.RuleMarkdown, workItem.TaskItem, cancellationToken)));
+                    RunRuleFlowAsync(lease!, repositoryRootPath, laneState.RuleDefinition.RuleKey, laneState.RuleDefinition.RuleMarkdown, workItem.TaskItem, cancellationToken)));
                 launchedAnyFlow = true;
             }
 
@@ -88,7 +89,7 @@ internal sealed class ReviewStageRuleLaneScheduler(
                 PendingRuleWorkItem workItem = laneState.Dequeue();
                 laneState.IsRunning = true;
                 RuleFlowExecutionResult executionResult =
-                    await RunRuleFlowAsync(lease, repositoryRootPath, laneState.RuleMarkdown, workItem.TaskItem, cancellationToken).ConfigureAwait(false);
+                    await RunRuleFlowAsync(lease, repositoryRootPath, laneState.RuleDefinition.RuleKey, laneState.RuleDefinition.RuleMarkdown, workItem.TaskItem, cancellationToken).ConfigureAwait(false);
                 ProcessExecutionResult(executionResult, laneState, workItem, projectResults, errors);
                 continue;
             }
@@ -154,14 +155,19 @@ internal sealed class ReviewStageRuleLaneScheduler(
     private async Task<RuleFlowExecutionResult> RunRuleFlowAsync(
         IAsyncDisposable lease,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         CancellationToken cancellationToken)
     {
         try
         {
-            return new RuleFlowExecutionResult(
-                await _ruleFlowWorkflowRunner(repositoryRootPath, ruleMarkdown, taskItem, cancellationToken).ConfigureAwait(false));
+            return new RuleFlowExecutionResult(await _ruleFlowWorkflowRunner(
+                repositoryRootPath,
+                ruleKey,
+                ruleMarkdown,
+                taskItem,
+                cancellationToken).ConfigureAwait(false));
         }
         finally
         {
@@ -178,13 +184,13 @@ internal sealed class ReviewStageRuleLaneScheduler(
         public StoredProjectPlanTaskItem TaskItem { get; } = taskItem;
     }
 
-    private sealed class RuleLaneState(int ruleIndex, string ruleMarkdown)
+    private sealed class RuleLaneState(int ruleIndex, ReviewAgentRuleDefinition ruleDefinition)
     {
         private readonly Queue<PendingRuleWorkItem> _queue = [];
 
         public int RuleIndex { get; } = ruleIndex;
 
-        public string RuleMarkdown { get; } = ruleMarkdown;
+        public ReviewAgentRuleDefinition RuleDefinition { get; } = ruleDefinition;
 
         public bool IsRunning { get; set; }
 

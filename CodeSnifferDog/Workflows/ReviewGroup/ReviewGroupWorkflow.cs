@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewGroup;
 using CodeSnifferDog.Models.RuleFlow;
 using FluentResults;
@@ -9,24 +10,24 @@ internal sealed class ReviewGroupWorkflow
 {
     public Result<ReviewGroupWorkflowResult> Run(
         StoredProjectPlanTaskItem taskItem,
-        IReadOnlyList<string> ruleMarkdowns,
+        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
         IReadOnlyList<RuleFlowWorkflowResult> flowResults)
     {
         ArgumentNullException.ThrowIfNull(taskItem);
-        ArgumentNullException.ThrowIfNull(ruleMarkdowns);
+        ArgumentNullException.ThrowIfNull(ruleDefinitions);
         ArgumentNullException.ThrowIfNull(flowResults);
 
-        if (ruleMarkdowns.Count == 0)
+        if (ruleDefinitions.Count == 0)
         {
             return flowResults.Count == 0
                 ? Result.Ok(CreateResult(taskItem, [], []))
                 : Result.Fail<ReviewGroupWorkflowResult>("Flow results must be empty when no rules exist.");
         }
 
-        if (flowResults.Count != ruleMarkdowns.Count)
+        if (flowResults.Count != ruleDefinitions.Count)
             return Result.Fail<ReviewGroupWorkflowResult>("Flow result count must match rule count.");
 
-        for (int i = 0; i < ruleMarkdowns.Count; i++)
+        for (int i = 0; i < ruleDefinitions.Count; i++)
         {
             if (!string.Equals(flowResults[i].TaskItem.ProjectPlanTaskItemId, taskItem.ProjectPlanTaskItemId, StringComparison.Ordinal))
             {
@@ -34,19 +35,19 @@ internal sealed class ReviewGroupWorkflow
                     $"Flow result task item does not match the review group task item at index {i}.");
             }
 
-            if (!string.Equals(flowResults[i].RuleMarkdown, ruleMarkdowns[i], StringComparison.Ordinal))
+            if (!string.Equals(flowResults[i].RuleKey, ruleDefinitions[i].RuleKey, StringComparison.Ordinal))
             {
                 return Result.Fail<ReviewGroupWorkflowResult>(
                     $"Flow result order does not match rule order at index {i}.");
             }
         }
 
-        return Result.Ok(CreateResult(taskItem, ruleMarkdowns, flowResults));
+        return Result.Ok(CreateResult(taskItem, ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey).ToArray(), flowResults));
     }
 
     private static ReviewGroupWorkflowResult CreateResult(
         StoredProjectPlanTaskItem taskItem,
-        IReadOnlyList<string> ruleMarkdowns,
+        IReadOnlyList<string> ruleKeys,
         IReadOnlyList<RuleFlowWorkflowResult> flowResults)
     {
         int approvedCompletionCount = flowResults.Count(result => result.IsApprovedCompletion);
@@ -54,7 +55,7 @@ internal sealed class ReviewGroupWorkflow
         return new ReviewGroupWorkflowResult
         {
             TaskItem = taskItem,
-            RuleMarkdowns = ruleMarkdowns.ToArray(),
+            RuleKeys = ruleKeys.ToArray(),
             FlowResults = flowResults.ToArray(),
             HasAnyRuleFlows = flowResults.Count > 0,
             AllRuleFlowsFinished = true,

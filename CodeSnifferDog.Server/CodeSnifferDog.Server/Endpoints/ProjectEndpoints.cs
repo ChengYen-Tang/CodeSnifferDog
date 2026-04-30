@@ -1,5 +1,9 @@
 using CodeSnifferDog.Server.Services.ProjectIntake;
+using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Shared.Projects;
+using CodeSnifferDog.Server.Shared.Reports;
+using System.IO.Compression;
+using System.Text;
 
 namespace CodeSnifferDog.Server.Endpoints;
 
@@ -18,6 +22,15 @@ public static class ProjectEndpoints
 
         group.MapGet("/{projectId:guid}", GetProjectAsync)
             .WithName("GetProject");
+
+        group.MapGet("/{projectId:guid}/reports", GetProjectReportsAsync)
+            .WithName("GetProjectReports");
+
+        group.MapGet("/{projectId:guid}/reports/{reportId:guid}/download", DownloadProjectReportAsync)
+            .WithName("DownloadProjectReport");
+
+        group.MapGet("/{projectId:guid}/reports/download", DownloadProjectReportBundleAsync)
+            .WithName("DownloadProjectReportBundle");
 
         group.MapPost("/{projectId:guid}/cancel", CancelProjectAsync)
             .WithName("CancelProject");
@@ -64,6 +77,56 @@ public static class ProjectEndpoints
     {
         ProjectSummaryDto? project = await projectIntakeService.GetAsync(projectId, cancellationToken);
         return project is null ? Results.NotFound() : Results.Ok(project);
+    }
+
+    private static async Task<IResult> GetProjectReportsAsync(
+        Guid projectId,
+        IProjectReportService projectReportService,
+        CancellationToken cancellationToken)
+    {
+        ProjectReportBundleDto? reports = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
+        return reports is null ? Results.NotFound() : Results.Ok(reports);
+    }
+
+    private static async Task<IResult> DownloadProjectReportAsync(
+        Guid projectId,
+        Guid reportId,
+        IProjectReportService projectReportService,
+        CancellationToken cancellationToken)
+    {
+        ProjectRuleReportDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
+        if (report is null)
+            return Results.NotFound();
+
+        byte[] bytes = Encoding.UTF8.GetBytes(report.MarkdownContent);
+        return Results.File(bytes, "text/markdown; charset=utf-8", $"{report.RuleName}.md");
+    }
+
+    private static async Task<IResult> DownloadProjectReportBundleAsync(
+        Guid projectId,
+        IProjectReportService projectReportService,
+        CancellationToken cancellationToken)
+    {
+        ProjectReportBundleDto? bundle = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
+        if (bundle is null)
+            return Results.NotFound();
+
+        using MemoryStream archiveStream = new();
+        using (ZipArchive archive = new(archiveStream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (ProjectRuleReportDto report in bundle.Reports)
+            {
+                ZipArchiveEntry entry = archive.CreateEntry($"{report.RuleName}.md", CompressionLevel.Fastest);
+                await using Stream entryStream = entry.Open();
+                await using StreamWriter writer = new(entryStream, Encoding.UTF8, leaveOpen: false);
+                await writer.WriteAsync(report.MarkdownContent.AsMemory(), cancellationToken);
+            }
+        }
+
+        return Results.File(
+            archiveStream.ToArray(),
+            "application/zip",
+            $"{Path.GetFileNameWithoutExtension(bundle.OriginalFileName)}-reports.zip");
     }
 
     private static async Task<IResult> DeleteProjectAsync(

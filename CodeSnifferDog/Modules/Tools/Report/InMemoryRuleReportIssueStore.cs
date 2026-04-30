@@ -6,22 +6,25 @@ namespace CodeSnifferDog.Modules.Tools.Report;
 
 public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
 {
-    private readonly Dictionary<RuleReportKey, List<StoredRuleReportIssue>> _latestSnapshots = [];
+    private readonly Dictionary<RuleReportKey, RuleReportSnapshotState> _latestSnapshots = [];
     private readonly Dictionary<RuleFlowKey, RuleReportFlowState> _flowStates = [];
     private readonly Lock _syncRoot = new();
 
     public ValueTask InitializeWorkingReportAsync(
         RuleReportKey ruleReportKey,
+        string ruleKey,
         RuleFlowKey ruleFlowKey,
         CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ruleKey);
+
         lock (_syncRoot)
         {
-            List<StoredRuleReportIssue> latestSnapshot = GetOrCreateLatestSnapshot(ruleReportKey);
+            RuleReportSnapshotState latestSnapshot = GetOrCreateLatestSnapshot(ruleReportKey, ruleKey.Trim());
             RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
             flowState.WorkingIssues.Clear();
 
-            foreach (StoredRuleReportIssue issue in latestSnapshot)
+            foreach (StoredRuleReportIssue issue in latestSnapshot.Issues)
                 flowState.WorkingIssues.Add(Clone(issue));
 
             flowState.LatestDiff = CreateEmptyDiff();
@@ -120,7 +123,10 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         CancellationToken cancellationToken)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult<IReadOnlyList<StoredRuleReportIssue>>([.. GetOrCreateLatestSnapshot(ruleReportKey)]);
+            return ValueTask.FromResult<IReadOnlyList<StoredRuleReportIssue>>(
+                _latestSnapshots.TryGetValue(ruleReportKey, out RuleReportSnapshotState? state)
+                    ? [.. state.Issues]
+                    : []);
     }
 
     public ValueTask<RuleReportDiff> GetLatestDiffAsync(
@@ -151,12 +157,12 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     {
         lock (_syncRoot)
         {
-            List<StoredRuleReportIssue> latestSnapshot = GetOrCreateLatestSnapshot(ruleReportKey);
+            RuleReportSnapshotState latestSnapshot = GetOrCreateLatestSnapshot(ruleReportKey, null);
             RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
-            latestSnapshot.Clear();
+            latestSnapshot.Issues.Clear();
 
             foreach (StoredRuleReportIssue issue in flowState.WorkingIssues)
-                latestSnapshot.Add(Clone(issue));
+                latestSnapshot.Issues.Add(Clone(issue));
         }
 
         return ValueTask.CompletedTask;
@@ -193,12 +199,21 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         return ValueTask.CompletedTask;
     }
 
-    private List<StoredRuleReportIssue> GetOrCreateLatestSnapshot(RuleReportKey ruleReportKey)
+    private RuleReportSnapshotState GetOrCreateLatestSnapshot(RuleReportKey ruleReportKey, string? ruleKey)
     {
-        if (_latestSnapshots.TryGetValue(ruleReportKey, out List<StoredRuleReportIssue>? state))
-            return state;
+        if (_latestSnapshots.TryGetValue(ruleReportKey, out RuleReportSnapshotState? state))
+        {
+            if (!string.IsNullOrWhiteSpace(ruleKey) &&
+                !string.Equals(state.RuleKey, ruleKey.Trim(), StringComparison.Ordinal))
+                throw new InvalidOperationException($"Rule key mismatch for report key '{ruleReportKey}'.");
 
-        state = [];
+            return state;
+        }
+
+        if (string.IsNullOrWhiteSpace(ruleKey))
+            throw new KeyNotFoundException($"Rule report snapshot was not initialized: {ruleReportKey}");
+
+        state = new RuleReportSnapshotState(ruleKey.Trim());
         _latestSnapshots.Add(ruleReportKey, state);
         return state;
     }
@@ -293,5 +308,12 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         public List<StoredRuleReportIssue> WorkingIssues { get; } = [];
 
         public RuleReportDiff LatestDiff { get; set; } = CreateEmptyDiff();
+    }
+
+    private sealed class RuleReportSnapshotState(string ruleKey)
+    {
+        public string RuleKey { get; } = ruleKey;
+
+        public List<StoredRuleReportIssue> Issues { get; } = [];
     }
 }

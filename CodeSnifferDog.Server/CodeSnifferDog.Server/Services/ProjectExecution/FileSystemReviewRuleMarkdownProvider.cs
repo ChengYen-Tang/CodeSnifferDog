@@ -9,23 +9,31 @@ public sealed class FileSystemReviewRuleMarkdownProvider : IReviewRuleMarkdownPr
         Directory.EnumerateFiles(ResolveRulesDirectoryPath(), "*.md", SearchOption.TopDirectoryOnly)
             .Any(ruleFilePath => !string.IsNullOrWhiteSpace(File.ReadAllText(ruleFilePath)));
 
-    public async Task<IReadOnlyList<string>> LoadRuleMarkdownsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ProjectExecutionRuleDefinition>> LoadRulesAsync(CancellationToken cancellationToken = default)
     {
         string rulesDirectoryPath = ResolveRulesDirectoryPath();
         if (!Directory.Exists(rulesDirectoryPath))
             return [];
 
-        List<string> ruleMarkdowns = [];
+        List<ProjectExecutionRuleDefinition> rules = [];
         foreach (string ruleFilePath in Directory
             .EnumerateFiles(rulesDirectoryPath, "*.md", SearchOption.TopDirectoryOnly)
             .Order(StringComparer.OrdinalIgnoreCase))
         {
             string ruleMarkdown = await File.ReadAllTextAsync(ruleFilePath, cancellationToken);
             if (!string.IsNullOrWhiteSpace(ruleMarkdown))
-                ruleMarkdowns.Add(ruleMarkdown);
+            {
+                string ruleName = Path.GetFileNameWithoutExtension(ruleFilePath);
+                rules.Add(new ProjectExecutionRuleDefinition
+                {
+                    RuleKey = ruleName,
+                    RuleName = ruleName,
+                    RuleMarkdown = ruleMarkdown,
+                });
+            }
         }
 
-        return ruleMarkdowns;
+        return rules;
     }
 
     private string ResolveRulesDirectoryPath()

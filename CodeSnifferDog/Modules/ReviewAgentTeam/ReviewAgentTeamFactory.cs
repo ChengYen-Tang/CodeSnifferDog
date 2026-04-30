@@ -8,7 +8,7 @@ public sealed class ReviewAgentTeamFactory(ReviewAgentTeamDependencies dependenc
 
     public ReviewAgentTeamWorker CreateWorker(
         string repositoryRootPath,
-        IReadOnlyList<string> ruleMarkdowns,
+        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
         ReviewAgentTeamExecutionOptions executionOptions) =>
-        new(repositoryRootPath, ruleMarkdowns, executionOptions, _dependencies);
+        new(repositoryRootPath, ruleDefinitions, executionOptions, _dependencies);
 }

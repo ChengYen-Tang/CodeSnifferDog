@@ -110,7 +110,7 @@
 
 ### 2.1 Worker 顯式輸入與內部推導
 
-- `RepositoryRootPath` 與 `RuleMarkdowns` 屬於分析目標，應在 worker 建立時綁定。
+- `RepositoryRootPath` 與 review rule definitions 屬於分析目標，應在 worker 建立時綁定。
 - `ModelContextWindowTokens` 屬於 compaction 與執行策略相關輸入。
 - 第一版正式對外暴露的 compaction 相關設定，應透過 worker 的 `ExecutionOptions` DTO 提供，而不是獨立散落。
 - 第一版 `ExecutionOptions` 至少應包含：

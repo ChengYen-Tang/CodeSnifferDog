@@ -6,6 +6,7 @@ using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
+using CodeSnifferDog.Modules.Tools.Report;
 using FluentResults;
 using RuleReviewModels = CodeSnifferDog.Models.RuleReview;
 
@@ -15,7 +16,11 @@ namespace CodeSnifferDog.Tests.Modules.ReviewAgentTeam;
 public sealed class ReviewAgentTeamWorkerTests
 {
     private const string RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
-    private static readonly IReadOnlyList<string> RuleMarkdowns = ["- Rule A", "- Rule B"];
+    private static readonly IReadOnlyList<ReviewAgentRuleDefinition> RuleDefinitions =
+    [
+        CreateRuleDefinition("rule-a", "- Rule A"),
+        CreateRuleDefinition("rule-b", "- Rule B"),
+    ];
 
     [TestMethod]
     public async Task AnalyzeAsync_UsesSharedWorkerBudget_AndReturnsPreparationAndReviewResults()
@@ -31,6 +36,21 @@ public sealed class ReviewAgentTeamWorkerTests
         Assert.HasCount(1, result.Value.PreparationResult.ProjectPlanResults);
         Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults);
         Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults[0].ReviewGroupResults);
+    }
+
+    [TestMethod]
+    public async Task GetRuleReportsAsync_ReturnsCurrentMarkdownReportsIndependentlyFromAnalyzeResult()
+    {
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
+        using ReviewAgentTeamWorker worker = CreateWorker(teamFactory);
+
+        Result<ReviewAgentTeamRunResult> analyzeResult = await worker.AnalyzeAsync();
+        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports = await worker.GetRuleReportsAsync();
+
+        Assert.IsTrue(analyzeResult.IsSuccess, string.Join(Environment.NewLine, analyzeResult.Errors.Select(error => error.Message)));
+        Assert.HasCount(2, ruleReports);
+        Assert.AreEqual("rule-a", ruleReports[0].RuleKey);
+        StringAssert.Contains(ruleReports[0].MarkdownContent, "# rule-a-report.md");
     }
 
     [TestMethod]
@@ -74,7 +94,7 @@ public sealed class ReviewAgentTeamWorkerTests
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
 
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, new ReviewAgentTeamExecutionOptions
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleDefinitions, new ReviewAgentTeamExecutionOptions
         {
             MaxParallelAgents = 0,
         }));
@@ -85,15 +105,15 @@ public sealed class ReviewAgentTeamWorkerTests
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
 
-        Assert.ThrowsExactly<ArgumentException>(() => teamFactory.CreateWorker(" ", RuleMarkdowns, CreateExecutionOptions()));
+        Assert.ThrowsExactly<ArgumentException>(() => teamFactory.CreateWorker(" ", RuleDefinitions, CreateExecutionOptions()));
     }
 
     [TestMethod]
-    public void CreateWorker_ThrowsWhenRuleMarkdownsIsNull()
+    public void CreateWorker_ThrowsWhenRuleDefinitionsIsNull()
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
 
-        Assert.ThrowsExactly<ArgumentNullException>(() => teamFactory.CreateWorker(RepositoryRootPath, null!, CreateExecutionOptions()));
+        Assert.ThrowsExactly<ArgumentNullException>(() => teamFactory.CreateWorker(RepositoryRootPath, (IReadOnlyList<ReviewAgentRuleDefinition>)null!, CreateExecutionOptions()));
     }
 
     [TestMethod]
@@ -101,7 +121,7 @@ public sealed class ReviewAgentTeamWorkerTests
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
 
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, new ReviewAgentTeamExecutionOptions
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => teamFactory.CreateWorker(RepositoryRootPath, RuleDefinitions, new ReviewAgentTeamExecutionOptions
         {
             MaxParallelAgents = 2,
             ModelContextWindowTokens = 0,
@@ -138,8 +158,9 @@ public sealed class ReviewAgentTeamWorkerTests
                 Task.FromResult(Result.Ok(CreateScanResult(CreateScanProject("scan-1", "ProjectOne")))),
             ProjectPlanWorkflowRunner = (repositoryRootPath, scanProject, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject))),
-            RuleFlowWorkflowRunner = (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
-                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown))),
+            RuleFlowWorkflowRunner = (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
+                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown))),
+            RuleReportIssueStore = new InMemoryRuleReportIssueStore(),
             CleanupAsync = cancellationToken =>
             {
                 cleanupAction?.Invoke();
@@ -148,7 +169,14 @@ public sealed class ReviewAgentTeamWorkerTests
         });
 
     private static ReviewAgentTeamWorker CreateWorker(ReviewAgentTeamFactory teamFactory) =>
-        teamFactory.CreateWorker(RepositoryRootPath, RuleMarkdowns, CreateExecutionOptions());
+        teamFactory.CreateWorker(RepositoryRootPath, RuleDefinitions, CreateExecutionOptions());
+
+    private static ReviewAgentRuleDefinition CreateRuleDefinition(string ruleKey, string ruleMarkdown) =>
+        new()
+        {
+            RuleKey = ruleKey,
+            RuleMarkdown = ruleMarkdown,
+        };
 
     private static ReviewAgentTeamExecutionOptions CreateExecutionOptions() => new()
     {
@@ -214,15 +242,15 @@ public sealed class ReviewAgentTeamWorkerTests
             ProjectPlanAgentResetCount = 0,
         };
 
-    private static RuleFlowWorkflowResult CreateRuleFlowResult(StoredProjectPlanTaskItem taskItem, string ruleMarkdown) =>
+    private static RuleFlowWorkflowResult CreateRuleFlowResult(StoredProjectPlanTaskItem taskItem, string ruleKey, string ruleMarkdown) =>
         new()
         {
             TaskItem = taskItem,
-            RuleMarkdown = ruleMarkdown,
+            RuleKey = ruleKey,
             ReviewResult = new RuleReviewModels.RuleReviewWorkflowResult
             {
                 TaskItem = taskItem,
-                RuleMarkdown = ruleMarkdown,
+                RuleKey = ruleKey,
                 Issues = [],
                 NoIssueConclusion = new RuleReviewModels.NoIssueConclusion
                 {

@@ -6,9 +6,9 @@ namespace CodeSnifferDog.Models.Report;
 
 public sealed class RuleReportWorkflowResult
 {
-    public required StoredProjectPlanTaskItem TaskItem { get; init; }
+    public required string RuleKey { get; init; }
 
-    public required string RuleMarkdown { get; init; }
+    public required StoredProjectPlanTaskItem TaskItem { get; init; }
 
     public required IReadOnlyList<StoredRuleReviewIssue> CurrentFlowIssues { get; init; }
 

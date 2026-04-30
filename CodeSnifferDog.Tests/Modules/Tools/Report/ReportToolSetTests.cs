@@ -9,6 +9,9 @@ namespace CodeSnifferDog.Tests.Modules.Tools.Report;
 [TestClass]
 public sealed class ReportToolSetTests
 {
+    private const string PerformanceRuleFileName = "performance";
+    private const string MemoryRuleFileName = "memory";
+
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
@@ -16,10 +19,10 @@ public sealed class ReportToolSetTests
     {
         InMemoryRuleReportIssueStore store = new();
         RuleFlowKey ruleFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
         RuleReportKey ruleReportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", "- Detect performance issues.");
-        await store.InitializeWorkingReportAsync(ruleReportKey, ruleFlowKey, TestContext.CancellationToken);
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
         ReportToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         CreateRuleReportIssueResult result = await toolSet.CreateRuleReportIssueAsync(
@@ -46,10 +49,10 @@ public sealed class ReportToolSetTests
     {
         InMemoryRuleReportIssueStore store = new();
         RuleFlowKey ruleFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
         RuleReportKey ruleReportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", "- Detect performance issues.");
-        await store.InitializeWorkingReportAsync(ruleReportKey, ruleFlowKey, TestContext.CancellationToken);
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
         ReportToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         CreateRuleReportIssueResult createdIssue = await toolSet.CreateRuleReportIssueAsync(
@@ -57,7 +60,7 @@ public sealed class ReportToolSetTests
             TestContext.CancellationToken);
 
         await store.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, TestContext.CancellationToken);
-        await store.InitializeWorkingReportAsync(ruleReportKey, ruleFlowKey, TestContext.CancellationToken);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
 
         IReadOnlyList<StoredRuleReportIssue> workingIssues = await toolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
 
@@ -69,9 +72,9 @@ public sealed class ReportToolSetTests
     public async Task SetLatestDiffAsync_PreservesDiffForVerifier()
     {
         RuleFlowKey ruleFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
         RuleReportKey ruleReportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         ReportToolSet toolSet = new(new InMemoryRuleReportIssueStore(), new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
         RuleReportDiff diff = new()
         {
@@ -93,15 +96,15 @@ public sealed class ReportToolSetTests
         InMemoryRuleReportIssueStore store = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleFlowKey firstFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
         RuleReportKey firstReportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         RuleFlowKey secondFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", "- Detect memory issues.");
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", MemoryRuleFileName);
         RuleReportKey secondReportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", "- Detect memory issues.");
-        await store.InitializeWorkingReportAsync(firstReportKey, firstFlowKey, TestContext.CancellationToken);
-        await store.InitializeWorkingReportAsync(secondReportKey, secondFlowKey, TestContext.CancellationToken);
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", MemoryRuleFileName);
+        await store.InitializeWorkingReportAsync(firstReportKey, PerformanceRuleFileName, firstFlowKey, TestContext.CancellationToken);
+        await store.InitializeWorkingReportAsync(secondReportKey, MemoryRuleFileName, secondFlowKey, TestContext.CancellationToken);
         ReportToolSet firstToolSet = new(store, verdictBuffer, firstFlowKey, firstReportKey);
         ReportToolSet secondToolSet = new(store, verdictBuffer, secondFlowKey, secondReportKey);
 
@@ -122,13 +125,13 @@ public sealed class ReportToolSetTests
         InMemoryRuleReportIssueStore store = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReportKey reportKey =
-            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         RuleFlowKey firstFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", "- Detect performance issues.");
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
         RuleFlowKey secondFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", "- Detect performance issues.");
-        await store.InitializeWorkingReportAsync(reportKey, firstFlowKey, TestContext.CancellationToken);
-        await store.InitializeWorkingReportAsync(reportKey, secondFlowKey, TestContext.CancellationToken);
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(reportKey, PerformanceRuleFileName, firstFlowKey, TestContext.CancellationToken);
+        await store.InitializeWorkingReportAsync(reportKey, PerformanceRuleFileName, secondFlowKey, TestContext.CancellationToken);
         ReportToolSet firstToolSet = new(store, verdictBuffer, firstFlowKey, reportKey);
         ReportToolSet secondToolSet = new(store, verdictBuffer, secondFlowKey, reportKey);
 

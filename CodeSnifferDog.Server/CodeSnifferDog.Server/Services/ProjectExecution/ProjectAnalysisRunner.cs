@@ -5,6 +5,7 @@ using CodeSnifferDog.Agents.Scan;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
+using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.RuleReview;
@@ -23,6 +24,7 @@ using CodeSnifferDog.Workflows.Report;
 using CodeSnifferDog.Workflows.RuleFlow;
 using CodeSnifferDog.Workflows.RuleReview;
 using CodeSnifferDog.Workflows.Scan;
+using CodeSnifferDog.Server.Services.ProjectReports;
 using FluentResults;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -32,6 +34,7 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution;
 public sealed class ProjectAnalysisRunner(
     IProjectChatClientProvider chatClientProvider,
     IReviewRuleMarkdownProvider ruleMarkdownProvider,
+    IProjectReportService projectReportService,
     IOptions<ProjectExecutionOptions> options,
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider,
@@ -39,6 +42,7 @@ public sealed class ProjectAnalysisRunner(
 {
     private readonly IProjectChatClientProvider _chatClientProvider = chatClientProvider;
     private readonly IReviewRuleMarkdownProvider _ruleMarkdownProvider = ruleMarkdownProvider;
+    private readonly IProjectReportService _projectReportService = projectReportService;
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
@@ -60,15 +64,20 @@ public sealed class ProjectAnalysisRunner(
             throw new InvalidOperationException("ExecutionOptions:ModelContextWindowTokens must be greater than zero.");
 
         IChatClient chatClient = _chatClientProvider.CreateChatClient();
-        IReadOnlyList<string> ruleMarkdowns = await _ruleMarkdownProvider.LoadRuleMarkdownsAsync(cancellationToken);
+        IReadOnlyList<ProjectExecutionRuleDefinition> rules = await _ruleMarkdownProvider.LoadRulesAsync(cancellationToken);
 
-        if (ruleMarkdowns.Count == 0)
+        if (rules.Count == 0)
             throw new InvalidOperationException("No review rule markdown files were found.");
 
-        ReviewAgentTeamFactory teamFactory = CreateTeamFactory(chatClient);
+        InMemoryRuleReportIssueStore ruleReportIssueStore = new();
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory(chatClient, ruleReportIssueStore);
         await using ReviewAgentTeamWorker worker = teamFactory.CreateWorker(
             context.RepositoryRootPath,
-            ruleMarkdowns,
+            rules.Select(rule => new ReviewAgentRuleDefinition
+            {
+                RuleKey = rule.RuleKey,
+                RuleMarkdown = rule.RuleMarkdown,
+            }).ToArray(),
             new ReviewAgentTeamExecutionOptions
             {
                 MaxParallelAgents = _options.MaxParallelAgents,
@@ -80,10 +89,14 @@ public sealed class ProjectAnalysisRunner(
         if (result.IsFailed)
             throw new InvalidOperationException(string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
 
+        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports = await worker.GetRuleReportsAsync(cancellationToken);
+        await PersistReportsAsync(context.ProjectId, rules, ruleReports, cancellationToken);
         _logger.LogInformation("Project {ProjectId} analysis completed.", context.ProjectId);
     }
 
-    private ReviewAgentTeamFactory CreateTeamFactory(IChatClient chatClient)
+    private ReviewAgentTeamFactory CreateTeamFactory(
+        IChatClient chatClient,
+        InMemoryRuleReportIssueStore ruleReportIssueStore)
     {
         PromptAssetReader promptAssetReader = new();
         ChatClientOperationalContextCompactionSummarizer summarizer = new(chatClient);
@@ -91,7 +104,6 @@ public sealed class ProjectAnalysisRunner(
         AgentCompactionOptions agentCompactionOptions = CreateAgentCompactionOptions(compactionOptionsFactory);
 
         InMemoryRuleReviewIssueStore ruleReviewIssueStore = new();
-        InMemoryRuleReportIssueStore ruleReportIssueStore = new();
 
         return new ReviewAgentTeamFactory(new ReviewAgentTeamDependencies
         {
@@ -99,10 +111,11 @@ public sealed class ProjectAnalysisRunner(
                 RunScanWorkflowAsync(chatClient, repositoryRootPath, agentCompactionOptions.Scan, promptAssetReader, cancellationToken),
             ProjectPlanWorkflowRunner = (repositoryRootPath, scanProject, cancellationToken) =>
                 RunProjectPlanWorkflowAsync(chatClient, repositoryRootPath, scanProject, agentCompactionOptions.ProjectPlan, promptAssetReader, cancellationToken),
-            RuleFlowWorkflowRunner = (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            RuleFlowWorkflowRunner = (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
                 RunRuleFlowWorkflowAsync(
                     chatClient,
                     repositoryRootPath,
+                    ruleKey,
                     ruleMarkdown,
                     taskItem,
                     agentCompactionOptions.RuleReview,
@@ -111,6 +124,7 @@ public sealed class ProjectAnalysisRunner(
                     ruleReportIssueStore,
                     promptAssetReader,
                     cancellationToken),
+            RuleReportIssueStore = ruleReportIssueStore,
         });
     }
 
@@ -177,6 +191,7 @@ public sealed class ProjectAnalysisRunner(
     private Task<Result<RuleFlowWorkflowResult>> RunRuleFlowWorkflowAsync(
         IChatClient chatClient,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         OperationalContextAgentCompactionOptions ruleReviewCompactionOptions,
@@ -187,20 +202,22 @@ public sealed class ProjectAnalysisRunner(
         CancellationToken cancellationToken)
     {
         RuleFlowWorkflow workflow = new(
-            (reviewRepositoryRootPath, reviewRuleMarkdown, reviewTaskItem, reviewCancellationToken) =>
+            (reviewRepositoryRootPath, _, reviewRuleMarkdown, reviewTaskItem, reviewCancellationToken) =>
                 RunRuleReviewWorkflowAsync(
                     chatClient,
                     reviewRepositoryRootPath,
+                    ruleKey,
                     reviewRuleMarkdown,
                     reviewTaskItem,
                     ruleReviewCompactionOptions,
                     ruleReviewIssueStore,
                     promptAssetReader,
                     reviewCancellationToken),
-            (reportRepositoryRootPath, reportRuleMarkdown, reportTaskItem, currentFlowIssues, reportCancellationToken) =>
+            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, currentFlowIssues, reportCancellationToken) =>
                 RunRuleReportWorkflowAsync(
                     chatClient,
                     reportRepositoryRootPath,
+                    reportRuleKey,
                     reportRuleMarkdown,
                     reportTaskItem,
                     currentFlowIssues,
@@ -209,12 +226,13 @@ public sealed class ProjectAnalysisRunner(
                     promptAssetReader,
                     reportCancellationToken));
 
-        return workflow.RunAsync(repositoryRootPath, ruleMarkdown, taskItem, cancellationToken);
+        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
     }
 
     private Task<Result<RuleReviewWorkflowResult>> RunRuleReviewWorkflowAsync(
         IChatClient chatClient,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         OperationalContextAgentCompactionOptions compactionOptions,
@@ -226,18 +244,19 @@ public sealed class ProjectAnalysisRunner(
         RuleReviewAgentFactory ruleReviewAgentFactory = new(compactionOptions, promptAssetReader, loggerFactory: _loggerFactory, serviceProvider: _serviceProvider);
         ReviewVerifierAgentFactory reviewVerifierAgentFactory = new(compactionOptions, promptAssetReader, loggerFactory: _loggerFactory, serviceProvider: _serviceProvider);
         RuleReviewWorkflow workflow = new(
-            (reviewRepositoryRootPath, reviewRuleMarkdown, reviewTaskItem) => ruleReviewAgentFactory.Create(chatClient, reviewRepositoryRootPath, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer),
-            (reviewRepositoryRootPath, reviewRuleMarkdown, reviewTaskItem) => reviewVerifierAgentFactory.Create(chatClient, reviewRepositoryRootPath, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer),
+            (reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem) => ruleReviewAgentFactory.Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer),
+            (reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem) => reviewVerifierAgentFactory.Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,
             promptAssetReader);
 
-        return workflow.RunAsync(repositoryRootPath, ruleMarkdown, taskItem, cancellationToken);
+        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
     }
 
     private Task<Result<RuleReportWorkflowResult>> RunRuleReportWorkflowAsync(
         IChatClient chatClient,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
@@ -250,13 +269,36 @@ public sealed class ProjectAnalysisRunner(
         ReportAggregatorAgentFactory reportAggregatorAgentFactory = new(compactionOptions, promptAssetReader, loggerFactory: _loggerFactory, serviceProvider: _serviceProvider);
         ReportVerifierAgentFactory reportVerifierAgentFactory = new(compactionOptions, promptAssetReader, loggerFactory: _loggerFactory, serviceProvider: _serviceProvider);
         RuleReportWorkflow workflow = new(
-            (reportRepositoryRootPath, reportRuleMarkdown, reportTaskItem) => reportAggregatorAgentFactory.Create(chatClient, reportRepositoryRootPath, reportRuleMarkdown, reportTaskItem, reportIssueStore, verdictBuffer),
-            (reportRepositoryRootPath, reportRuleMarkdown, reportTaskItem, issues) => reportVerifierAgentFactory.Create(chatClient, reportRepositoryRootPath, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer),
+            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem) => reportAggregatorAgentFactory.Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, reportIssueStore, verdictBuffer),
+            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues) => reportVerifierAgentFactory.Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer),
             reportIssueStore,
             verdictBuffer,
             promptAssetReader);
 
-        return workflow.RunAsync(repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken);
+        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken);
+    }
+
+    private async Task PersistReportsAsync(
+        Guid projectId,
+        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<string, string> ruleNamesByKey = rules.ToDictionary(rule => rule.RuleKey, rule => rule.RuleName, StringComparer.Ordinal);
+        List<ProjectRuleReportDraft> drafts = [];
+        foreach (ReviewAgentTeamRuleReport ruleReport in ruleReports)
+        {
+            if (!ruleNamesByKey.TryGetValue(ruleReport.RuleKey, out string? ruleName))
+                throw new InvalidOperationException($"Rule name mapping was not found for rule key '{ruleReport.RuleKey}'.");
+
+            drafts.Add(new ProjectRuleReportDraft
+            {
+                RuleName = ruleName,
+                MarkdownContent = ruleReport.MarkdownContent,
+            });
+        }
+
+        await _projectReportService.ReplaceProjectReportsAsync(projectId, drafts, cancellationToken);
     }
 
     private sealed class AgentCompactionOptions

@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Preparation;
 using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewGroup;
 using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
@@ -10,22 +11,22 @@ namespace CodeSnifferDog.Workflows.ReviewStage;
 
 internal sealed class ReviewStageWorkflow(
     ReviewStageRuleLaneScheduler scheduler,
-    Func<StoredProjectPlanTaskItem, IReadOnlyList<string>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner)
+    Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner)
 {
     private readonly ReviewStageRuleLaneScheduler _scheduler = scheduler;
-    private readonly Func<StoredProjectPlanTaskItem, IReadOnlyList<string>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> _reviewGroupWorkflowRunner = reviewGroupWorkflowRunner;
+    private readonly Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> _reviewGroupWorkflowRunner = reviewGroupWorkflowRunner;
 
     public async Task<Result<ReviewStageWorkflowResult>> RunAsync(
         string repositoryRootPath,
         RepositoryPreparationWorkflowResult preparationResult,
-        IReadOnlyList<string> ruleMarkdowns,
+        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repositoryRootPath))
             return Result.Fail<ReviewStageWorkflowResult>("Repository root path is required.");
 
         ArgumentNullException.ThrowIfNull(preparationResult);
-        ArgumentNullException.ThrowIfNull(ruleMarkdowns);
+        ArgumentNullException.ThrowIfNull(ruleDefinitions);
 
         repositoryRootPath = repositoryRootPath.Trim();
 
@@ -44,14 +45,14 @@ internal sealed class ReviewStageWorkflow(
             {
                 PreparationResult = preparationResult,
                 ProjectResults = projectResults,
-                RuleMarkdowns = ruleMarkdowns.ToArray(),
+                RuleKeys = ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey).ToArray(),
                 HasAnyReviewGroups = false,
                 AllReviewGroupsFinished = false,
             });
         }
 
         Result<IReadOnlyList<ReviewStageProjectFlowResult>> scheduledFlowResults =
-            await _scheduler.RunAsync(repositoryRootPath, preparationResult.ProjectPlanResults, ruleMarkdowns, cancellationToken).ConfigureAwait(false);
+            await _scheduler.RunAsync(repositoryRootPath, preparationResult.ProjectPlanResults, ruleDefinitions, cancellationToken).ConfigureAwait(false);
 
         if (scheduledFlowResults.IsFailed)
             return scheduledFlowResults.ToResult<ReviewStageWorkflowResult>();
@@ -66,7 +67,7 @@ internal sealed class ReviewStageWorkflow(
             {
                 ReviewStageTaskItemFlowResult taskItemFlowResult = projectFlowResult.TaskItemResults[taskItemIndex];
                 Result<ReviewGroupWorkflowResult> reviewGroupResult =
-                    _reviewGroupWorkflowRunner(taskItemFlowResult.TaskItem, ruleMarkdowns, taskItemFlowResult.FlowResults);
+                    _reviewGroupWorkflowRunner(taskItemFlowResult.TaskItem, ruleDefinitions, taskItemFlowResult.FlowResults);
 
                 if (reviewGroupResult.IsSuccess)
                 {
@@ -85,7 +86,7 @@ internal sealed class ReviewStageWorkflow(
         {
             PreparationResult = preparationResult,
             ProjectResults = projectResults,
-            RuleMarkdowns = ruleMarkdowns.ToArray(),
+            RuleKeys = ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey).ToArray(),
             HasAnyReviewGroups = projectResults.Any(project => project.ReviewGroupResults.Count > 0),
             AllReviewGroupsFinished = true,
         });

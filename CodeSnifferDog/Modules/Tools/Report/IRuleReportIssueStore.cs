@@ -8,6 +8,7 @@ public interface IRuleReportIssueStore
 {
     ValueTask InitializeWorkingReportAsync(
         RuleReportKey ruleReportKey,
+        string ruleKey,
         RuleFlowKey ruleFlowKey,
         CancellationToken cancellationToken);
 

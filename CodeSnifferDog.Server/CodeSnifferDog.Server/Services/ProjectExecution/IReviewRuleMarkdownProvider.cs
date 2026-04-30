@@ -4,5 +4,5 @@ public interface IReviewRuleMarkdownProvider
 {
     bool HasRules { get; }
 
-    Task<IReadOnlyList<string>> LoadRuleMarkdownsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProjectExecutionRuleDefinition>> LoadRulesAsync(CancellationToken cancellationToken = default);
 }

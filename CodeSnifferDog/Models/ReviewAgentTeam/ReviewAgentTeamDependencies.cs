@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Modules.Tools.Report;
 using FluentResults;
 
 namespace CodeSnifferDog.Models.ReviewAgentTeam;
@@ -11,7 +12,9 @@ public sealed class ReviewAgentTeamDependencies
 
     public required Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> ProjectPlanWorkflowRunner { get; init; }
 
-    public required Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> RuleFlowWorkflowRunner { get; init; }
+    public required Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> RuleFlowWorkflowRunner { get; init; }
+
+    public required IRuleReportIssueStore RuleReportIssueStore { get; init; }
 
     public Func<CancellationToken, ValueTask>? CleanupAsync { get; init; }
 }

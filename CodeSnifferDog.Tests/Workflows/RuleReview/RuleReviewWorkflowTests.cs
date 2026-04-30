@@ -22,6 +22,9 @@ namespace CodeSnifferDog.Tests.Workflows.RuleReview;
 [DoNotParallelize]
 public sealed class RuleReviewWorkflowTests
 {
+    private const string PerformanceRuleFileName = "performance";
+    private const string MemoryRuleFileName = "memory";
+
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
@@ -33,6 +36,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -59,6 +63,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -114,6 +119,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -164,6 +170,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -207,6 +214,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -233,6 +241,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -266,6 +275,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -303,16 +313,18 @@ public sealed class RuleReviewWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) => new RuleReviewAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => new RuleReviewAgentFactory(compactionOptions).Create(
                 reviewChatClient,
                 repositoryRootPath,
+                ruleFileName,
                 ruleMarkdown,
                 taskItem,
                 issueStore,
                 verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem) => new ReviewVerifierAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => new ReviewVerifierAgentFactory(compactionOptions).Create(
                 verifierChatClient,
                 repositoryRootPath,
+                ruleFileName,
                 ruleMarkdown,
                 taskItem,
                 issueStore,
@@ -323,6 +335,7 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -347,7 +360,7 @@ public sealed class RuleReviewWorkflowTests
         RuleReviewToolSet toolSet = new(
             new InMemoryRuleReviewIssueStore(),
             new ReviewVerdictBuffer(),
-            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", "- Detect performance issues."));
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", PerformanceRuleFileName));
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.SubmitReviewVerdictAsync(
             new SubmitReviewVerdictArgs
@@ -362,14 +375,15 @@ public sealed class RuleReviewWorkflowTests
     public async Task RunAsync_ReturnsFailedResult_WhenAgentFactoryThrows()
     {
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) => throw new InvalidOperationException("factory failed"),
-            (repositoryRootPath, ruleMarkdown, taskItem) => throw new InvalidOperationException("verifier factory should not run"),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => throw new InvalidOperationException("factory failed"),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => throw new InvalidOperationException("verifier factory should not run"),
             new InMemoryRuleReviewIssueStore(),
             new ReviewVerdictBuffer(),
             new PromptAssetReader());
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
@@ -389,29 +403,31 @@ public sealed class RuleReviewWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         RuleReviewWorkflow firstWorkflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
             sharedIssueStore,
             sharedVerdictBuffer,
             promptAssetReader);
         RuleReviewWorkflow secondWorkflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
             sharedIssueStore,
             sharedVerdictBuffer,
             promptAssetReader);
 
         Task<Result<RuleReviewWorkflowResult>> firstRun = firstWorkflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
             "- Detect performance issues.",
             CreateTaskItem(),
             TestContext.CancellationToken);
         Task<Result<RuleReviewWorkflowResult>> secondRun = secondWorkflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            MemoryRuleFileName,
             "- Detect memory issues.",
             new StoredProjectPlanTaskItem
             {
@@ -440,10 +456,10 @@ public sealed class RuleReviewWorkflowTests
         InMemoryRuleReviewIssueStore issueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueVerifierInvocation), issueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueVerifierInvocation), issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,
             new PromptAssetReader());
@@ -453,11 +469,12 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             repositoryRootPath,
+            PerformanceRuleFileName,
             ruleMarkdown,
             taskItem,
             TestContext.CancellationToken);
 
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, PerformanceRuleFileName);
         string verdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
@@ -472,10 +489,10 @@ public sealed class RuleReviewWorkflowTests
         InMemoryRuleReviewIssueStore issueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), issueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,
             new PromptAssetReader());
@@ -485,11 +502,12 @@ public sealed class RuleReviewWorkflowTests
 
         Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
             repositoryRootPath,
+            PerformanceRuleFileName,
             ruleMarkdown,
             taskItem,
             TestContext.CancellationToken);
 
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, PerformanceRuleFileName);
         string verdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsFailed);
@@ -510,10 +528,10 @@ public sealed class RuleReviewWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         return new RuleReviewWorkflow(
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateReviewAgent(repositoryRootPath, ruleMarkdown, taskItem, reviewChatClient, issueStore, verdictBuffer),
-            (repositoryRootPath, ruleMarkdown, taskItem) =>
-                CreateVerifierAgent(repositoryRootPath, ruleMarkdown, taskItem, verifierChatClient, issueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reviewChatClient, issueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, verifierChatClient, issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,
             promptAssetReader,
@@ -522,23 +540,25 @@ public sealed class RuleReviewWorkflowTests
 
     private static AIAgent CreateReviewAgent(
         string repositoryRootPath,
+        string ruleFileName,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IChatClient chatClient,
         IRuleReviewIssueStore issueStore,
         ReviewVerdictBuffer verdictBuffer) =>
         new RuleReviewAgentFactory(CreateCompactionOptions(RuleReviewPromptAssetPaths.RuleReviewSummaryPrompt))
-            .Create(chatClient, repositoryRootPath, ruleMarkdown, taskItem, issueStore, verdictBuffer);
+            .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, issueStore, verdictBuffer);
 
     private static AIAgent CreateVerifierAgent(
         string repositoryRootPath,
+        string ruleFileName,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IChatClient chatClient,
         IRuleReviewIssueStore issueStore,
         ReviewVerdictBuffer verdictBuffer) =>
         new ReviewVerifierAgentFactory(CreateCompactionOptions(RuleReviewPromptAssetPaths.RuleReviewSummaryPrompt))
-            .Create(chatClient, repositoryRootPath, ruleMarkdown, taskItem, issueStore, verdictBuffer);
+            .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, issueStore, verdictBuffer);
 
     private static StoredProjectPlanTaskItem CreateTaskItem()
         =>

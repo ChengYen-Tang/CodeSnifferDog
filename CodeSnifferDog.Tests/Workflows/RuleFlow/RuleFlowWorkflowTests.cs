@@ -11,21 +11,24 @@ namespace CodeSnifferDog.Tests.Workflows.RuleFlow;
 [TestClass]
 public sealed class RuleFlowWorkflowTests
 {
+    private const string RuleFileName = "performance";
+
     [TestMethod]
     public async Task RunAsync_CompletesApprovedNoIssueFlow_WithoutEnteringReportAggregation()
     {
         bool reportWorkflowCalled = false;
         RuleFlowWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateReviewResult(taskItem, ruleMarkdown, issues: [], noIssueConclusion: CreateNoIssueConclusion(), reviewVerifierApproved: true, shouldEnterReportAggregation: false))),
-            (repositoryRootPath, ruleMarkdown, taskItem, issues, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, issues, cancellationToken) =>
             {
                 reportWorkflowCalled = true;
-                return Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleMarkdown, issues, reportVerifierApproved: true)));
+                return Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleFileName, ruleMarkdown, issues, reportVerifierApproved: true)));
             });
 
         Result<RuleFlowWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem());
 
@@ -43,16 +46,17 @@ public sealed class RuleFlowWorkflowTests
         bool reportWorkflowCalled = false;
         StoredRuleReviewIssue[] issues = [CreateIssue()];
         RuleFlowWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateReviewResult(taskItem, ruleMarkdown, issues, noIssueConclusion: null, reviewVerifierApproved: true, shouldEnterReportAggregation: true))),
-            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken) =>
             {
                 reportWorkflowCalled = true;
-                return Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleMarkdown, currentFlowIssues, reportVerifierApproved: true)));
+                return Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleFileName, ruleMarkdown, currentFlowIssues, reportVerifierApproved: true)));
             });
 
         Result<RuleFlowWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem());
 
@@ -70,13 +74,14 @@ public sealed class RuleFlowWorkflowTests
     {
         StoredRuleReviewIssue[] issues = [CreateIssue()];
         RuleFlowWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateReviewResult(taskItem, ruleMarkdown, issues, noIssueConclusion: null, reviewVerifierApproved: false, shouldEnterReportAggregation: true, continuedAfterVerifierRejectionLimit: true))),
-            (repositoryRootPath, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken) =>
-                Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleMarkdown, currentFlowIssues, reportVerifierApproved: true))));
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken) =>
+                Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleFileName, ruleMarkdown, currentFlowIssues, reportVerifierApproved: true))));
 
         Result<RuleFlowWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem());
 
@@ -93,16 +98,17 @@ public sealed class RuleFlowWorkflowTests
     {
         bool reportWorkflowCalled = false;
         RuleFlowWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateReviewResult(taskItem, ruleMarkdown, issues: [], noIssueConclusion: null, reviewVerifierApproved: false, shouldEnterReportAggregation: false, stoppedAfterMissingSubmissionLimit: true))),
-            (repositoryRootPath, ruleMarkdown, taskItem, issues, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, issues, cancellationToken) =>
             {
                 reportWorkflowCalled = true;
-                return Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleMarkdown, issues, reportVerifierApproved: true)));
+                return Task.FromResult(Result.Ok(CreateReportResult(taskItem, ruleFileName, ruleMarkdown, issues, reportVerifierApproved: true)));
             });
 
         Result<RuleFlowWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem());
 
@@ -117,13 +123,14 @@ public sealed class RuleFlowWorkflowTests
     public async Task RunAsync_Fails_WhenReportWorkflowFails()
     {
         RuleFlowWorkflow workflow = new(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateReviewResult(taskItem, ruleMarkdown, [CreateIssue()], noIssueConclusion: null, reviewVerifierApproved: true, shouldEnterReportAggregation: true))),
-            (repositoryRootPath, ruleMarkdown, taskItem, issues, cancellationToken) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, issues, cancellationToken) =>
                 Task.FromResult(Result.Fail<RuleReportWorkflowResult>("Report aggregation failed.")));
 
         Result<RuleFlowWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
             "- Detect performance issues.",
             CreateTaskItem());
 
@@ -182,7 +189,7 @@ public sealed class RuleFlowWorkflowTests
         new()
         {
             TaskItem = taskItem,
-            RuleMarkdown = ruleMarkdown,
+            RuleKey = RuleFileName,
             Issues = issues,
             NoIssueConclusion = noIssueConclusion,
             Verdict = new ReviewVerdict
@@ -201,13 +208,14 @@ public sealed class RuleFlowWorkflowTests
 
     private static RuleReportWorkflowResult CreateReportResult(
         StoredProjectPlanTaskItem taskItem,
+        string ruleFileName,
         string ruleMarkdown,
         IReadOnlyList<StoredRuleReviewIssue> issues,
         bool reportVerifierApproved) =>
         new()
         {
+            RuleKey = ruleFileName,
             TaskItem = taskItem,
-            RuleMarkdown = ruleMarkdown,
             CurrentFlowIssues = issues,
             Diff = new RuleReportDiff
             {

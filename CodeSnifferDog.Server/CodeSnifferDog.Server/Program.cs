@@ -3,6 +3,7 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Endpoints;
 using CodeSnifferDog.Server.Hubs;
 using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.ProjectIntake;
@@ -29,6 +30,7 @@ builder.Services.AddSingleton<IProjectChatClientProvider, ProjectChatClientProvi
 builder.Services.AddSingleton<IReviewRuleMarkdownProvider, FileSystemReviewRuleMarkdownProvider>();
 builder.Services.AddScoped<IProjectAnalysisRunner, ProjectAnalysisRunner>();
 builder.Services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
+builder.Services.AddScoped<IProjectReportService, ProjectReportService>();
 builder.Services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();
 builder.Services.AddSingleton<IProjectUpdatesNotifier, SignalRProjectUpdatesNotifier>();
 builder.Services.AddHostedService<ProjectExecutionHostedService>();

@@ -23,4 +23,6 @@ public sealed class ProjectRecord
     public DateTimeOffset? FinishedAtUtc { get; set; }
 
     public string? FailureReason { get; set; }
+
+    public List<ProjectRuleReportRecord> RuleReports { get; set; } = [];
 }

@@ -7,6 +7,8 @@ public sealed class CodeSnifferDogServerDbContext(DbContextOptions<CodeSnifferDo
 {
     public DbSet<ProjectRecord> Projects => Set<ProjectRecord>();
 
+    public DbSet<ProjectRuleReportRecord> ProjectRuleReports => Set<ProjectRuleReportRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ProjectRecord>(entity =>
@@ -33,6 +35,26 @@ public sealed class CodeSnifferDogServerDbContext(DbContextOptions<CodeSnifferDo
                 project.QueueTimestampUtc,
                 project.CreatedAtUtc,
             });
+
+            entity.HasMany(project => project.RuleReports)
+                .WithOne(report => report.Project)
+                .HasForeignKey(report => report.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProjectRuleReportRecord>(entity =>
+        {
+            entity.ToTable("ProjectRuleReports");
+            entity.HasKey(report => report.Id);
+
+            entity.Property(report => report.RuleName)
+                .HasMaxLength(260);
+
+            entity.HasIndex(issue => new
+            {
+                issue.ProjectId,
+                issue.RuleName,
+            }).IsUnique();
         });
     }
 }

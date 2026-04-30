@@ -2,6 +2,7 @@
 @using CodeSnifferDog.Server.Client.Services.Projects
 @using CodeSnifferDog.Server.Shared.Projects
 @inject ProjectSidebarSyncService SidebarSyncService
+@inject NavigationManager NavigationManager
 
 @implements IDisposable
 
@@ -17,6 +18,7 @@
     protected override async Task OnInitializedAsync()
     {
         SidebarSyncService.Changed += OnSidebarStateChanged;
+        NavigationManager.LocationChanged += OnLocationChanged;
         await SidebarSyncService.StartAsync();
         ApplyState(SidebarSyncService.Current);
     }
@@ -26,6 +28,15 @@
         _ = InvokeAsync(() =>
         {
             ApplyState(SidebarSyncService.Current);
+            StateHasChanged();
+        });
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(() =>
+        {
+            SyncSelectedProjectFromUri();
             StateHasChanged();
         });
     }
@@ -80,7 +91,7 @@
                 project.ProjectId.ToString(),
                 project.OriginalFileName,
                 $"uploaded {project.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
-                CreateActions(project.Status)));
+                CreateActions(project.ProjectId, project.Status)));
         }
 
         _groups = groups;
@@ -89,6 +100,13 @@
             .Select(item => item.ProjectId)
             .ToHashSet(StringComparer.Ordinal);
 
+        string? selectedProjectIdFromUri = ExtractProjectIdFromUri();
+        if (selectedProjectIdFromUri is not null && projectIds.Contains(selectedProjectIdFromUri))
+        {
+            _selectedProjectId = selectedProjectIdFromUri;
+            return;
+        }
+
         if (_selectedProjectId is null || !projectIds.Contains(_selectedProjectId))
             _selectedProjectId = _groups
             .SelectMany(group => group.Items)
@@ -96,7 +114,26 @@
             .FirstOrDefault();
     }
 
-    private static IReadOnlyList<ProjectAction> CreateActions(ProjectStatus status) => status switch
+    private void SyncSelectedProjectFromUri()
+    {
+        string? selectedProjectIdFromUri = ExtractProjectIdFromUri();
+        if (selectedProjectIdFromUri is not null)
+            _selectedProjectId = selectedProjectIdFromUri;
+    }
+
+    private string? ExtractProjectIdFromUri()
+    {
+        string relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
+        string[] segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 2
+            && string.Equals(segments[0], "reports", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(segments[1], out Guid projectId))
+            return projectId.ToString();
+
+        return null;
+    }
+
+    private static IReadOnlyList<ProjectAction> CreateActions(Guid projectId, ProjectStatus status) => status switch
     {
         ProjectStatus.Reviewing =>
         [
@@ -106,7 +143,7 @@
         ProjectStatus.Completed =>
         [
             ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
-            ProjectAction.Link("R", "Report", "reports"),
+            ProjectAction.Link("R", "Report", $"/reports/{projectId}"),
             ProjectAction.Delete(),
         ],
         _ =>
@@ -167,6 +204,7 @@
     public void Dispose()
     {
         SidebarSyncService.Changed -= OnSidebarStateChanged;
+        NavigationManager.LocationChanged -= OnLocationChanged;
     }
 }
 

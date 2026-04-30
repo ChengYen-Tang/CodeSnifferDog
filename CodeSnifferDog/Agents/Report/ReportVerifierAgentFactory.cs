@@ -30,6 +30,7 @@ public sealed class ReportVerifierAgentFactory(
     public AIAgent Create(
         IChatClient chatClient,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
@@ -39,6 +40,7 @@ public sealed class ReportVerifierAgentFactory(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(ReportPromptAssetPaths.ReportVerifierAgentPrompt),
             repositoryRootPath,
+            ruleKey,
             ruleMarkdown,
             taskItem,
             currentFlowIssues,
@@ -49,6 +51,7 @@ public sealed class ReportVerifierAgentFactory(
         IChatClient chatClient,
         string promptTemplate,
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
@@ -58,6 +61,7 @@ public sealed class ReportVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(promptTemplate);
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ruleKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleMarkdown);
         ArgumentNullException.ThrowIfNull(taskItem);
         ArgumentNullException.ThrowIfNull(currentFlowIssues);
@@ -65,8 +69,8 @@ public sealed class ReportVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
         CommonToolSet commonToolSet = new(repositoryRootPath);
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
-        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleMarkdown);
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
+        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
         ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
         AIAgent agent = chatClient.AsAIAgent(
             RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, currentFlowIssues),

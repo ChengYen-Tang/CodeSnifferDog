@@ -12,15 +12,15 @@ using Microsoft.Extensions.AI;
 namespace CodeSnifferDog.Workflows.RuleReview;
 
 public sealed class RuleReviewWorkflow(
-    Func<string, string, StoredProjectPlanTaskItem, AIAgent> ruleReviewAgentFactory,
-    Func<string, string, StoredProjectPlanTaskItem, AIAgent> reviewVerifierAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> ruleReviewAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> reviewVerifierAgentFactory,
     IRuleReviewIssueStore issueStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     RuleReviewWorkflowOptions? options = null)
 {
-    private readonly Func<string, string, StoredProjectPlanTaskItem, AIAgent> _ruleReviewAgentFactory = ruleReviewAgentFactory;
-    private readonly Func<string, string, StoredProjectPlanTaskItem, AIAgent> _reviewVerifierAgentFactory = reviewVerifierAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> _ruleReviewAgentFactory = ruleReviewAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> _reviewVerifierAgentFactory = reviewVerifierAgentFactory;
     private readonly IRuleReviewIssueStore _issueStore = issueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly RuleReviewWorkflowMessageTemplates _messageTemplates =
@@ -29,6 +29,7 @@ public sealed class RuleReviewWorkflow(
 
     public async Task<Result<RuleReviewWorkflowResult>> RunAsync(
         string repositoryRootPath,
+        string ruleKey,
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         CancellationToken cancellationToken = default)
@@ -39,12 +40,16 @@ public sealed class RuleReviewWorkflow(
         if (string.IsNullOrWhiteSpace(ruleMarkdown))
             return Result.Fail<RuleReviewWorkflowResult>("Rule markdown is required.");
 
+        if (string.IsNullOrWhiteSpace(ruleKey))
+            return Result.Fail<RuleReviewWorkflowResult>("Rule key is required.");
+
         ArgumentNullException.ThrowIfNull(taskItem);
 
         repositoryRootPath = repositoryRootPath.Trim();
+        ruleKey = ruleKey.Trim();
         ruleMarkdown = ruleMarkdown.Trim();
         RuleFlowKey ruleFlowKey =
-            RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleMarkdown);
+            RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         string reviewVerdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
         await _issueStore.ClearAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
         _verdictBuffer.Reset(reviewVerdictScopeKey);
@@ -52,14 +57,14 @@ public sealed class RuleReviewWorkflow(
         try
         {
             Result<AIAgent> createRuleReviewAgentResult = TryCreateAgent(
-                () => _ruleReviewAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
                 "Rule Review Agent");
 
             if (createRuleReviewAgentResult.IsFailed)
                 return createRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
 
             Result<AIAgent> createReviewVerifierAgentResult = TryCreateAgent(
-                () => _reviewVerifierAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
                 "Review Verifier Agent");
 
             if (createReviewVerifierAgentResult.IsFailed)
@@ -105,6 +110,7 @@ public sealed class RuleReviewWorkflow(
 
                             return Result.Ok(CreateResult(
                                 taskItem,
+                                ruleKey,
                                 ruleMarkdown,
                                 issues,
                                 noIssueConclusion,
@@ -118,7 +124,7 @@ public sealed class RuleReviewWorkflow(
                         }
 
                         Result<AIAgent> recreateRuleReviewAgentResult = TryCreateAgent(
-                            () => _ruleReviewAgentFactory(repositoryRootPath, ruleMarkdown, taskItem),
+                            () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
                             "Rule Review Agent");
 
                         if (recreateRuleReviewAgentResult.IsFailed)
@@ -155,6 +161,7 @@ public sealed class RuleReviewWorkflow(
                 {
                     return Result.Ok(CreateResult(
                         taskItem,
+                        ruleKey,
                         ruleMarkdown,
                         issues,
                         noIssueConclusion,
@@ -173,6 +180,7 @@ public sealed class RuleReviewWorkflow(
                 {
                     return Result.Ok(CreateResult(
                         taskItem,
+                        ruleKey,
                         ruleMarkdown,
                         issues,
                         noIssueConclusion,
@@ -197,6 +205,7 @@ public sealed class RuleReviewWorkflow(
 
     private RuleReviewWorkflowResult CreateResult(
         StoredProjectPlanTaskItem taskItem,
+        string ruleKey,
         string ruleMarkdown,
         IReadOnlyList<StoredRuleReviewIssue> issues,
         NoIssueConclusion? noIssueConclusion,
@@ -210,7 +219,7 @@ public sealed class RuleReviewWorkflow(
         new()
         {
             TaskItem = taskItem,
-            RuleMarkdown = ruleMarkdown,
+            RuleKey = ruleKey,
             Issues = issues,
             NoIssueConclusion = noIssueConclusion,
             Verdict = verdict,

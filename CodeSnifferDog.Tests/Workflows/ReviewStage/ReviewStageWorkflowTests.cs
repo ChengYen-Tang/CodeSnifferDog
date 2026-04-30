@@ -2,6 +2,7 @@ using CodeSnifferDog.Models.Preparation;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewGroup;
 using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
@@ -27,28 +28,28 @@ public sealed class ReviewStageWorkflowTests
                 CreateProjectPlanResult("scan-2", "ProjectTwo", "task-3"),
             ]);
         ReviewStageWorkflow workflow = CreateWorkflow(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
             {
-                executedRuleFlowKeys.Add($"{taskItem.ProjectPlanTaskItemId}:{ruleMarkdown}");
-                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue)));
+                executedRuleFlowKeys.Add($"{taskItem.ProjectPlanTaskItemId}:{ruleKey}");
+                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue)));
             },
             new ReviewAgentConcurrencyGate(4));
 
         Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
-            ["- Rule A", "- Rule B"]);
+            CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")));
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         CollectionAssert.AreEquivalent(
             new[]
             {
-                "task-1:- Rule A",
-                "task-1:- Rule B",
-                "task-2:- Rule A",
-                "task-2:- Rule B",
-                "task-3:- Rule A",
-                "task-3:- Rule B",
+                "task-1:rule-a",
+                "task-1:rule-b",
+                "task-2:rule-a",
+                "task-2:rule-b",
+                "task-3:rule-a",
+                "task-3:rule-b",
             },
             executedRuleFlowKeys);
         CollectionAssert.AreEqual(
@@ -71,14 +72,14 @@ public sealed class ReviewStageWorkflowTests
         RepositoryPreparationWorkflowResult preparationResult = CreatePreparationResult(
             CreateProjectPlanResult("scan-1", "ProjectOne", "task-1", "task-2", "task-3"));
         ReviewStageWorkflow workflow = CreateWorkflow(
-            async (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            async (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
             {
                 lock (currentRuleConcurrency)
                 {
-                    currentRuleConcurrency.TryAdd(ruleMarkdown, 0);
-                    maxRuleConcurrency.TryAdd(ruleMarkdown, 0);
-                    currentRuleConcurrency[ruleMarkdown]++;
-                    maxRuleConcurrency[ruleMarkdown] = Math.Max(maxRuleConcurrency[ruleMarkdown], currentRuleConcurrency[ruleMarkdown]);
+                    currentRuleConcurrency.TryAdd(ruleKey, 0);
+                    maxRuleConcurrency.TryAdd(ruleKey, 0);
+                    currentRuleConcurrency[ruleKey]++;
+                    maxRuleConcurrency[ruleKey] = Math.Max(maxRuleConcurrency[ruleKey], currentRuleConcurrency[ruleKey]);
                 }
 
                 int newConcurrency = Interlocked.Increment(ref currentConcurrency);
@@ -87,14 +88,14 @@ public sealed class ReviewStageWorkflowTests
                 try
                 {
                     await Task.Delay(40, cancellationToken).ConfigureAwait(false);
-                    return Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedWithReport));
+                    return Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedWithReport));
                 }
                 finally
                 {
                     Interlocked.Decrement(ref currentConcurrency);
 
                     lock (currentRuleConcurrency)
-                        currentRuleConcurrency[ruleMarkdown]--;
+                        currentRuleConcurrency[ruleKey]--;
                 }
             },
             new ReviewAgentConcurrencyGate(4));
@@ -102,12 +103,12 @@ public sealed class ReviewStageWorkflowTests
         Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
-            ["- Rule A", "- Rule B"]);
+            CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")));
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsGreaterThan(1, maxObservedConcurrency);
-        Assert.AreEqual(1, maxRuleConcurrency["- Rule A"]);
-        Assert.AreEqual(1, maxRuleConcurrency["- Rule B"]);
+        Assert.AreEqual(1, maxRuleConcurrency["rule-a"]);
+        Assert.AreEqual(1, maxRuleConcurrency["rule-b"]);
     }
 
     [TestMethod]
@@ -118,18 +119,18 @@ public sealed class ReviewStageWorkflowTests
         RepositoryPreparationWorkflowResult preparationResult = CreatePreparationResult(
             CreateProjectPlanResult("scan-1", "ProjectOne", "task-1", "task-2", "task-3"));
         ReviewStageWorkflow workflow = CreateWorkflow(
-            async (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            async (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
             {
                 Interlocked.Increment(ref startedFlows);
                 await releaseFlows.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-                return Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue));
+                return Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue));
             },
             new ReviewAgentConcurrencyGate(6));
 
         Task<Result<ReviewStageWorkflowResult>> runTask = workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
-            ["- Rule A", "- Rule B"]);
+            CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")));
 
         await Task.Delay(80);
 
@@ -152,31 +153,31 @@ public sealed class ReviewStageWorkflowTests
             ]);
         using ReviewAgentConcurrencyGate concurrencyGate = new(2);
         ReviewStageWorkflow workflow = CreateWorkflow(
-            async (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            async (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
             {
                 lock (startedFlows)
-                    startedFlows.Add($"{ruleMarkdown}:{taskItem.ProjectPlanTaskItemId}");
+                    startedFlows.Add($"{ruleKey}:{taskItem.ProjectPlanTaskItemId}");
 
-                if (ruleMarkdown == "- Rule B")
+                if (ruleKey == "rule-b")
                     await holdRuleB.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-                return Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue));
+                return Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue));
             },
             concurrencyGate);
 
         Task<Result<ReviewStageWorkflowResult>> runTask = workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
-            ["- Rule A", "- Rule B", "- Rule C"]);
+            CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B"), ("rule-c", "- Rule C")));
 
         await Task.Delay(100);
 
         CollectionAssert.AreEqual(
             new[]
             {
-                "- Rule A:task-1",
-                "- Rule B:task-1",
-                "- Rule C:task-1",
+                "rule-a:task-1",
+                "rule-b:task-1",
+                "rule-c:task-1",
             },
             startedFlows.Take(3).ToArray());
 
@@ -194,17 +195,17 @@ public sealed class ReviewStageWorkflowTests
             CreateProjectPlanResult("scan-1", "ProjectOne", "task-1"),
             shouldEnterRuleReview: false);
         ReviewStageWorkflow workflow = CreateWorkflow(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
             {
                 ruleFlowCalled = true;
-                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue)));
+                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue)));
             },
             new ReviewAgentConcurrencyGate(4));
 
         Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
-            ["- Rule A"]);
+            CreateRuleDefinitions(("rule-a", "- Rule A")));
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(ruleFlowCalled);
@@ -218,30 +219,37 @@ public sealed class ReviewStageWorkflowTests
         RepositoryPreparationWorkflowResult preparationResult = CreatePreparationResult(
             CreateProjectPlanResult("scan-1", "ProjectOne", "task-1", "task-2"));
         ReviewStageWorkflow workflow = CreateWorkflow(
-            (repositoryRootPath, ruleMarkdown, taskItem, cancellationToken) =>
+            (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
             {
-                if (taskItem.ProjectPlanTaskItemId == "task-2" && ruleMarkdown == "- Rule A")
+                if (taskItem.ProjectPlanTaskItemId == "task-2" && ruleKey == "rule-a")
                     return Task.FromResult(Result.Fail<RuleFlowWorkflowResult>("task-2 / Rule A failed."));
 
-                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue)));
+                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue)));
             },
             new ReviewAgentConcurrencyGate(4));
 
         Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
-            ["- Rule A"]);
+            CreateRuleDefinitions(("rule-a", "- Rule A")));
 
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("task-2 / Rule A failed.", StringComparison.Ordinal)));
     }
 
     private static ReviewStageWorkflow CreateWorkflow(
-        Func<string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
+        Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
         IReviewAgentConcurrencyGate concurrencyGate) =>
         new(
             new ReviewStageRuleLaneScheduler(ruleFlowWorkflowRunner, concurrencyGate),
-            (taskItem, ruleMarkdowns, flowResults) => Result.Ok(CreateReviewGroupResult(taskItem, ruleMarkdowns, flowResults)));
+            (taskItem, ruleDefinitions, flowResults) => Result.Ok(CreateReviewGroupResult(taskItem, ruleDefinitions, flowResults)));
+
+    private static IReadOnlyList<ReviewAgentRuleDefinition> CreateRuleDefinitions(params (string RuleKey, string RuleMarkdown)[] definitions) =>
+        definitions.Select(definition => new ReviewAgentRuleDefinition
+        {
+            RuleKey = definition.RuleKey,
+            RuleMarkdown = definition.RuleMarkdown,
+        }).ToArray();
 
     private static RepositoryPreparationWorkflowResult CreatePreparationResult(
         ProjectPlanWorkflowResult projectPlanResult,
@@ -316,14 +324,14 @@ public sealed class ReviewStageWorkflowTests
 
     private static ReviewGroupWorkflowResult CreateReviewGroupResult(
         StoredProjectPlanTaskItem taskItem,
-        IReadOnlyList<string> ruleMarkdowns,
+        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
         IReadOnlyList<RuleFlowWorkflowResult> flowResults) =>
         new()
         {
             TaskItem = taskItem,
-            RuleMarkdowns = ruleMarkdowns.ToArray(),
+            RuleKeys = ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey).ToArray(),
             FlowResults = flowResults.ToArray(),
-            HasAnyRuleFlows = ruleMarkdowns.Count > 0,
+            HasAnyRuleFlows = ruleDefinitions.Count > 0,
             AllRuleFlowsFinished = true,
             ApprovedCompletionCount = flowResults.Count(result => result.IsApprovedCompletion),
             DegradedCompletionCount = flowResults.Count(result => !result.IsApprovedCompletion),
@@ -331,6 +339,7 @@ public sealed class ReviewStageWorkflowTests
 
     private static RuleFlowWorkflowResult CreateRuleFlowResult(
         StoredProjectPlanTaskItem taskItem,
+        string ruleKey,
         string ruleMarkdown,
         RuleFlowCompletionState completionState)
     {
@@ -342,11 +351,11 @@ public sealed class ReviewStageWorkflowTests
         return new RuleFlowWorkflowResult
         {
             TaskItem = taskItem,
-            RuleMarkdown = ruleMarkdown,
+            RuleKey = ruleKey,
             ReviewResult = new RuleReviewModels.RuleReviewWorkflowResult
             {
                 TaskItem = taskItem,
-                RuleMarkdown = ruleMarkdown,
+                RuleKey = ruleKey,
                 Issues = reviewIssues,
                 NoIssueConclusion = hasNoIssue ? new RuleReviewModels.NoIssueConclusion
                 {
@@ -370,8 +379,8 @@ public sealed class ReviewStageWorkflowTests
             },
             ReportResult = enteredReportAggregation ? new RuleReportWorkflowResult
             {
+                RuleKey = ruleKey,
                 TaskItem = taskItem,
-                RuleMarkdown = ruleMarkdown,
                 CurrentFlowIssues = reviewIssues,
                 Diff = new RuleReportDiff
                 {
