@@ -1,0 +1,185 @@
+using System.Reflection;
+using CodeSnifferDog.Server.Data;
+using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectStorage;
+using CodeSnifferDog.Server.Services.Projects;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
+namespace CodeSnifferDog.Tests.Services.ProjectExecution;
+
+[TestClass]
+public sealed class ProjectExecutionHostedServiceCancellationTests
+{
+    [TestMethod]
+    public async Task RunClaimedProjectAsync_UserCancel_UpdatesDatabaseToCanceled_AndPublishesChange()
+    {
+        Guid projectId = Guid.NewGuid();
+        TestProjectChangePublisher projectChangePublisher = new();
+        using ServiceProvider services = CreateServices(projectChangePublisher, new CancelAwareAnalysisRunner());
+        await SeedReviewingProjectAsync(services, projectId);
+        EnsureExtractedProjectDirectory(projectId);
+
+        using CancellationTokenSource hostStoppingTokenSource = new();
+        using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
+        lease.TryCancel(ProjectExecutionCancellationSource.UserRequest);
+
+        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+
+        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+
+        await using AsyncServiceScope verificationScope = services.CreateAsyncScope();
+        CodeSnifferDogServerDbContext dbContext = verificationScope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
+        ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId);
+
+        Assert.AreEqual(ProjectProcessingStatus.Canceled, project.Status);
+        Assert.IsNotNull(project.FinishedAtUtc);
+        Assert.AreEqual(1, projectChangePublisher.PublishCallCount);
+        Assert.IsFalse(Directory.Exists(GetStoragePaths().ResolveExtractedProjectPath(projectId)));
+    }
+
+    [TestMethod]
+    public async Task RunClaimedProjectAsync_HostShutdown_PreservesReviewingState_AndDoesNotPublishChange()
+    {
+        Guid projectId = Guid.NewGuid();
+        TestProjectChangePublisher projectChangePublisher = new();
+        using ServiceProvider services = CreateServices(projectChangePublisher, new CancelAwareAnalysisRunner());
+        await SeedReviewingProjectAsync(services, projectId);
+        EnsureExtractedProjectDirectory(projectId);
+
+        using CancellationTokenSource hostStoppingTokenSource = new();
+        using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
+        hostStoppingTokenSource.Cancel();
+
+        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+
+        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+
+        await using AsyncServiceScope verificationScope = services.CreateAsyncScope();
+        CodeSnifferDogServerDbContext dbContext = verificationScope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
+        ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId);
+
+        Assert.AreEqual(ProjectProcessingStatus.Reviewing, project.Status);
+        Assert.IsNull(project.FinishedAtUtc);
+        Assert.AreEqual(0, projectChangePublisher.PublishCallCount);
+        Assert.IsTrue(Directory.Exists(GetStoragePaths().ResolveExtractedProjectPath(projectId)));
+    }
+
+    private static ProjectExecutionHostedService CreateHostedService(ServiceProvider services) =>
+        new(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            services.GetRequiredService<IProjectExecutionLeaseRegistry>(),
+            services.GetRequiredService<IProjectExecutionQueueLock>(),
+            Options.Create(new ProjectExecutionOptions()),
+            NullLogger<ProjectExecutionHostedService>.Instance);
+
+    private static ServiceProvider CreateServices(
+        TestProjectChangePublisher projectChangePublisher,
+        IProjectAnalysisRunner analysisRunner)
+    {
+        InMemoryDatabaseRoot databaseRoot = new();
+        string databaseName = Guid.NewGuid().ToString("N");
+        ServiceCollection services = [];
+        services.AddDbContext<CodeSnifferDogServerDbContext>(options =>
+            options.UseInMemoryDatabase(databaseName, databaseRoot));
+        services.AddSingleton<ProjectTemporaryStoragePaths>(_ => GetStoragePaths());
+        services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
+        services.AddScoped<IProjectAnalysisRunner>(_ => analysisRunner);
+        services.AddSingleton<IProjectExecutionLeaseRegistry, ProjectExecutionLeaseRegistry>();
+        services.AddSingleton<IProjectExecutionQueueLock, ImmediateProjectExecutionQueueLock>();
+        return services.BuildServiceProvider();
+    }
+
+    private static async Task SeedReviewingProjectAsync(ServiceProvider services, Guid projectId)
+    {
+        await using AsyncServiceScope scope = services.CreateAsyncScope();
+        CodeSnifferDogServerDbContext dbContext = scope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+
+        dbContext.Projects.Add(new ProjectRecord
+        {
+            Id = projectId,
+            OriginalFileName = "repo.zip",
+            StoredZipRelativePath = $"uploads/{projectId:N}.zip",
+            Status = ProjectProcessingStatus.Reviewing,
+            FileSizeBytes = 10,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            QueueTimestampUtc = nowUtc,
+            ProcessingStartedAtUtc = nowUtc,
+        });
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static void EnsureExtractedProjectDirectory(Guid projectId)
+    {
+        string extractedProjectPath = GetStoragePaths().ResolveExtractedProjectPath(projectId);
+        if (Directory.Exists(extractedProjectPath))
+            Directory.Delete(extractedProjectPath, recursive: true);
+
+        Directory.CreateDirectory(extractedProjectPath);
+        File.WriteAllText(Path.Combine(extractedProjectPath, "Program.cs"), "class Program {}");
+    }
+
+    private static async Task InvokeRunClaimedProjectAsync(
+        ProjectExecutionHostedService hostedService,
+        Guid projectId,
+        string storedZipRelativePath,
+        ProjectExecutionLease lease)
+    {
+        Type hostedServiceType = typeof(ProjectExecutionHostedService);
+        Type claimType = hostedServiceType.GetNestedType("ProjectExecutionClaim", BindingFlags.NonPublic)!;
+        object claim = Activator.CreateInstance(claimType, nonPublic: true)!;
+        claimType.GetProperty("ProjectId")!.SetValue(claim, projectId);
+        claimType.GetProperty("StoredZipRelativePath")!.SetValue(claim, storedZipRelativePath);
+        claimType.GetProperty("ExecutionLease")!.SetValue(claim, lease);
+
+        MethodInfo method = hostedServiceType.GetMethod("RunClaimedProjectAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Task task = (Task)method.Invoke(hostedService, [1, claim, CancellationToken.None])!;
+        await task;
+    }
+
+    private static ProjectTemporaryStoragePaths GetStoragePaths()
+    {
+        ProjectTemporaryStoragePaths storagePaths = new();
+        storagePaths.EnsureStorageDirectories();
+        return storagePaths;
+    }
+
+    private sealed class CancelAwareAnalysisRunner : IProjectAnalysisRunner
+    {
+        public bool IsReady => true;
+
+        public async Task RunAsync(ProjectAnalysisContext context, CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+
+    private sealed class TestProjectChangePublisher : IProjectChangePublisher
+    {
+        public int PublishCallCount { get; private set; }
+
+        public Task PublishProjectsChangedAsync(CancellationToken cancellationToken = default)
+        {
+            PublishCallCount++;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ImmediateProjectExecutionQueueLock : IProjectExecutionQueueLock
+    {
+        public Task<IDisposable> AcquireAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IDisposable>(new NoopDisposable());
+    }
+
+    private sealed class NoopDisposable : IDisposable
+    {
+        public void Dispose() { }
+    }
+}

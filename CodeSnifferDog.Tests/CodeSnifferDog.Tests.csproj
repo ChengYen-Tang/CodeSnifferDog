@@ -14,10 +14,12 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.7" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\CodeSnifferDog\CodeSnifferDog.csproj" />
+    <ProjectReference Include="..\CodeSnifferDog.Server\CodeSnifferDog.Server\CodeSnifferDog.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -8,13 +8,12 @@ public sealed class ProjectExecutionLeaseRegistry : IProjectExecutionLeaseRegist
 
     public ProjectExecutionLease Register(Guid projectId, CancellationToken cancellationToken)
     {
-        CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        ProjectExecutionLease lease = new(projectId, cancellationTokenSource, Remove);
+        ProjectExecutionLease lease = new(projectId, cancellationToken, Remove);
 
         if (_leases.TryAdd(projectId, lease))
             return lease;
 
-        cancellationTokenSource.Dispose();
+        lease.Dispose();
         throw new InvalidOperationException($"Project {projectId} is already running.");
     }
 
@@ -34,7 +33,7 @@ public sealed class ProjectExecutionLeaseRegistry : IProjectExecutionLeaseRegist
         if (!_leases.TryGetValue(projectId, out ProjectExecutionLease? lease))
             return false;
 
-        if (!lease.TryCancel())
+        if (!lease.TryCancel(ProjectExecutionCancellationSource.UserRequest))
             return false;
 
         completion = lease.Completion;

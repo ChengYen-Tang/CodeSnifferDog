@@ -179,8 +179,7 @@ public sealed class ProjectExecutionHostedService(
 
             if (lease.CancellationToken.IsCancellationRequested)
             {
-                await CompleteProjectAsync(claim.ProjectId, ProjectProcessingStatus.Canceled, failureReason: null, CancellationToken.None);
-                TryDeleteExtractedProjectDirectory(claim.ProjectId);
+                await ApplyCancellationOutcomeAsync(claim, lease);
                 return;
             }
 
@@ -190,13 +189,7 @@ public sealed class ProjectExecutionHostedService(
         catch (OperationCanceledException) when (lease.CancellationToken.IsCancellationRequested)
         {
             _logger.LogInformation("Project {ProjectId} execution was canceled.", claim.ProjectId);
-            TryDeleteUploadedZipFile(claim.StoredZipRelativePath, claim.ProjectId);
-            await CompleteProjectAsync(
-                claim.ProjectId,
-                ProjectProcessingStatus.Canceled,
-                failureReason: null,
-                CancellationToken.None);
-            TryDeleteExtractedProjectDirectory(claim.ProjectId);
+            await ApplyCancellationOutcomeAsync(claim, lease);
         }
         catch (Exception exception)
         {
@@ -218,6 +211,20 @@ public sealed class ProjectExecutionHostedService(
             .SingleOrDefaultAsync(cancellationToken);
 
         return status == ProjectProcessingStatus.Reviewing;
+    }
+
+    private async Task ApplyCancellationOutcomeAsync(ProjectExecutionClaim claim, ProjectExecutionLease lease)
+    {
+        ProjectExecutionCancellationOutcome outcome = ProjectExecutionCancellationPolicy.Resolve(lease);
+
+        if (outcome.ShouldDeleteUploadedZip)
+            TryDeleteUploadedZipFile(claim.StoredZipRelativePath, claim.ProjectId);
+
+        if (outcome.ShouldUpdateDatabase)
+            await CompleteProjectAsync(claim.ProjectId, ProjectProcessingStatus.Canceled, failureReason: null, CancellationToken.None);
+
+        if (outcome.ShouldDeleteExtractedProject)
+            TryDeleteExtractedProjectDirectory(claim.ProjectId);
     }
 
     private static string PrepareRepository(ProjectExecutionClaim claim, ProjectTemporaryStoragePaths storagePaths)

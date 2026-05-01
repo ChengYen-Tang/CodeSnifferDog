@@ -164,7 +164,6 @@ public sealed class ProjectIntakeService(
         else
             throw new InvalidOperationException("The reviewing project is not actively running.");
 
-        await _projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
         return true;
     }
 
