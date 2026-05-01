@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
 
@@ -29,6 +30,7 @@ public sealed class ReportToolSetTests
             new CreateRuleReportIssueArgs
             {
                 IssueType = "Performance",
+                Severity = "High",
                 FileOrFunction = "Program.cs",
                 RelevantCodePatternOrExpression = "Repeated synchronous call",
                 WhyThisIsAProblem = "This blocks the hot path.",
@@ -42,6 +44,69 @@ public sealed class ReportToolSetTests
             TestContext.CancellationToken);
 
         Assert.IsFalse(string.IsNullOrWhiteSpace(result.RuleReportIssueId));
+    }
+
+    [TestMethod]
+    public async Task CreateRuleReportIssueAsync_NormalizesSeverity()
+    {
+        InMemoryRuleReportIssueStore store = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ReportToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+
+        await toolSet.CreateRuleReportIssueAsync(
+            new CreateRuleReportIssueArgs
+            {
+                IssueType = "Performance",
+                Severity = " high ",
+                FileOrFunction = "Program.cs",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken);
+
+        IReadOnlyList<StoredRuleReportIssue> issues = await toolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, issues);
+        Assert.AreEqual(RuleReviewSeverity.High, issues[0].Severity);
+    }
+
+    [TestMethod]
+    public async Task CreateRuleReportIssueAsync_FailsForInvalidSeverity()
+    {
+        InMemoryRuleReportIssueStore store = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ReportToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => toolSet.CreateRuleReportIssueAsync(
+            new CreateRuleReportIssueArgs
+            {
+                IssueType = "Performance",
+                Severity = "Critical",
+                FileOrFunction = "Program.cs",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken).AsTask());
     }
 
     [TestMethod]
@@ -153,6 +218,7 @@ public sealed class ReportToolSetTests
         new()
         {
             IssueType = "Performance",
+            Severity = "High",
             FileOrFunction = fileOrFunction,
             RelevantCodePatternOrExpression = relevantCodePatternOrExpression,
             WhyThisIsAProblem = "This blocks the hot path.",

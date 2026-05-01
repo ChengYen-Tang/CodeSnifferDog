@@ -187,6 +187,7 @@ public sealed class ReviewGroupWorkflowTests
         {
             RuleReviewIssueId = "review-issue-1",
             IssueType = "Performance",
+            Severity = "High",
             FileOrFunction = "Program.cs",
             RelevantCodePatternOrExpression = "Repeated synchronous call",
             WhyThisIsAProblem = "This blocks the request path.",
@@ -203,6 +204,7 @@ public sealed class ReviewGroupWorkflowTests
         {
             RuleReportIssueId = "report-issue-1",
             IssueType = "Performance",
+            Severity = "High",
             FileOrFunction = "Program.cs",
             RelevantCodePatternOrExpression = "Repeated synchronous call",
             WhyThisIsAProblem = "This blocks the request path.",

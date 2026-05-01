@@ -19,6 +19,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
         {
             RuleReviewIssueId = Guid.NewGuid().ToString("N"),
             IssueType = normalizedIssue.IssueType,
+            Severity = normalizedIssue.Severity,
             FileOrFunction = normalizedIssue.FileOrFunction,
             RelevantCodePatternOrExpression = normalizedIssue.RelevantCodePatternOrExpression,
             WhyThisIsAProblem = normalizedIssue.WhyThisIsAProblem,
@@ -89,6 +90,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
             {
                 RuleReviewIssueId = state.Issues[index].RuleReviewIssueId,
                 IssueType = normalizedIssue.IssueType,
+                Severity = normalizedIssue.Severity,
                 FileOrFunction = normalizedIssue.FileOrFunction,
                 RelevantCodePatternOrExpression = normalizedIssue.RelevantCodePatternOrExpression,
                 WhyThisIsAProblem = normalizedIssue.WhyThisIsAProblem,
@@ -180,6 +182,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
         return new RuleReviewIssue
         {
             IssueType = issue.IssueType.Trim(),
+            Severity = RuleReviewSeverity.Normalize(issue.Severity),
             FileOrFunction = issue.FileOrFunction.Trim(),
             RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression.Trim(),
             WhyThisIsAProblem = issue.WhyThisIsAProblem.Trim(),
@@ -195,6 +198,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
     private static void ValidateIssue(RuleReviewIssue issue)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.IssueType);
+        RuleReviewSeverity.Normalize(issue.Severity);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.FileOrFunction);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.RelevantCodePatternOrExpression);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.WhyThisIsAProblem);

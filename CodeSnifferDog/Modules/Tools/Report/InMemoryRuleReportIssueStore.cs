@@ -243,6 +243,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         return new RuleReviewIssue
         {
             IssueType = issue.IssueType.Trim(),
+            Severity = RuleReviewSeverity.Normalize(issue.Severity),
             FileOrFunction = issue.FileOrFunction.Trim(),
             RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression.Trim(),
             WhyThisIsAProblem = issue.WhyThisIsAProblem.Trim(),
@@ -261,6 +262,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         {
             RuleReportIssueId = id,
             IssueType = issue.IssueType,
+            Severity = issue.Severity,
             FileOrFunction = issue.FileOrFunction,
             RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression,
             WhyThisIsAProblem = issue.WhyThisIsAProblem,
@@ -278,6 +280,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         {
             RuleReportIssueId = issue.RuleReportIssueId,
             IssueType = issue.IssueType,
+            Severity = issue.Severity,
             FileOrFunction = issue.FileOrFunction,
             RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression,
             WhyThisIsAProblem = issue.WhyThisIsAProblem,
@@ -292,6 +295,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     private static void ValidateIssue(RuleReviewIssue issue)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.IssueType);
+        RuleReviewSeverity.Normalize(issue.Severity);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.FileOrFunction);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.RelevantCodePatternOrExpression);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.WhyThisIsAProblem);

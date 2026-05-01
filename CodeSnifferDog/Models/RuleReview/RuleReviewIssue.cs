@@ -4,6 +4,8 @@ public class RuleReviewIssue
 {
     public required string IssueType { get; init; }
 
+    public required string Severity { get; init; }
+
     public required string FileOrFunction { get; init; }
 
     public required string RelevantCodePatternOrExpression { get; init; }

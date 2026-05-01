@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.Report;
+using CodeSnifferDog.Models.RuleReview;
 
 namespace CodeSnifferDog.Workflows.Report;
 
@@ -8,6 +9,10 @@ public static class RuleMarkdownReportRenderer
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleName);
         ArgumentNullException.ThrowIfNull(issues);
+        StoredRuleReportIssue[] sortedIssues =
+            [.. issues.OrderBy(issue => RuleReviewSeverity.GetSortOrder(issue.Severity))
+                     .ThenBy(issue => issue.FileOrFunction, StringComparer.Ordinal)
+                     .ThenBy(issue => issue.IssueType, StringComparer.Ordinal)];
 
         StringWriter writer = new();
         writer.WriteLine($"# {ruleName}-report.md");
@@ -15,21 +20,26 @@ public static class RuleMarkdownReportRenderer
         writer.WriteLine("## Summary");
         writer.WriteLine();
 
-        if (issues.Count == 0)
+        if (sortedIssues.Length == 0)
         {
             writer.WriteLine("No issues were reported for this rule in the latest completed analysis.");
             return writer.ToString().TrimEnd();
         }
 
-        writer.WriteLine($"{issues.Count} issue(s) were reported for this rule in the latest completed analysis.");
+        writer.WriteLine($"{sortedIssues.Length} issue(s) were reported for this rule in the latest completed analysis.");
+        writer.WriteLine();
+        writer.WriteLine($"- High: {sortedIssues.Count(issue => issue.Severity == RuleReviewSeverity.High)}");
+        writer.WriteLine($"- Medium: {sortedIssues.Count(issue => issue.Severity == RuleReviewSeverity.Medium)}");
+        writer.WriteLine($"- Low: {sortedIssues.Count(issue => issue.Severity == RuleReviewSeverity.Low)}");
 
-        for (int index = 0; index < issues.Count; index++)
+        for (int index = 0; index < sortedIssues.Length; index++)
         {
-            StoredRuleReportIssue issue = issues[index];
+            StoredRuleReportIssue issue = sortedIssues[index];
             writer.WriteLine();
             writer.WriteLine($"## Finding {index + 1}");
             writer.WriteLine();
             writer.WriteLine($"- Issue type: {issue.IssueType}");
+            writer.WriteLine($"- Severity: {issue.Severity}");
             writer.WriteLine($"- File / function: {issue.FileOrFunction}");
             writer.WriteLine($"- Relevant code pattern / expression: {issue.RelevantCodePatternOrExpression}");
             writer.WriteLine($"- Why this is a problem: {issue.WhyThisIsAProblem}");

@@ -23,6 +23,7 @@ public sealed class RuleReviewToolSetTests
             new CreateRuleReviewIssueArgs
             {
                 IssueType = "Performance",
+                Severity = "High",
                 FileOrFunction = "Program.cs",
                 RelevantCodePatternOrExpression = "Repeated synchronous call",
                 WhyThisIsAProblem = "This blocks the hot path.",
@@ -68,6 +69,7 @@ public sealed class RuleReviewToolSetTests
             new CreateRuleReviewIssueArgs
             {
                 IssueType = "Performance",
+                Severity = "High",
                 FileOrFunction = "Program.cs",
                 RelevantCodePatternOrExpression = "Repeated synchronous call",
                 WhyThisIsAProblem = "This blocks the hot path.",
@@ -88,6 +90,63 @@ public sealed class RuleReviewToolSetTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
+    public async Task CreateRuleReviewIssueAsync_NormalizesSeverity()
+    {
+        RuleReviewToolSet toolSet = new(
+            new InMemoryRuleReviewIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+
+        await toolSet.CreateRuleReviewIssueAsync(
+            new CreateRuleReviewIssueArgs
+            {
+                IssueType = "Performance",
+                Severity = " high ",
+                FileOrFunction = "Program.cs",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken);
+
+        IReadOnlyList<StoredRuleReviewIssue> issues = await toolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, issues);
+        Assert.AreEqual(RuleReviewSeverity.High, issues[0].Severity);
+    }
+
+    [TestMethod]
+    public async Task CreateRuleReviewIssueAsync_FailsForInvalidSeverity()
+    {
+        RuleReviewToolSet toolSet = new(
+            new InMemoryRuleReviewIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => toolSet.CreateRuleReviewIssueAsync(
+            new CreateRuleReviewIssueArgs
+            {
+                IssueType = "Performance",
+                Severity = "Critical",
+                FileOrFunction = "Program.cs",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
     public async Task ListRuleReviewIssuesAsync_IsolatedByRuleFlowKey()
     {
         InMemoryRuleReviewIssueStore store = new();
@@ -105,6 +164,7 @@ public sealed class RuleReviewToolSetTests
             new CreateRuleReviewIssueArgs
             {
                 IssueType = "Performance",
+                Severity = "High",
                 FileOrFunction = "Program.cs",
                 RelevantCodePatternOrExpression = "Repeated synchronous call",
                 WhyThisIsAProblem = "This blocks the hot path.",

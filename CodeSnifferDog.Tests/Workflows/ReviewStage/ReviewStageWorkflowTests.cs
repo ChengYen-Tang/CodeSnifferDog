@@ -409,6 +409,7 @@ public sealed class ReviewStageWorkflowTests
         {
             RuleReviewIssueId = "review-issue-1",
             IssueType = "Performance",
+            Severity = "High",
             FileOrFunction = "Program.cs",
             RelevantCodePatternOrExpression = "Repeated synchronous call",
             WhyThisIsAProblem = "This blocks the request path.",
@@ -425,6 +426,7 @@ public sealed class ReviewStageWorkflowTests
         {
             RuleReportIssueId = "report-issue-1",
             IssueType = "Performance",
+            Severity = "High",
             FileOrFunction = "Program.cs",
             RelevantCodePatternOrExpression = "Repeated synchronous call",
             WhyThisIsAProblem = "This blocks the request path.",

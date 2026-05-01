@@ -76,6 +76,8 @@ public sealed class ReportToolSet(
     private ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueToolAsync(
         [Description("The issue type for the repository-level issue.")]
         string IssueType,
+        [Description("The severity level for the repository-level issue. Allowed values: High, Medium, Low.")]
+        string Severity,
         [Description("The related file or function for the repository-level issue.")]
         string FileOrFunction,
         [Description("The relevant code pattern or expression for the repository-level issue.")]
@@ -99,6 +101,7 @@ public sealed class ReportToolSet(
             new CreateRuleReportIssueArgs
             {
                 IssueType = IssueType,
+                Severity = Severity,
                 FileOrFunction = FileOrFunction,
                 RelevantCodePatternOrExpression = RelevantCodePatternOrExpression,
                 WhyThisIsAProblem = WhyThisIsAProblem,
@@ -117,6 +120,8 @@ public sealed class ReportToolSet(
         string RuleReportIssueId,
         [Description("The updated issue type.")]
         string IssueType,
+        [Description("The updated severity level. Allowed values: High, Medium, Low.")]
+        string Severity,
         [Description("The updated related file or function.")]
         string FileOrFunction,
         [Description("The updated relevant code pattern or expression.")]
@@ -141,6 +146,7 @@ public sealed class ReportToolSet(
             {
                 RuleReportIssueId = RuleReportIssueId,
                 IssueType = IssueType,
+                Severity = Severity,
                 FileOrFunction = FileOrFunction,
                 RelevantCodePatternOrExpression = RelevantCodePatternOrExpression,
                 WhyThisIsAProblem = WhyThisIsAProblem,
@@ -249,6 +255,7 @@ public sealed class ReportToolSet(
     {
         ValidateIssueFields(
             args.IssueType,
+            args.Severity,
             args.FileOrFunction,
             args.RelevantCodePatternOrExpression,
             args.WhyThisIsAProblem,
@@ -262,6 +269,7 @@ public sealed class ReportToolSet(
         return new RuleReviewIssue
         {
             IssueType = args.IssueType.Trim(),
+            Severity = RuleReviewSeverity.Normalize(args.Severity),
             FileOrFunction = args.FileOrFunction.Trim(),
             RelevantCodePatternOrExpression = args.RelevantCodePatternOrExpression.Trim(),
             WhyThisIsAProblem = args.WhyThisIsAProblem.Trim(),
@@ -278,6 +286,7 @@ public sealed class ReportToolSet(
     {
         ValidateIssueFields(
             args.IssueType,
+            args.Severity,
             args.FileOrFunction,
             args.RelevantCodePatternOrExpression,
             args.WhyThisIsAProblem,
@@ -291,6 +300,7 @@ public sealed class ReportToolSet(
         return new RuleReviewIssue
         {
             IssueType = args.IssueType.Trim(),
+            Severity = RuleReviewSeverity.Normalize(args.Severity),
             FileOrFunction = args.FileOrFunction.Trim(),
             RelevantCodePatternOrExpression = args.RelevantCodePatternOrExpression.Trim(),
             WhyThisIsAProblem = args.WhyThisIsAProblem.Trim(),
@@ -305,6 +315,7 @@ public sealed class ReportToolSet(
 
     private static void ValidateIssueFields(
         string issueType,
+        string severity,
         string fileOrFunction,
         string relevantCodePatternOrExpression,
         string whyThisIsAProblem,
@@ -316,6 +327,7 @@ public sealed class ReportToolSet(
         string reviewStrategy)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issueType);
+        RuleReviewSeverity.Normalize(severity);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileOrFunction);
         ArgumentException.ThrowIfNullOrWhiteSpace(relevantCodePatternOrExpression);
         ArgumentException.ThrowIfNullOrWhiteSpace(whyThisIsAProblem);

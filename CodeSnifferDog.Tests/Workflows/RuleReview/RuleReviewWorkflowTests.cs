@@ -145,6 +145,7 @@ public sealed class RuleReviewWorkflowTests
                     "CreateRuleReviewIssue",
                     CreateIssueArguments(
                         "Performance",
+                        "High",
                         "Program.cs",
                         "Repeated synchronous call",
                         "This blocks the request path.",
@@ -587,6 +588,7 @@ public sealed class RuleReviewWorkflowTests
                 "CreateRuleReviewIssue",
                 CreateIssueArguments(
                     "Performance",
+                    "Medium",
                     "CommonToolSet.cs",
                     "Repeated process launch",
                     "This adds unnecessary overhead on a repeated path.",
@@ -606,6 +608,7 @@ public sealed class RuleReviewWorkflowTests
             "CreateRuleReviewIssue",
             CreateIssueArguments(
                 "Performance",
+                "High",
                 "Program.cs",
                 "Repeated synchronous call",
                 "This blocks the request path.",
@@ -695,6 +698,7 @@ public sealed class RuleReviewWorkflowTests
 
     private static Dictionary<string, object?> CreateIssueArguments(
         string issueType,
+        string severity,
         string fileOrFunction,
         string relevantCodePatternOrExpression,
         string whyThisIsAProblem,
@@ -708,6 +712,7 @@ public sealed class RuleReviewWorkflowTests
         new()
         {
             ["IssueType"] = issueType,
+            ["Severity"] = severity,
             ["FileOrFunction"] = fileOrFunction,
             ["RelevantCodePatternOrExpression"] = relevantCodePatternOrExpression,
             ["WhyThisIsAProblem"] = whyThisIsAProblem,

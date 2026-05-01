@@ -48,7 +48,7 @@
         HistoryEntry.Input("Verifier rejected the first result. Continue with the missing cross-scope evidence."),
         HistoryEntry.Output("Rejected. The issue is plausible, but the submitted evidence does not yet prove whether the previous session remains reachable after reconnect. Follow WorkerSession ownership and submit an updated issue with the missing evidence chain."),
         HistoryEntry.Output("I followed WorkerSession and ConnectionEvents. The previous session remains subscribed until replacement completes, but cancellation can interrupt before detach."),
-        HistoryEntry.Tool("CreateRuleReviewIssue", "{ IssueType = \"Memory leak risk\", Confidence = \"High\" }", "Created issue RRI-1042"),
+        HistoryEntry.Tool("CreateRuleReviewIssue", "{ IssueType = \"Memory leak risk\", Severity = \"High\", Confidence = \"High\" }", "Created issue RRI-1042"),
         HistoryEntry.Tool("ListRuleReviewIssues", "No arguments", "1 issue returned"),
         HistoryEntry.Output("I submitted one RuleReviewIssue with updated ScopeCoverage and CrossScopeAnalysis.")
     ];

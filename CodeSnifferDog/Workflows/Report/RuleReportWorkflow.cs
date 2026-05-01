@@ -217,6 +217,7 @@ public sealed class RuleReportWorkflow(
         =>
         left.RuleReportIssueId == right.RuleReportIssueId &&
         left.IssueType == right.IssueType &&
+        left.Severity == right.Severity &&
         left.FileOrFunction == right.FileOrFunction &&
         left.RelevantCodePatternOrExpression == right.RelevantCodePatternOrExpression &&
         left.WhyThisIsAProblem == right.WhyThisIsAProblem &&

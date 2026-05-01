@@ -66,6 +66,8 @@ public sealed class RuleReviewToolSet(
     private ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueToolAsync(
         [Description("The issue type for the discovered problem.")]
         string IssueType,
+        [Description("The severity level for the discovered problem. Allowed values: High, Medium, Low.")]
+        string Severity,
         [Description("The related file or function for the discovered problem.")]
         string FileOrFunction,
         [Description("The relevant code pattern or expression that supports the issue.")]
@@ -89,6 +91,7 @@ public sealed class RuleReviewToolSet(
             new CreateRuleReviewIssueArgs
             {
                 IssueType = IssueType,
+                Severity = Severity,
                 FileOrFunction = FileOrFunction,
                 RelevantCodePatternOrExpression = RelevantCodePatternOrExpression,
                 WhyThisIsAProblem = WhyThisIsAProblem,
@@ -119,6 +122,8 @@ public sealed class RuleReviewToolSet(
         string RuleReviewIssueId,
         [Description("The updated issue type.")]
         string IssueType,
+        [Description("The updated severity level. Allowed values: High, Medium, Low.")]
+        string Severity,
         [Description("The updated related file or function.")]
         string FileOrFunction,
         [Description("The updated relevant code pattern or expression.")]
@@ -143,6 +148,7 @@ public sealed class RuleReviewToolSet(
             {
                 RuleReviewIssueId = RuleReviewIssueId,
                 IssueType = IssueType,
+                Severity = Severity,
                 FileOrFunction = FileOrFunction,
                 RelevantCodePatternOrExpression = RelevantCodePatternOrExpression,
                 WhyThisIsAProblem = WhyThisIsAProblem,
@@ -286,6 +292,7 @@ public sealed class RuleReviewToolSet(
     {
         ValidateIssueFields(
             args.IssueType,
+            args.Severity,
             args.FileOrFunction,
             args.RelevantCodePatternOrExpression,
             args.WhyThisIsAProblem,
@@ -299,6 +306,7 @@ public sealed class RuleReviewToolSet(
         return new RuleReviewIssue
         {
             IssueType = args.IssueType.Trim(),
+            Severity = RuleReviewSeverity.Normalize(args.Severity),
             FileOrFunction = args.FileOrFunction.Trim(),
             RelevantCodePatternOrExpression = args.RelevantCodePatternOrExpression.Trim(),
             WhyThisIsAProblem = args.WhyThisIsAProblem.Trim(),
@@ -315,6 +323,7 @@ public sealed class RuleReviewToolSet(
     {
         ValidateIssueFields(
             args.IssueType,
+            args.Severity,
             args.FileOrFunction,
             args.RelevantCodePatternOrExpression,
             args.WhyThisIsAProblem,
@@ -328,6 +337,7 @@ public sealed class RuleReviewToolSet(
         return new RuleReviewIssue
         {
             IssueType = args.IssueType.Trim(),
+            Severity = RuleReviewSeverity.Normalize(args.Severity),
             FileOrFunction = args.FileOrFunction.Trim(),
             RelevantCodePatternOrExpression = args.RelevantCodePatternOrExpression.Trim(),
             WhyThisIsAProblem = args.WhyThisIsAProblem.Trim(),
@@ -342,6 +352,7 @@ public sealed class RuleReviewToolSet(
 
     private static void ValidateIssueFields(
         string issueType,
+        string severity,
         string fileOrFunction,
         string relevantCodePatternOrExpression,
         string whyThisIsAProblem,
@@ -353,6 +364,7 @@ public sealed class RuleReviewToolSet(
         string reviewStrategy)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issueType);
+        RuleReviewSeverity.Normalize(severity);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileOrFunction);
         ArgumentException.ThrowIfNullOrWhiteSpace(relevantCodePatternOrExpression);
         ArgumentException.ThrowIfNullOrWhiteSpace(whyThisIsAProblem);

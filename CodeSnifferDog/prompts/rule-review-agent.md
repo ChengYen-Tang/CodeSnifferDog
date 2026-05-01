@@ -61,6 +61,7 @@ Do not emit free-form final findings instead of using the issue tools.
 Each issue you maintain must cover these fields:
 
 - `IssueType`
+- `Severity`
 - `FileOrFunction`
 - `RelevantCodePatternOrExpression`
 - `WhyThisIsAProblem`

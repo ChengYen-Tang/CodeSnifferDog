@@ -47,6 +47,7 @@ public sealed class RuleReportWorkflowTests
         Assert.IsEmpty(result.Value.Diff.CreatedIssues);
         Assert.HasCount(1, result.Value.Diff.UpdatedIssues);
         Assert.IsEmpty(result.Value.Diff.DeletedIssues);
+        Assert.AreEqual(RuleReviewSeverity.High, result.Value.RepositoryIssues[0].Severity);
         Assert.AreEqual("Use a cached async path.", result.Value.RepositoryIssues[0].SuggestedFixDirection);
     }
 
@@ -389,6 +390,7 @@ public sealed class RuleReportWorkflowTests
             new RuleReviewIssue
             {
                 IssueType = "Performance",
+                Severity = "Medium",
                 FileOrFunction = "Program.cs",
                 RelevantCodePatternOrExpression = "Repeated synchronous call",
                 WhyThisIsAProblem = "This blocks the request path.",
@@ -427,6 +429,7 @@ public sealed class RuleReportWorkflowTests
             {
                 RuleReviewIssueId = "flow-issue-1",
                 IssueType = "Performance",
+                Severity = "High",
                 FileOrFunction = "Program.cs",
                 RelevantCodePatternOrExpression = "Repeated synchronous call",
                 WhyThisIsAProblem = "This blocks the request path.",
@@ -449,6 +452,7 @@ public sealed class RuleReportWorkflowTests
             "CreateRuleReportIssue",
             CreateIssueArguments(
                 "Performance",
+                "High",
                 "Program.cs",
                 "Repeated synchronous call",
                 "This blocks the request path.",
@@ -477,6 +481,7 @@ public sealed class RuleReportWorkflowTests
             "UpdateRuleReportIssue",
             CreateIssueArguments(
                 "Performance",
+                "High",
                 "Program.cs",
                 "Repeated synchronous call",
                 "This blocks the request path.",
@@ -510,6 +515,7 @@ public sealed class RuleReportWorkflowTests
                 "UpdateRuleReportIssue",
                 CreateIssueArguments(
                     "Performance",
+                    "High",
                     "Program.cs",
                     "Repeated synchronous call",
                     "This blocks the request path.",
@@ -530,6 +536,7 @@ public sealed class RuleReportWorkflowTests
             "CreateRuleReportIssue",
             CreateIssueArguments(
                 "Performance",
+                "High",
                 "Program.cs",
                 "Repeated synchronous call",
                 "This blocks the request path.",
@@ -592,6 +599,7 @@ public sealed class RuleReportWorkflowTests
 
     private static Dictionary<string, object?> CreateIssueArguments(
         string issueType,
+        string severity,
         string fileOrFunction,
         string relevantCodePatternOrExpression,
         string whyThisIsAProblem,
@@ -606,6 +614,7 @@ public sealed class RuleReportWorkflowTests
         Dictionary<string, object?> arguments = new()
         {
             ["IssueType"] = issueType,
+            ["Severity"] = severity,
             ["FileOrFunction"] = fileOrFunction,
             ["RelevantCodePatternOrExpression"] = relevantCodePatternOrExpression,
             ["WhyThisIsAProblem"] = whyThisIsAProblem,
