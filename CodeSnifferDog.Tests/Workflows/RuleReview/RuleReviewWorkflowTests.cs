@@ -3,10 +3,8 @@ using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
-using CodeSnifferDog.Models.RuleReview.Tools;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -345,7 +343,7 @@ public sealed class RuleReviewWorkflowTests
         Assert.IsGreaterThan(0, summarizer.CallCount);
         Assert.IsGreaterThanOrEqualTo(2, reviewInvocations.Count);
         Assert.IsNotNull(summarizer.LastSummaryPrompt);
-        StringAssert.Contains(summarizer.LastSummaryPrompt, "Summarize the current Rule Review-stage work");
+        Assert.Contains("Summarize the current Rule Review-stage work", summarizer.LastSummaryPrompt);
 
         ChatInvocation compactedInvocation = reviewInvocations.First(invocation =>
             invocation.Messages.Any(IsSummaryArtifactMessage));

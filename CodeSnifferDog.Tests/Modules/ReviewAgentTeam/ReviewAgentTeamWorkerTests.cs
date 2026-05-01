@@ -2,7 +2,6 @@ using CodeSnifferDog.Models.Preparation;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
@@ -21,6 +20,7 @@ public sealed class ReviewAgentTeamWorkerTests
         CreateRuleDefinition("rule-a", "- Rule A"),
         CreateRuleDefinition("rule-b", "- Rule B"),
     ];
+    public required TestContext TestContext { get; init; }
 
     [TestMethod]
     public async Task AnalyzeAsync_UsesSharedWorkerBudget_AndReturnsPreparationAndReviewResults()
@@ -28,7 +28,7 @@ public sealed class ReviewAgentTeamWorkerTests
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
         using ReviewAgentTeamWorker worker = CreateWorker(teamFactory);
 
-        Result<ReviewAgentTeamRunResult> result = await worker.AnalyzeAsync();
+        Result<ReviewAgentTeamRunResult> result = await worker.AnalyzeAsync(TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, worker.MaxParallelAgents);
@@ -44,13 +44,13 @@ public sealed class ReviewAgentTeamWorkerTests
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
         using ReviewAgentTeamWorker worker = CreateWorker(teamFactory);
 
-        Result<ReviewAgentTeamRunResult> analyzeResult = await worker.AnalyzeAsync();
-        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports = await worker.GetRuleReportsAsync();
+        Result<ReviewAgentTeamRunResult> analyzeResult = await worker.AnalyzeAsync(TestContext.CancellationToken);
+        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports = await worker.GetRuleReportsAsync(TestContext.CancellationToken);
 
         Assert.IsTrue(analyzeResult.IsSuccess, string.Join(Environment.NewLine, analyzeResult.Errors.Select(error => error.Message)));
         Assert.HasCount(2, ruleReports);
         Assert.AreEqual("rule-a", ruleReports[0].RuleKey);
-        StringAssert.Contains(ruleReports[0].MarkdownContent, "# rule-a-report.md");
+        Assert.Contains("# rule-a-report.md", ruleReports[0].MarkdownContent);
     }
 
     [TestMethod]
@@ -60,7 +60,7 @@ public sealed class ReviewAgentTeamWorkerTests
 
         worker.Dispose();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.AnalyzeAsync().GetAwaiter().GetResult());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.AnalyzeAsync(TestContext.CancellationToken).GetAwaiter().GetResult());
     }
 
     [TestMethod]
@@ -70,7 +70,7 @@ public sealed class ReviewAgentTeamWorkerTests
 
         worker.Dispose();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunPreparationAsync().GetAwaiter().GetResult());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunPreparationAsync(TestContext.CancellationToken).GetAwaiter().GetResult());
     }
 
     [TestMethod]
@@ -86,7 +86,7 @@ public sealed class ReviewAgentTeamWorkerTests
 
         worker.Dispose();
 
-        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunReviewStageAsync(preparationResult).GetAwaiter().GetResult());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => worker.RunReviewStageAsync(preparationResult, TestContext.CancellationToken).GetAwaiter().GetResult());
     }
 
     [TestMethod]
@@ -146,7 +146,7 @@ public sealed class ReviewAgentTeamWorkerTests
         int cleanupCallCount = 0;
         await using ReviewAgentTeamWorker worker = CreateWorker(CreateTeamFactory(() => cleanupCallCount++));
 
-        await worker.DisposeAsync();
+        await worker.DisposeAsync().AsTask().WaitAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(1, cleanupCallCount);
     }
@@ -161,7 +161,7 @@ public sealed class ReviewAgentTeamWorkerTests
             RuleFlowWorkflowRunner = (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown))),
             RuleReportIssueStore = new InMemoryRuleReportIssueStore(),
-            CleanupAsync = cancellationToken =>
+            CleanupAsync = _ =>
             {
                 cleanupAction?.Invoke();
                 return ValueTask.CompletedTask;
@@ -242,7 +242,7 @@ public sealed class ReviewAgentTeamWorkerTests
             ProjectPlanAgentResetCount = 0,
         };
 
-    private static RuleFlowWorkflowResult CreateRuleFlowResult(StoredProjectPlanTaskItem taskItem, string ruleKey, string ruleMarkdown) =>
+    private static RuleFlowWorkflowResult CreateRuleFlowResult(StoredProjectPlanTaskItem taskItem, string ruleKey, string _) =>
         new()
         {
             TaskItem = taskItem,

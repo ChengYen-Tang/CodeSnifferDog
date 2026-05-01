@@ -1,6 +1,6 @@
-using System.Text;
 using CodeSnifferDog.Models.ContextCompaction;
 using Microsoft.Extensions.AI;
+using System.Text;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
@@ -16,7 +16,7 @@ public sealed class OperationalContextContinuityStateBuilder
         "Open questions",
     ];
 
-    public OperationalContextContinuityState Build(string normalizedSummary)
+    public static OperationalContextContinuityState Build(string normalizedSummary)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(normalizedSummary);
 
@@ -31,7 +31,7 @@ public sealed class OperationalContextContinuityStateBuilder
         };
     }
 
-    public ChatMessage CreateMessage(
+    public static ChatMessage CreateMessage(
         OperationalContextContinuityState continuityState,
         OperationalContextCompactionReason reason)
     {
@@ -39,21 +39,23 @@ public sealed class OperationalContextContinuityStateBuilder
 
         ChatMessage message = new(
             ChatRole.System,
-            CreateText(continuityState));
-        message.AdditionalProperties = new AdditionalPropertiesDictionary
+            CreateText(continuityState))
         {
-            [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.ContinuityArtifactKind,
-            [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
-            [OperationalContextCompactionArtifactMetadata.ContinuityCurrentObjectiveKey] = continuityState.CurrentObjective,
-            [OperationalContextCompactionArtifactMetadata.ContinuityCompletedWorkKey] = continuityState.CompletedWork,
-            [OperationalContextCompactionArtifactMetadata.ContinuityNextStepsKey] = continuityState.NextSteps,
-            [OperationalContextCompactionArtifactMetadata.ContinuityCriticalContextKey] = continuityState.CriticalContext,
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.ContinuityArtifactKind,
+                [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
+                [OperationalContextCompactionArtifactMetadata.ContinuityCurrentObjectiveKey] = continuityState.CurrentObjective,
+                [OperationalContextCompactionArtifactMetadata.ContinuityCompletedWorkKey] = continuityState.CompletedWork,
+                [OperationalContextCompactionArtifactMetadata.ContinuityNextStepsKey] = continuityState.NextSteps,
+                [OperationalContextCompactionArtifactMetadata.ContinuityCriticalContextKey] = continuityState.CriticalContext,
+            },
         };
 
         return message;
     }
 
-    public ChatMessage CreateProjectionMessage(
+    public static ChatMessage CreateProjectionMessage(
         OperationalContextContinuityState continuityState,
         string messageId,
         string collapseId,
@@ -65,17 +67,19 @@ public sealed class OperationalContextContinuityStateBuilder
 
         ChatMessage message = new(
             ChatRole.System,
-            $"Collapsed continuity state {collapseId}{Environment.NewLine}{Environment.NewLine}{CreateText(continuityState)}");
-        message.AdditionalProperties = new AdditionalPropertiesDictionary
+            $"Collapsed continuity state {collapseId}{Environment.NewLine}{Environment.NewLine}{CreateText(continuityState)}")
         {
-            [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.ContinuityArtifactKind,
-            [OperationalContextCompactionArtifactMetadata.MessageIdentityKey] = messageId,
-            [OperationalContextCompactionArtifactMetadata.CollapseCommitIdKey] = collapseId,
-            [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason,
-            [OperationalContextCompactionArtifactMetadata.ContinuityCurrentObjectiveKey] = continuityState.CurrentObjective,
-            [OperationalContextCompactionArtifactMetadata.ContinuityCompletedWorkKey] = continuityState.CompletedWork,
-            [OperationalContextCompactionArtifactMetadata.ContinuityNextStepsKey] = continuityState.NextSteps,
-            [OperationalContextCompactionArtifactMetadata.ContinuityCriticalContextKey] = continuityState.CriticalContext,
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.ContinuityArtifactKind,
+                [OperationalContextCompactionArtifactMetadata.MessageIdentityKey] = messageId,
+                [OperationalContextCompactionArtifactMetadata.CollapseCommitIdKey] = collapseId,
+                [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason,
+                [OperationalContextCompactionArtifactMetadata.ContinuityCurrentObjectiveKey] = continuityState.CurrentObjective,
+                [OperationalContextCompactionArtifactMetadata.ContinuityCompletedWorkKey] = continuityState.CompletedWork,
+                [OperationalContextCompactionArtifactMetadata.ContinuityNextStepsKey] = continuityState.NextSteps,
+                [OperationalContextCompactionArtifactMetadata.ContinuityCriticalContextKey] = continuityState.CriticalContext,
+            },
         };
 
         return message;
@@ -140,7 +144,7 @@ public sealed class OperationalContextContinuityStateBuilder
     }
 
     private static void AppendNamedSection(
-        ICollection<string> parts,
+        List<string> parts,
         string sectionName,
         string content)
     {

@@ -24,8 +24,8 @@ public sealed class AgentFactoryConventionsTests
             string absolutePath = Path.Combine(repositoryRootPath, relativePath);
             string source = File.ReadAllText(absolutePath);
 
-            StringAssert.Contains(source, "commonToolSet.CreateTools()");
-            StringAssert.Contains(source, ".UseOperationalContextCompaction(_compactionOptions)");
+            Assert.Contains("commonToolSet.CreateTools()", source);
+            Assert.Contains(".UseOperationalContextCompaction(_compactionOptions)", source);
         }
     }
 

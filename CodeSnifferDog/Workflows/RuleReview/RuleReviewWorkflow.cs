@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
@@ -8,6 +7,7 @@ using CodeSnifferDog.Modules.Tools.RuleReview;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.RuleReview;
 
@@ -203,10 +203,10 @@ public sealed class RuleReviewWorkflow(
         }
     }
 
-    private RuleReviewWorkflowResult CreateResult(
+    private static RuleReviewWorkflowResult CreateResult(
         StoredProjectPlanTaskItem taskItem,
         string ruleKey,
-        string ruleMarkdown,
+        string _,
         IReadOnlyList<StoredRuleReviewIssue> issues,
         NoIssueConclusion? noIssueConclusion,
         ReviewVerdict verdict,

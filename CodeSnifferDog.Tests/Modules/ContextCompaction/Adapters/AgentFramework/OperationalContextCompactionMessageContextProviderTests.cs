@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Runtime.CompilerServices;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
@@ -7,6 +5,8 @@ using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace CodeSnifferDog.Tests.Modules.ContextCompaction.Adapters.AgentFramework;
 
@@ -179,7 +179,7 @@ public sealed class OperationalContextCompactionMessageContextProviderTests
             new MessageAIContextProvider.InvokingContext(agent, session, messages),
             TestContext.CancellationToken);
 
-        ChatMessage[] providedMessages = provided.ToArray();
+        ChatMessage[] providedMessages = [.. provided];
         Assert.IsTrue(providedMessages.Any(message =>
             message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString() ==
             OperationalContextCompactionArtifactMetadata.CollapseProjectionArtifactKind));
@@ -191,7 +191,7 @@ public sealed class OperationalContextCompactionMessageContextProviderTests
         OperationalContextCollapseState state = collapseSessionState.Get(session);
         Assert.HasCount(1, state.Snapshot.ProjectedCollapseIds);
         Assert.IsNotNull(state.Snapshot.LastProjectedAtUtc);
-        CollectionAssert.AreEqual(new[] { collapseId }, state.Snapshot.ProjectedCollapseIds.ToArray());
+        CollectionAssert.AreEqual(new string[] { collapseId }, state.Snapshot.ProjectedCollapseIds.ToArray());
         Assert.AreEqual($"collapse-projection-{collapseId}", providedMessages.First(message =>
             message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString() ==
             OperationalContextCompactionArtifactMetadata.CollapseProjectionArtifactKind)

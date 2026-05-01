@@ -44,8 +44,8 @@ public sealed class CommonToolSetTests
             TestContext.CancellationToken);
 
         Assert.AreEqual(0, result.ExitCode);
-        StringAssert.Contains(result.StandardOutput, "sample.txt");
-        StringAssert.Contains(result.StandardOutput, "alpha beta gamma");
+        Assert.Contains("sample.txt", result.StandardOutput);
+        Assert.Contains("alpha beta gamma", result.StandardOutput);
     }
 
     [TestMethod]
@@ -65,8 +65,8 @@ public sealed class CommonToolSetTests
             TestContext.CancellationToken);
 
         Assert.AreEqual(0, result.ExitCode);
-        StringAssert.Contains(result.StandardOutput, "external.txt");
-        StringAssert.Contains(result.StandardOutput, "external alpha");
+        Assert.Contains("external.txt", result.StandardOutput);
+        Assert.Contains("external alpha", result.StandardOutput);
     }
 
     [TestMethod]
@@ -100,7 +100,10 @@ public sealed class CommonToolSetTests
         string executablePath = locator.GetExecutablePath();
 
         Assert.IsTrue(File.Exists(executablePath));
-        StringAssert.StartsWith(executablePath, Path.Combine(Path.GetFullPath(AppContext.BaseDirectory), "assets", "ripgrep"), StringComparison.OrdinalIgnoreCase);
+        Assert.IsTrue(
+            executablePath.StartsWith(
+                Path.Combine(Path.GetFullPath(AppContext.BaseDirectory), "assets", "ripgrep"),
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private static string CreateTemporaryDirectory()

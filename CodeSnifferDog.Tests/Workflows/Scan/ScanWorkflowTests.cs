@@ -5,7 +5,6 @@ using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -13,7 +12,6 @@ using CodeSnifferDog.Modules.Tools.Scan;
 using CodeSnifferDog.Workflows.Scan;
 using FluentResults;
 using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.Compaction;
 using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Tests.Workflows.Scan;

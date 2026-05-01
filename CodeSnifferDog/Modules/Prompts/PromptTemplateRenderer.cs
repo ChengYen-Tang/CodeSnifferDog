@@ -2,6 +2,8 @@ namespace CodeSnifferDog.Modules.Prompts;
 
 public sealed class PromptTemplateRenderer
 {
+    private readonly StringComparison _comparison = StringComparison.Ordinal;
+
     public string Render(
         string template,
         IReadOnlyDictionary<string, string> placeholders)
@@ -15,7 +17,7 @@ public sealed class PromptTemplateRenderer
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(key);
             ArgumentNullException.ThrowIfNull(value);
-            rendered = rendered.Replace($"{{{{{key}}}}}", value, StringComparison.Ordinal);
+            rendered = rendered.Replace($"{{{{{key}}}}}", value, _comparison);
         }
 
         return rendered;

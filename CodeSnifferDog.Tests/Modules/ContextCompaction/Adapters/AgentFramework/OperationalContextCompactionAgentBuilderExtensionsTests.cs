@@ -1,16 +1,20 @@
-using Microsoft.Agents.AI.Compaction;
-using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
+using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Tests.Modules.ContextCompaction.Adapters.AgentFramework;
 
 [TestClass]
 public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
 {
+    private static readonly string[] Call3Only =
+    [
+        "call-3",
+    ];
+
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
@@ -149,7 +153,7 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
             .SelectMany(static message => message.Contents.OfType<FunctionCallContent>())
             .Select(static call => call.CallId)];
 
-        CollectionAssert.AreEqual(new[] { "call-3" }, summarizedCallIds);
+        CollectionAssert.AreEqual(Call3Only, summarizedCallIds);
     }
 
     [TestMethod]
@@ -232,7 +236,7 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
             .GetMethod("CommitStagedCollapsesAndPrepareRetryMessages", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
             .Invoke(null, [originalMessages, session, options, new HashSet<string>(StringComparer.Ordinal) { "0000000000000001" }]);
 
-        ChatMessage[] retryMessages = ((IReadOnlyList<ChatMessage>)result!).ToArray();
+        ChatMessage[] retryMessages = [.. (IReadOnlyList<ChatMessage>)result!];
 
         Assert.IsTrue(retryMessages.Any(message =>
             message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString() ==

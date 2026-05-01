@@ -14,7 +14,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         RuleReportKey ruleReportKey,
         string ruleKey,
         RuleFlowKey ruleFlowKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleKey);
 
@@ -36,7 +36,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     public ValueTask<StoredRuleReportIssue> AddAsync(
         RuleFlowKey ruleFlowKey,
         RuleReviewIssue issue,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentNullException.ThrowIfNull(issue);
         StoredRuleReportIssue storedIssue = CreateStoredIssue(NormalizeIssue(issue), Guid.NewGuid().ToString("N"));
@@ -50,25 +50,22 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     public ValueTask<StoredRuleReportIssue> GetAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReportIssueId,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReportIssueId);
 
         lock (_syncRoot)
         {
-            StoredRuleReportIssue? issue = GetOrCreateFlowState(ruleFlowKey).WorkingIssues
-                .FirstOrDefault(item => item.RuleReportIssueId == ruleReportIssueId.Trim());
-
-            if (issue is null)
-                throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}");
-
-            return ValueTask.FromResult(issue);
+            return ValueTask.FromResult(
+                GetOrCreateFlowState(ruleFlowKey).WorkingIssues
+                    .FirstOrDefault(item => item.RuleReportIssueId == ruleReportIssueId.Trim())
+                ?? throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}"));
         }
     }
 
     public ValueTask<IReadOnlyList<StoredRuleReportIssue>> ListAsync(
         RuleFlowKey ruleFlowKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         lock (_syncRoot)
             return ValueTask.FromResult<IReadOnlyList<StoredRuleReportIssue>>([.. GetOrCreateFlowState(ruleFlowKey).WorkingIssues]);
@@ -78,7 +75,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         RuleFlowKey ruleFlowKey,
         string ruleReportIssueId,
         RuleReviewIssue issue,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReportIssueId);
         ArgumentNullException.ThrowIfNull(issue);
@@ -101,7 +98,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     public ValueTask<bool> DeleteAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReportIssueId,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReportIssueId);
 
@@ -120,18 +117,16 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
 
     public ValueTask<IReadOnlyList<StoredRuleReportIssue>> GetLatestSnapshotAsync(
         RuleReportKey ruleReportKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         lock (_syncRoot)
             return ValueTask.FromResult<IReadOnlyList<StoredRuleReportIssue>>(
-                _latestSnapshots.TryGetValue(ruleReportKey, out RuleReportSnapshotState? state)
-                    ? [.. state.Issues]
-                    : []);
+                _latestSnapshots.TryGetValue(ruleReportKey, out RuleReportSnapshotState? state) ? [.. state.Issues] : []);
     }
 
     public ValueTask<RuleReportDiff> GetLatestDiffAsync(
         RuleFlowKey ruleFlowKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         lock (_syncRoot)
             return ValueTask.FromResult(GetOrCreateFlowState(ruleFlowKey).LatestDiff);
@@ -140,7 +135,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     public ValueTask SetLatestDiffAsync(
         RuleFlowKey ruleFlowKey,
         RuleReportDiff diff,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentNullException.ThrowIfNull(diff);
 
@@ -153,7 +148,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     public ValueTask PromoteWorkingReportAsync(
         RuleReportKey ruleReportKey,
         RuleFlowKey ruleFlowKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         lock (_syncRoot)
         {
@@ -168,7 +163,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask ClearWorkingReportAsync(RuleFlowKey ruleFlowKey, CancellationToken cancellationToken)
+    public ValueTask ClearWorkingReportAsync(RuleFlowKey ruleFlowKey, CancellationToken _)
     {
         lock (_syncRoot)
         {
@@ -185,15 +180,12 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     public ValueTask ClearAsync(
         RuleReportKey ruleReportKey,
         RuleFlowKey ruleFlowKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         lock (_syncRoot)
         {
-            if (_latestSnapshots.ContainsKey(ruleReportKey))
-                _latestSnapshots.Remove(ruleReportKey);
-
-            if (_flowStates.ContainsKey(ruleFlowKey))
-                _flowStates.Remove(ruleFlowKey);
+            _latestSnapshots.Remove(ruleReportKey);
+            _flowStates.Remove(ruleFlowKey);
         }
 
         return ValueTask.CompletedTask;

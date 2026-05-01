@@ -3,13 +3,14 @@ namespace CodeSnifferDog.Modules.Prompts;
 public sealed class PromptAssetReader
 {
     private const string PromptAssetRootDirectoryName = "prompts";
+    private readonly string _baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
 
     public string GetRequiredPromptPath(string relativePromptPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relativePromptPath);
 
         string promptPath = Path.Combine(
-            Path.GetFullPath(AppContext.BaseDirectory),
+            _baseDirectory,
             PromptAssetRootDirectoryName,
             relativePromptPath.Replace('/', Path.DirectorySeparatorChar));
 

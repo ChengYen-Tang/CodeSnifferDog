@@ -5,9 +5,7 @@ namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
 public sealed class OperationalContextCollapseProjectionBuilder
 {
-    private readonly OperationalContextContinuityStateBuilder _continuityStateBuilder = new();
-
-    public (IReadOnlyList<ChatMessage> Messages, IReadOnlyList<string> ProjectedCollapseIds) BuildProjection(
+    public static (IReadOnlyList<ChatMessage> Messages, IReadOnlyList<string> ProjectedCollapseIds) BuildProjection(
         IReadOnlyList<ChatMessage> messages,
         OperationalContextCollapseState collapseState,
         OperationalContextCompactionOptions options,
@@ -49,7 +47,7 @@ public sealed class OperationalContextCollapseProjectionBuilder
             {
                 ResolvedProjectionSpan resolvedSpan = resolvedSpans[spanIndex];
                 projectedMessages.Add(CreateProjectionMessage(resolvedSpan.Span));
-                projectedMessages.Add(_continuityStateBuilder.CreateProjectionMessage(
+                projectedMessages.Add(OperationalContextContinuityStateBuilder.CreateProjectionMessage(
                     resolvedSpan.Span.ContinuityState,
                     resolvedSpan.Span.ContinuityProjectionMessageId,
                     resolvedSpan.Span.CollapseId,
@@ -88,7 +86,7 @@ public sealed class OperationalContextCollapseProjectionBuilder
 
     private static IReadOnlyList<OperationalContextCollapseSpan> GetProjectionSpans(
         OperationalContextCollapseState collapseState,
-        OperationalContextCompactionOptions options,
+        OperationalContextCompactionOptions _,
         bool includeStagedSpans)
     {
         List<OperationalContextCollapseSpan> spans =
@@ -106,18 +104,20 @@ public sealed class OperationalContextCollapseProjectionBuilder
     {
         ChatMessage message = new(
             ChatRole.System,
-            $"Collapsed context commit {commit.CollapseId}{Environment.NewLine}{Environment.NewLine}{commit.Summary}");
-        message.AdditionalProperties = new AdditionalPropertiesDictionary
+            $"Collapsed context commit {commit.CollapseId}{Environment.NewLine}{Environment.NewLine}{commit.Summary}")
         {
-            [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.CollapseProjectionArtifactKind,
-            [OperationalContextCompactionArtifactMetadata.CollapseCommitIdKey] = commit.CollapseId,
-            [OperationalContextCompactionArtifactMetadata.MessageIdentityKey] = commit.ProjectionMessageId,
-            [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = commit.Reason,
-            [OperationalContextCompactionArtifactMetadata.PreservedTailCountKey] = commit.ArchivedMessagesCount,
-            [OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIndexKey] = commit.FirstArchivedMessageIndex,
-            [OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIndexKey] = commit.LastArchivedMessageIndex,
-            [OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIdKey] = commit.FirstArchivedMessageId ?? string.Empty,
-            [OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIdKey] = commit.LastArchivedMessageId ?? string.Empty,
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.CollapseProjectionArtifactKind,
+                [OperationalContextCompactionArtifactMetadata.CollapseCommitIdKey] = commit.CollapseId,
+                [OperationalContextCompactionArtifactMetadata.MessageIdentityKey] = commit.ProjectionMessageId,
+                [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = commit.Reason,
+                [OperationalContextCompactionArtifactMetadata.PreservedTailCountKey] = commit.ArchivedMessagesCount,
+                [OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIndexKey] = commit.FirstArchivedMessageIndex,
+                [OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIndexKey] = commit.LastArchivedMessageIndex,
+                [OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIdKey] = commit.FirstArchivedMessageId ?? string.Empty,
+                [OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIdKey] = commit.LastArchivedMessageId ?? string.Empty,
+            },
         };
 
         return message;

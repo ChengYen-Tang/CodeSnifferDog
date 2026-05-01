@@ -11,6 +11,21 @@ namespace CodeSnifferDog.Tests.Workflows.Preparation;
 [TestClass]
 public sealed class RepositoryPreparationWorkflowTests
 {
+    public required TestContext TestContext { get; init; }
+
+    private static readonly string[] PlannedProjectIds =
+    [
+        "scan-1",
+        "scan-2",
+    ];
+
+    private static readonly string[] OrderedProjectIds =
+    [
+        "scan-1",
+        "scan-2",
+        "scan-3",
+    ];
+
     [TestMethod]
     public async Task RunAsync_RunsProjectPlanWorkflow_ForEachScannedProject()
     {
@@ -27,10 +42,10 @@ public sealed class RepositoryPreparationWorkflowTests
             new ReviewAgentConcurrencyGate(4));
 
         Result<RepositoryPreparationWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        CollectionAssert.AreEqual(new[] { "scan-1", "scan-2" }, plannedProjectIds);
+        CollectionAssert.AreEqual(PlannedProjectIds, plannedProjectIds);
         Assert.HasCount(2, result.Value.ProjectPlanResults);
         Assert.IsTrue(result.Value.ShouldEnterRuleReview);
     }
@@ -55,11 +70,11 @@ public sealed class RepositoryPreparationWorkflowTests
             new ReviewAgentConcurrencyGate(3));
 
         Result<RepositoryPreparationWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         CollectionAssert.AreEqual(
-            new[] { "scan-1", "scan-2", "scan-3" },
+            OrderedProjectIds,
             result.Value.ProjectPlanResults.Select(project => project.ScanProject.ScanProjectId).ToArray());
     }
 
@@ -91,7 +106,7 @@ public sealed class RepositoryPreparationWorkflowTests
             new ReviewAgentConcurrencyGate(2));
 
         Result<RepositoryPreparationWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(projectPlanCalled);
@@ -116,7 +131,7 @@ public sealed class RepositoryPreparationWorkflowTests
             new ReviewAgentConcurrencyGate(2));
 
         Result<RepositoryPreparationWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog");
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("ProjectTwo planning failed.", StringComparison.Ordinal)));

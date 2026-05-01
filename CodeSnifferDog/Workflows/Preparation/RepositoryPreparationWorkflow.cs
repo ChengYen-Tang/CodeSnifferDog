@@ -42,9 +42,8 @@ internal sealed class RepositoryPreparationWorkflow(
         ProjectPlanWorkflowResult[] orderedResults = new ProjectPlanWorkflowResult[scanResult.Value.Projects.Count];
         List<IError> errors = [];
 
-        Task[] tasks = scanResult.Value.Projects
-            .Select((project, index) => RunProjectPlanAsync(project, index, orderedResults, errors, repositoryRootPath, cancellationToken))
-            .ToArray();
+        Task[] tasks =
+            [.. scanResult.Value.Projects.Select((project, index) => RunProjectPlanAsync(project, index, orderedResults, errors, repositoryRootPath, cancellationToken))];
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
 

@@ -30,14 +30,13 @@ internal sealed class ReviewStageWorkflow(
 
         repositoryRootPath = repositoryRootPath.Trim();
 
-        ReviewStageProjectResult[] projectResults = preparationResult.ProjectPlanResults
-            .Select(projectPlanResult => new ReviewStageProjectResult
+        ReviewStageProjectResult[] projectResults =
+            [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ReviewStageProjectResult
             {
                 ScanProject = projectPlanResult.ScanProject,
                 ProjectPlanResult = projectPlanResult,
                 ReviewGroupResults = new ReviewGroupWorkflowResult[projectPlanResult.TaskItems.Count],
-            })
-            .ToArray();
+            })];
 
         if (!preparationResult.ShouldEnterRuleReview)
         {
@@ -45,7 +44,7 @@ internal sealed class ReviewStageWorkflow(
             {
                 PreparationResult = preparationResult,
                 ProjectResults = projectResults,
-                RuleKeys = ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey).ToArray(),
+                RuleKeys = [.. ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey)],
                 HasAnyReviewGroups = false,
                 AllReviewGroupsFinished = false,
             });
@@ -86,7 +85,7 @@ internal sealed class ReviewStageWorkflow(
         {
             PreparationResult = preparationResult,
             ProjectResults = projectResults,
-            RuleKeys = ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey).ToArray(),
+            RuleKeys = [.. ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey)],
             HasAnyReviewGroups = projectResults.Any(project => project.ReviewGroupResults.Count > 0),
             AllReviewGroupsFinished = true,
         });

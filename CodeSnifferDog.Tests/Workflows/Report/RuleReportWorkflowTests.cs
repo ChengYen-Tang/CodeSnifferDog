@@ -6,7 +6,6 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Report;
@@ -209,7 +208,7 @@ public sealed class RuleReportWorkflowTests
         Assert.IsGreaterThan(0, summarizer.CallCount);
         Assert.IsGreaterThanOrEqualTo(2, aggregatorInvocations.Count);
         Assert.IsNotNull(summarizer.LastSummaryPrompt);
-        StringAssert.Contains(summarizer.LastSummaryPrompt, "Summarize the current Report Aggregation-stage work");
+        Assert.Contains("Summarize the current Report Aggregation-stage work", summarizer.LastSummaryPrompt);
 
         ChatInvocation compactedInvocation = aggregatorInvocations.First(invocation =>
             invocation.Messages.Any(IsSummaryArtifactMessage));
@@ -503,8 +502,6 @@ public sealed class RuleReportWorkflowTests
 
         if (HasCorrectionInstruction(invocation.Messages))
         {
-            RuleReportKey ruleReportKey =
-                RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\GitHub\CodeSnifferDog", RuleFileName);
             RuleFlowKey ruleFlowKey =
                 RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", RuleFileName);
             IReadOnlyList<StoredRuleReportIssue> workingIssues =

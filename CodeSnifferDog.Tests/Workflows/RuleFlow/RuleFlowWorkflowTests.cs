@@ -12,6 +12,7 @@ namespace CodeSnifferDog.Tests.Workflows.RuleFlow;
 public sealed class RuleFlowWorkflowTests
 {
     private const string RuleFileName = "performance";
+    public required TestContext TestContext { get; init; }
 
     [TestMethod]
     public async Task RunAsync_CompletesApprovedNoIssueFlow_WithoutEnteringReportAggregation()
@@ -30,7 +31,8 @@ public sealed class RuleFlowWorkflowTests
             @"Z:\GitHub\CodeSnifferDog",
             RuleFileName,
             "- Detect performance issues.",
-            CreateTaskItem());
+            CreateTaskItem(),
+            TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(reportWorkflowCalled);
@@ -58,7 +60,8 @@ public sealed class RuleFlowWorkflowTests
             @"Z:\GitHub\CodeSnifferDog",
             RuleFileName,
             "- Detect performance issues.",
-            CreateTaskItem());
+            CreateTaskItem(),
+            TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsTrue(reportWorkflowCalled);
@@ -83,7 +86,8 @@ public sealed class RuleFlowWorkflowTests
             @"Z:\GitHub\CodeSnifferDog",
             RuleFileName,
             "- Detect performance issues.",
-            CreateTaskItem());
+            CreateTaskItem(),
+            TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsTrue(result.Value.EnteredReportAggregation);
@@ -110,7 +114,8 @@ public sealed class RuleFlowWorkflowTests
             @"Z:\GitHub\CodeSnifferDog",
             RuleFileName,
             "- Detect performance issues.",
-            CreateTaskItem());
+            CreateTaskItem(),
+            TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(reportWorkflowCalled);
@@ -132,7 +137,8 @@ public sealed class RuleFlowWorkflowTests
             @"Z:\GitHub\CodeSnifferDog",
             RuleFileName,
             "- Detect performance issues.",
-            CreateTaskItem());
+            CreateTaskItem(),
+            TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error => error.Message.Contains("Report aggregation failed.", StringComparison.Ordinal)));
@@ -180,7 +186,7 @@ public sealed class RuleFlowWorkflowTests
 
     private static RuleReviewWorkflowResult CreateReviewResult(
         StoredProjectPlanTaskItem taskItem,
-        string ruleMarkdown,
+        string _,
         IReadOnlyList<StoredRuleReviewIssue> issues,
         NoIssueConclusion? noIssueConclusion,
         bool reviewVerifierApproved,
@@ -210,7 +216,7 @@ public sealed class RuleFlowWorkflowTests
     private static RuleReportWorkflowResult CreateReportResult(
         StoredProjectPlanTaskItem taskItem,
         string ruleFileName,
-        string ruleMarkdown,
+        string _,
         IReadOnlyList<StoredRuleReviewIssue> issues,
         bool reportVerifierApproved) =>
         new()

@@ -27,12 +27,12 @@ public sealed class RuleMarkdownReportRendererTests
         Assert.IsGreaterThanOrEqualTo(0, lowIndex);
         Assert.IsLessThan(mediumIndex, highIndex);
         Assert.IsLessThan(lowIndex, mediumIndex);
-        StringAssert.Contains(markdown, "- High: 1");
-        StringAssert.Contains(markdown, "- Medium: 1");
-        StringAssert.Contains(markdown, "- Low: 1");
-        StringAssert.Contains(markdown, "- Severity: High");
-        StringAssert.Contains(markdown, "- Severity: Medium");
-        StringAssert.Contains(markdown, "- Severity: Low");
+        Assert.Contains("- High: 1", markdown);
+        Assert.Contains("- Medium: 1", markdown);
+        Assert.Contains("- Low: 1", markdown);
+        Assert.Contains("- Severity: High", markdown);
+        Assert.Contains("- Severity: Medium", markdown);
+        Assert.Contains("- Severity: Low", markdown);
     }
 
     private static StoredRuleReportIssue CreateIssue(string severity, string fileOrFunction, string issueType) =>

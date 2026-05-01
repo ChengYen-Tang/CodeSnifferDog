@@ -1,20 +1,22 @@
-using System.Reflection;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectExecution;
-using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.ProjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Reflection;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
 [TestClass]
 public sealed class ProjectExecutionHostedServiceCancellationTests
 {
+    public required TestContext TestContext { get; init; }
+
     [TestMethod]
     public async Task RunClaimedProjectAsync_UserCancel_UpdatesDatabaseToCanceled_AndPublishesChange()
     {
@@ -34,7 +36,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
         await using AsyncServiceScope verificationScope = services.CreateAsyncScope();
         CodeSnifferDogServerDbContext dbContext = verificationScope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
-        ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId);
+        ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId, TestContext.CancellationToken);
 
         Assert.AreEqual(ProjectProcessingStatus.Canceled, project.Status);
         Assert.IsNotNull(project.FinishedAtUtc);
@@ -61,7 +63,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
         await using AsyncServiceScope verificationScope = services.CreateAsyncScope();
         CodeSnifferDogServerDbContext dbContext = verificationScope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
-        ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId);
+        ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId, TestContext.CancellationToken);
 
         Assert.AreEqual(ProjectProcessingStatus.Reviewing, project.Status);
         Assert.IsNull(project.FinishedAtUtc);

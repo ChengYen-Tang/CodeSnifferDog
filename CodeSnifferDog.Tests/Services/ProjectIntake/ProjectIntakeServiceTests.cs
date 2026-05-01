@@ -2,8 +2,8 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectExecution;
 using CodeSnifferDog.Server.Services.ProjectIntake;
-using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.ProjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -13,6 +13,8 @@ namespace CodeSnifferDog.Tests.Services.ProjectIntake;
 [TestClass]
 public sealed class ProjectIntakeServiceTests
 {
+    public required TestContext TestContext { get; init; }
+
     [TestMethod]
     public async Task CancelAsync_DoesNotPublishProjectChanges_BeforeExecutionCompletesCancellation()
     {
@@ -29,7 +31,7 @@ public sealed class ProjectIntakeServiceTests
             UpdatedAtUtc = DateTimeOffset.UtcNow,
             QueueTimestampUtc = DateTimeOffset.UtcNow,
         });
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync(TestContext.CancellationToken);
 
         TrackingProjectChangePublisher projectChangePublisher = new();
         ProjectIntakeService service = new(
@@ -41,7 +43,7 @@ public sealed class ProjectIntakeServiceTests
             Options.Create(new ProjectExecutionOptions()),
             NullLogger<ProjectIntakeService>.Instance);
 
-        bool canceled = await service.CancelAsync(projectId);
+        bool canceled = await service.CancelAsync(projectId, TestContext.CancellationToken);
 
         Assert.IsTrue(canceled);
         Assert.AreEqual(0, projectChangePublisher.PublishCallCount);

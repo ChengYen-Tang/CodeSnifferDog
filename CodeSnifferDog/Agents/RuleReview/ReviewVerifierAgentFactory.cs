@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
@@ -10,6 +9,7 @@ using CodeSnifferDog.Modules.Tools.RuleReview;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace CodeSnifferDog.Agents.RuleReview;
 

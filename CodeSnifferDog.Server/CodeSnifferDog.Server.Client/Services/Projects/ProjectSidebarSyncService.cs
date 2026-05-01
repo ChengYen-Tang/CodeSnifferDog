@@ -1,6 +1,6 @@
-using System.Net.Http.Json;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.AspNetCore.SignalR.Client;
+using System.Net.Http.Json;
 
 namespace CodeSnifferDog.Server.Client.Services.Projects;
 

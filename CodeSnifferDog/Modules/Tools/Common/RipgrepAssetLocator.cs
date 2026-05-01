@@ -4,11 +4,12 @@ namespace CodeSnifferDog.Modules.Tools.Common;
 
 internal sealed class RipgrepAssetLocator
 {
+    private readonly string _baseDirectory = GetBaseDirectory();
+
     public string GetExecutablePath()
     {
         string relativePath = GetRelativeExecutablePath();
-        string baseDirectory = GetBaseDirectory();
-        string candidatePath = Path.Combine(baseDirectory, relativePath);
+        string candidatePath = Path.Combine(_baseDirectory, relativePath);
 
         if (File.Exists(candidatePath))
             return candidatePath;

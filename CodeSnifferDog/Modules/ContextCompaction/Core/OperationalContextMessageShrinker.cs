@@ -9,7 +9,7 @@ public sealed class OperationalContextMessageShrinker
     // Microsoft Agent Framework abstraction does not expose Claude-style API-layer
     // cache edits. It preserves the shrinking intent, but it is not a byte-for-byte
     // equivalent of Claude Code's primary microcompact path.
-    public OperationalContextMessageShrinkResult ApplyMicroCompaction(
+    public static OperationalContextMessageShrinkResult ApplyMicroCompaction(
         IReadOnlyList<ChatMessage> messages,
         OperationalContextCompactionOptions options)
     {
@@ -32,14 +32,17 @@ public sealed class OperationalContextMessageShrinker
             .Take(plan.Candidates.Count - plan.KeepRecentCount)
             .Select(static candidate => candidate.CallId)];
 
+        List<ToolResultCandidate> candidatesToClear =
+            [.. plan.Candidates.Where(candidate => toolCallIdsToClear.Contains(candidate.CallId))];
+
         return RewriteMessages(
             messages,
-            plan.Candidates.Where(candidate => toolCallIdsToClear.Contains(candidate.CallId)).ToArray(),
+            candidatesToClear,
             removeCompactedMessages: false,
             "microcompact");
     }
 
-    public OperationalContextMessageShrinkResult ApplySnip(
+    public static OperationalContextMessageShrinkResult ApplySnip(
         IReadOnlyList<ChatMessage> messages,
         OperationalContextCompactionOptions options)
     {
@@ -62,9 +65,12 @@ public sealed class OperationalContextMessageShrinker
             .Take(plan.Candidates.Count - plan.KeepRecentCount)
             .Select(static candidate => candidate.CallId)];
 
+        List<ToolResultCandidate> candidatesToRemove =
+            [.. plan.Candidates.Where(candidate => toolCallIdsToRemove.Contains(candidate.CallId))];
+
         OperationalContextMessageShrinkResult rewriteResult = RewriteMessages(
             messages,
-            plan.Candidates.Where(candidate => toolCallIdsToRemove.Contains(candidate.CallId)).ToArray(),
+            candidatesToRemove,
             removeCompactedMessages: true,
             "snip");
 
@@ -195,7 +201,7 @@ public sealed class OperationalContextMessageShrinker
 
     private static ChatMessage CloneMessage(
         ChatMessage original,
-        IReadOnlyList<AIContent> contents,
+        List<AIContent> contents,
         string shrinkOperation,
         int shrunkToolResultCount,
         int freedEstimatedTokens)
@@ -225,13 +231,15 @@ public sealed class OperationalContextMessageShrinker
 
     private static ChatMessage CreateSnipBoundaryMessage(int shrunkToolResultCount, int freedEstimatedTokens)
     {
-        ChatMessage boundaryMessage = new(ChatRole.System, "Operational snip boundary");
-        boundaryMessage.AdditionalProperties = new AdditionalPropertiesDictionary
+        ChatMessage boundaryMessage = new(ChatRole.System, "Operational snip boundary")
         {
-            [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.SnipBoundaryArtifactKind,
-            [OperationalContextCompactionArtifactMetadata.ShrinkOperationKey] = "snip",
-            [OperationalContextCompactionArtifactMetadata.ShrunkToolResultCountKey] = shrunkToolResultCount,
-            [OperationalContextCompactionArtifactMetadata.FreedEstimatedTokensKey] = freedEstimatedTokens,
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.SnipBoundaryArtifactKind,
+                [OperationalContextCompactionArtifactMetadata.ShrinkOperationKey] = "snip",
+                [OperationalContextCompactionArtifactMetadata.ShrunkToolResultCountKey] = shrunkToolResultCount,
+                [OperationalContextCompactionArtifactMetadata.FreedEstimatedTokensKey] = freedEstimatedTokens,
+            },
         };
 
         return boundaryMessage;

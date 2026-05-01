@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Prompts;
@@ -7,6 +6,7 @@ using CodeSnifferDog.Modules.Tools.Scan;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.Scan;
 
@@ -129,16 +129,16 @@ public sealed class ScanWorkflow(
         int scanAgentResetCount,
         bool scanVerifierApproved,
         bool continuedAfterVerifierRejectionLimit) => new()
-    {
-        Projects = projects,
-        Verdict = verdict,
-        ScanVerifierApproved = scanVerifierApproved,
-        ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
-        ShouldEnterProjectPlanning = true,
-        ScanAttempts = scanAttempts,
-        VerifierAttempts = verifierAttempts,
-        ScanAgentResetCount = scanAgentResetCount,
-    };
+        {
+            Projects = projects,
+            Verdict = verdict,
+            ScanVerifierApproved = scanVerifierApproved,
+            ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
+            ShouldEnterProjectPlanning = true,
+            ScanAttempts = scanAttempts,
+            VerifierAttempts = verifierAttempts,
+            ScanAgentResetCount = scanAgentResetCount,
+        };
 
     private static async Task<Result> RunAgentAsync(
         AIAgent agent,

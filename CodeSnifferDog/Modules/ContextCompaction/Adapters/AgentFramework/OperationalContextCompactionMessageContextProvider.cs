@@ -1,7 +1,7 @@
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 
@@ -17,8 +17,9 @@ public sealed class OperationalContextCompactionMessageContextProvider : Message
         OperationalContextAgentCompactionOptions agentOptions)
     {
         ArgumentNullException.ThrowIfNull(agentOptions);
+        ArgumentNullException.ThrowIfNull(agentOptions.Reducer);
 
-        _reducer = agentOptions.Reducer ?? throw new ArgumentNullException(nameof(agentOptions.Reducer));
+        _reducer = agentOptions.Reducer;
         _options = _reducer.Options;
         _messageShrinker = agentOptions.MessageShrinker ?? new OperationalContextMessageShrinker();
         _collapseController = agentOptions.CollapseController;
@@ -31,8 +32,8 @@ public sealed class OperationalContextCompactionMessageContextProvider : Message
         ArgumentNullException.ThrowIfNull(context);
 
         IReadOnlyList<ChatMessage> requestMessages = [.. context.RequestMessages];
-        requestMessages = _messageShrinker.ApplySnip(requestMessages, _options).Messages;
-        requestMessages = _messageShrinker.ApplyMicroCompaction(requestMessages, _options).Messages;
+        requestMessages = OperationalContextMessageShrinker.ApplySnip(requestMessages, _options).Messages;
+        requestMessages = OperationalContextMessageShrinker.ApplyMicroCompaction(requestMessages, _options).Messages;
 
         if (_options.Mode == OperationalContextCompactionMode.ContextCollapse)
         {

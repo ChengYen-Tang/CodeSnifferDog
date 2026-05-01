@@ -11,7 +11,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
     public ValueTask<StoredRuleReviewIssue> AddAsync(
         RuleFlowKey ruleFlowKey,
         RuleReviewIssue issue,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentNullException.ThrowIfNull(issue);
         RuleReviewIssue normalizedIssue = NormalizeIssue(issue);
@@ -44,25 +44,22 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
     public ValueTask<StoredRuleReviewIssue> GetAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReviewIssueId,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReviewIssueId);
 
         lock (_syncRoot)
         {
-            StoredRuleReviewIssue? issue = GetOrCreateState(ruleFlowKey).Issues
-                .FirstOrDefault(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim());
-
-            if (issue is null)
-                throw new KeyNotFoundException($"Rule review issue was not found: {ruleReviewIssueId}");
-
-            return ValueTask.FromResult(issue);
+            return ValueTask.FromResult(
+                GetOrCreateState(ruleFlowKey).Issues
+                    .FirstOrDefault(item => item.RuleReviewIssueId == ruleReviewIssueId.Trim())
+                ?? throw new KeyNotFoundException($"Rule review issue was not found: {ruleReviewIssueId}"));
         }
     }
 
     public ValueTask<IReadOnlyList<StoredRuleReviewIssue>> ListAsync(
         RuleFlowKey ruleFlowKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         lock (_syncRoot)
             return ValueTask.FromResult<IReadOnlyList<StoredRuleReviewIssue>>([.. GetOrCreateState(ruleFlowKey).Issues]);
@@ -72,7 +69,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
         RuleFlowKey ruleFlowKey,
         string ruleReviewIssueId,
         RuleReviewIssue issue,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReviewIssueId);
         ArgumentNullException.ThrowIfNull(issue);
@@ -109,7 +106,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
     public ValueTask<bool> DeleteAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReviewIssueId,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReviewIssueId);
 
@@ -128,7 +125,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
 
     public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(
         RuleFlowKey ruleFlowKey,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         lock (_syncRoot)
             return ValueTask.FromResult(GetOrCreateState(ruleFlowKey).NoIssueConclusion);
@@ -137,7 +134,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
     public ValueTask SubmitNoIssueConclusionAsync(
         RuleFlowKey ruleFlowKey,
         NoIssueConclusion conclusion,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentNullException.ThrowIfNull(conclusion);
         NoIssueConclusion normalizedConclusion = NormalizeNoIssueConclusion(conclusion);
@@ -155,12 +152,11 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask ClearAsync(RuleFlowKey ruleFlowKey, CancellationToken cancellationToken)
+    public ValueTask ClearAsync(RuleFlowKey ruleFlowKey, CancellationToken _)
     {
         lock (_syncRoot)
         {
-            if (_states.ContainsKey(ruleFlowKey))
-                _states.Remove(ruleFlowKey);
+            _states.Remove(ruleFlowKey);
         }
 
         return ValueTask.CompletedTask;

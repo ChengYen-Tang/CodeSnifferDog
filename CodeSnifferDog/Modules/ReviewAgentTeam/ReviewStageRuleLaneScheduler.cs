@@ -28,27 +28,24 @@ internal sealed class ReviewStageRuleLaneScheduler(
 
         repositoryRootPath = repositoryRootPath.Trim();
 
-        ReviewStageProjectFlowResult[] projectResults = projectPlanResults
-            .Select(projectPlanResult => new ReviewStageProjectFlowResult
+        ReviewStageProjectFlowResult[] projectResults =
+            [.. projectPlanResults.Select(projectPlanResult => new ReviewStageProjectFlowResult
             {
                 ProjectPlanResult = projectPlanResult,
-                TaskItemResults = projectPlanResult.TaskItems
-                    .Select(taskItem => new ReviewStageTaskItemFlowResult
+                TaskItemResults =
+                    [.. projectPlanResult.TaskItems.Select(taskItem => new ReviewStageTaskItemFlowResult
                     {
                         TaskItem = taskItem,
                         FlowResults = new RuleFlowWorkflowResult[ruleDefinitions.Count],
-                    })
-                    .ToArray(),
-            })
-            .ToArray();
+                    })],
+            })];
 
         if (ruleDefinitions.Count == 0)
             return Result.Ok<IReadOnlyList<ReviewStageProjectFlowResult>>(projectResults);
 
         List<IError> errors = [];
-        RuleLaneState[] laneStates = ruleDefinitions
-            .Select((ruleDefinition, ruleIndex) => new RuleLaneState(ruleIndex, ruleDefinition))
-            .ToArray();
+        RuleLaneState[] laneStates =
+            [.. ruleDefinitions.Select((ruleDefinition, ruleIndex) => new RuleLaneState(ruleIndex, ruleDefinition))];
 
         for (int projectIndex = 0; projectIndex < projectResults.Length; projectIndex++)
         {
@@ -136,7 +133,7 @@ internal sealed class ReviewStageRuleLaneScheduler(
         RuleFlowExecutionResult executionResult,
         RuleLaneState laneState,
         PendingRuleWorkItem workItem,
-        IReadOnlyList<ReviewStageProjectFlowResult> projectResults,
+        ReviewStageProjectFlowResult[] projectResults,
         List<IError> errors)
     {
         laneState.IsRunning = false;

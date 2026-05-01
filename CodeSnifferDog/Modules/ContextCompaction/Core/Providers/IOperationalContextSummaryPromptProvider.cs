@@ -1,5 +1,3 @@
-using Microsoft.Extensions.AI;
-
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 
 public interface IOperationalContextSummaryPromptProvider

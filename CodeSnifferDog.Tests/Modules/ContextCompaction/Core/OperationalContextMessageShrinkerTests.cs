@@ -7,10 +7,14 @@ namespace CodeSnifferDog.Tests.Modules.ContextCompaction.Core;
 [TestClass]
 public sealed class OperationalContextMessageShrinkerTests
 {
+    private static readonly string[] Call3Only =
+    [
+        "call-3",
+    ];
+
     [TestMethod]
     public void ApplyMicroCompaction_RewritesOlderCompactableToolResults_AsStructuredArtifacts()
     {
-        OperationalContextMessageShrinker shrinker = new();
         ChatMessage[] messages =
         [
             CreateToolCall("call-1", "RunShellCommand"),
@@ -21,7 +25,7 @@ public sealed class OperationalContextMessageShrinkerTests
             CreateToolResult("call-3", "result-3"),
         ];
 
-        OperationalContextMessageShrinkResult result = shrinker.ApplyMicroCompaction(
+        OperationalContextMessageShrinkResult result = OperationalContextMessageShrinker.ApplyMicroCompaction(
             messages,
             new OperationalContextCompactionOptions
             {
@@ -34,17 +38,20 @@ public sealed class OperationalContextMessageShrinkerTests
             .SelectMany(static message => message.Contents.OfType<FunctionResultContent>())];
 
         Assert.HasCount(3, toolResults);
-        StringAssert.Contains(toolResults[0].Result?.ToString(), "[Compacted tool result]");
-        StringAssert.Contains(toolResults[0].Result?.ToString(), "Tool: RunShellCommand");
-        StringAssert.Contains(toolResults[0].Result?.ToString(), "CallId: call-1");
-        StringAssert.Contains(toolResults[1].Result?.ToString(), "CallId: call-2");
+        string? firstResult = toolResults[0].Result?.ToString();
+        string? secondResult = toolResults[1].Result?.ToString();
+        Assert.IsNotNull(firstResult);
+        Assert.IsNotNull(secondResult);
+        Assert.Contains("[Compacted tool result]", firstResult);
+        Assert.Contains("Tool: RunShellCommand", firstResult);
+        Assert.Contains("CallId: call-1", firstResult);
+        Assert.Contains("CallId: call-2", secondResult);
         Assert.AreEqual("result-3", toolResults[2].Result?.ToString());
     }
 
     [TestMethod]
     public void ApplySnip_RemovesOlderCompactableToolCallsAndResults_AndAddsBoundary()
     {
-        OperationalContextMessageShrinker shrinker = new();
         ChatMessage[] messages =
         [
             CreateToolCall("call-1", "RunShellCommand"),
@@ -55,7 +62,7 @@ public sealed class OperationalContextMessageShrinkerTests
             CreateToolResult("call-3", "result-3"),
         ];
 
-        OperationalContextMessageShrinkResult result = shrinker.ApplySnip(
+        OperationalContextMessageShrinkResult result = OperationalContextMessageShrinker.ApplySnip(
             messages,
             new OperationalContextCompactionOptions
             {
@@ -78,14 +85,13 @@ public sealed class OperationalContextMessageShrinkerTests
             .SelectMany(static message => message.Contents.OfType<FunctionResultContent>())
             .Select(static result => result.CallId)];
 
-        CollectionAssert.AreEqual(new[] { "call-3" }, remainingCallIds);
-        CollectionAssert.AreEqual(new[] { "call-3" }, remainingResultCallIds);
+        CollectionAssert.AreEqual(Call3Only, remainingCallIds);
+        CollectionAssert.AreEqual(Call3Only, remainingResultCallIds);
     }
 
     [TestMethod]
     public void ApplyMicroCompaction_DoesNotTouchNonCompactableTools()
     {
-        OperationalContextMessageShrinker shrinker = new();
         ChatMessage[] messages =
         [
             CreateToolCall("call-1", "CreateRuleReviewIssue"),
@@ -96,7 +102,7 @@ public sealed class OperationalContextMessageShrinkerTests
             CreateToolResult("call-3", "result-3"),
         ];
 
-        OperationalContextMessageShrinkResult result = shrinker.ApplyMicroCompaction(
+        OperationalContextMessageShrinkResult result = OperationalContextMessageShrinker.ApplyMicroCompaction(
             messages,
             new OperationalContextCompactionOptions
             {
@@ -112,7 +118,6 @@ public sealed class OperationalContextMessageShrinkerTests
     [TestMethod]
     public void ApplyMicroCompaction_AddsShrinkMetadataToRewrittenMessages()
     {
-        OperationalContextMessageShrinker shrinker = new();
         ChatMessage[] messages =
         [
             CreateToolCall("call-1", "RunShellCommand"),
@@ -123,7 +128,7 @@ public sealed class OperationalContextMessageShrinkerTests
             CreateToolResult("call-3", "result-3"),
         ];
 
-        OperationalContextMessageShrinkResult result = shrinker.ApplyMicroCompaction(
+        OperationalContextMessageShrinkResult result = OperationalContextMessageShrinker.ApplyMicroCompaction(
             messages,
             new OperationalContextCompactionOptions
             {

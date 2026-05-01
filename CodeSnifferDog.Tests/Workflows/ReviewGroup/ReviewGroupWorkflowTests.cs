@@ -13,12 +13,18 @@ namespace CodeSnifferDog.Tests.Workflows.ReviewGroup;
 [TestClass]
 public sealed class ReviewGroupWorkflowTests
 {
+    private static readonly string[] RuleKeys =
+    [
+        "rule-a",
+        "rule-b",
+        "rule-c",
+    ];
+
     [TestMethod]
     public void Run_PreservesRuleOrder_AndCountsApprovedAndDegradedCompletions()
     {
-        ReviewGroupWorkflow workflow = new();
         StoredProjectPlanTaskItem taskItem = CreateTaskItem();
-        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+        Result<ReviewGroupWorkflowResult> result = ReviewGroupWorkflow.Run(
             taskItem,
             CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B"), ("rule-c", "- Rule C")),
             [
@@ -28,8 +34,8 @@ public sealed class ReviewGroupWorkflowTests
             ]);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        CollectionAssert.AreEqual(new[] { "rule-a", "rule-b", "rule-c" }, result.Value.RuleKeys.ToArray());
-        CollectionAssert.AreEqual(new[] { "rule-a", "rule-b", "rule-c" }, result.Value.FlowResults.Select(flow => flow.RuleKey).ToArray());
+        CollectionAssert.AreEqual(RuleKeys, result.Value.RuleKeys.ToArray());
+        CollectionAssert.AreEqual(RuleKeys, result.Value.FlowResults.Select(flow => flow.RuleKey).ToArray());
         Assert.IsTrue(result.Value.HasAnyRuleFlows);
         Assert.IsTrue(result.Value.AllRuleFlowsFinished);
         Assert.AreEqual(1, result.Value.ApprovedCompletionCount);
@@ -39,8 +45,7 @@ public sealed class ReviewGroupWorkflowTests
     [TestMethod]
     public void Run_SucceedsWithEmptyRuleList()
     {
-        ReviewGroupWorkflow workflow = new();
-        Result<ReviewGroupWorkflowResult> result = workflow.Run(CreateTaskItem(), Array.Empty<ReviewAgentRuleDefinition>(), []);
+        Result<ReviewGroupWorkflowResult> result = ReviewGroupWorkflow.Run(CreateTaskItem(), [], []);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(result.Value.HasAnyRuleFlows);
@@ -51,9 +56,8 @@ public sealed class ReviewGroupWorkflowTests
     [TestMethod]
     public void Run_FailsWhenFlowResultCountDoesNotMatchRuleCount()
     {
-        ReviewGroupWorkflow workflow = new();
         StoredProjectPlanTaskItem taskItem = CreateTaskItem();
-        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+        Result<ReviewGroupWorkflowResult> result = ReviewGroupWorkflow.Run(
             taskItem,
             CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")),
             [CreateRuleFlowResult(taskItem, "rule-a", "- Rule A", RuleFlowCompletionState.ApprovedWithReport)]);
@@ -65,9 +69,8 @@ public sealed class ReviewGroupWorkflowTests
     [TestMethod]
     public void Run_FailsWhenRuleOrderDoesNotMatchFlowOrder()
     {
-        ReviewGroupWorkflow workflow = new();
         StoredProjectPlanTaskItem taskItem = CreateTaskItem();
-        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+        Result<ReviewGroupWorkflowResult> result = ReviewGroupWorkflow.Run(
             taskItem,
             CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")),
             [
@@ -82,14 +85,13 @@ public sealed class ReviewGroupWorkflowTests
     [TestMethod]
     public void Run_FailsWhenFlowTaskItemDoesNotMatchReviewGroupTaskItem()
     {
-        ReviewGroupWorkflow workflow = new();
         StoredProjectPlanTaskItem taskItem = CreateTaskItem();
         StoredProjectPlanTaskItem mismatchedTaskItem = new()
         {
             ProjectPlanTaskItemId = "task-item-2",
             Files = taskItem.Files,
         };
-        Result<ReviewGroupWorkflowResult> result = workflow.Run(
+        Result<ReviewGroupWorkflowResult> result = ReviewGroupWorkflow.Run(
             taskItem,
             CreateRuleDefinitions(("rule-a", "- Rule A")),
             [CreateRuleFlowResult(mismatchedTaskItem, "rule-a", "- Rule A", RuleFlowCompletionState.ApprovedWithReport)]);
@@ -115,7 +117,7 @@ public sealed class ReviewGroupWorkflowTests
     private static RuleFlowWorkflowResult CreateRuleFlowResult(
         StoredProjectPlanTaskItem taskItem,
         string ruleKey,
-        string ruleMarkdown,
+        string _,
         RuleFlowCompletionState completionState)
     {
         bool approved = completionState is RuleFlowCompletionState.ApprovedNoIssue or RuleFlowCompletionState.ApprovedWithReport;
@@ -175,12 +177,12 @@ public sealed class ReviewGroupWorkflowTests
         };
     }
 
-    private static IReadOnlyList<ReviewAgentRuleDefinition> CreateRuleDefinitions(params (string RuleKey, string RuleMarkdown)[] definitions) =>
-        definitions.Select(definition => new ReviewAgentRuleDefinition
+    private static ReviewAgentRuleDefinition[] CreateRuleDefinitions(params (string RuleKey, string RuleMarkdown)[] definitions) =>
+        [.. definitions.Select(definition => new ReviewAgentRuleDefinition
         {
             RuleKey = definition.RuleKey,
             RuleMarkdown = definition.RuleMarkdown,
-        }).ToArray();
+        })];
 
     private static StoredRuleReviewIssue CreateReviewIssue() =>
         new()

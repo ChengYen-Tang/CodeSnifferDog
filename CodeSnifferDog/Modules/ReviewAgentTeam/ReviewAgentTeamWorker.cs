@@ -1,14 +1,12 @@
 using CodeSnifferDog.Models.Preparation;
 using CodeSnifferDog.Models.Report;
-using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewStage;
-using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Modules.Concurrency;
 using CodeSnifferDog.Modules.Tools.Report;
-using CodeSnifferDog.Workflows.Report;
 using CodeSnifferDog.Workflows.Preparation;
+using CodeSnifferDog.Workflows.Report;
 using CodeSnifferDog.Workflows.ReviewGroup;
 using CodeSnifferDog.Workflows.ReviewStage;
 using FluentResults;
@@ -43,20 +41,17 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(executionOptions), "Model context window tokens must be greater than zero.");
 
         _repositoryRootPath = repositoryRootPath.Trim();
-        _ruleDefinitions = ruleDefinitions
-            .Select(ruleDefinition => new ReviewAgentRuleDefinition
+        _ruleDefinitions =
+            [.. ruleDefinitions.Select(ruleDefinition => new ReviewAgentRuleDefinition
             {
                 RuleKey = ruleDefinition?.RuleKey?.Trim() ?? string.Empty,
                 RuleMarkdown = ruleDefinition?.RuleMarkdown?.Trim() ?? string.Empty,
-            })
-            .ToArray();
+            })];
         _ruleReportIssueStore = dependencies.RuleReportIssueStore;
         _cleanupAsync = dependencies.CleanupAsync;
         ExecutionOptions = executionOptions;
         MaxParallelAgents = executionOptions.MaxParallelAgents;
         _concurrencyGate = new ReviewAgentConcurrencyGate(executionOptions.MaxParallelAgents);
-        ReviewGroupWorkflow reviewGroupWorkflow = new();
-
         ReviewStageRuleLaneScheduler scheduler = new(dependencies.RuleFlowWorkflowRunner, _concurrencyGate);
         _preparationWorkflow = new RepositoryPreparationWorkflow(
             dependencies.ScanWorkflowRunner,
@@ -64,7 +59,7 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
             _concurrencyGate);
         _reviewStageWorkflow = new ReviewStageWorkflow(
             scheduler,
-            (taskItem, ruleMarkdowns, flowResults) => reviewGroupWorkflow.Run(taskItem, ruleMarkdowns, flowResults));
+            (taskItem, ruleMarkdowns, flowResults) => ReviewGroupWorkflow.Run(taskItem, ruleMarkdowns, flowResults));
     }
 
     public int MaxParallelAgents { get; }
@@ -168,7 +163,6 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
 
     private void ThrowIfDisposed()
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(ReviewAgentTeamWorker));
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 }

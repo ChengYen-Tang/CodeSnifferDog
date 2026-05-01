@@ -9,9 +9,7 @@ public sealed class OperationalContextContinuityStateBuilderTests
     [TestMethod]
     public void Build_ParsesOperationalSections()
     {
-        OperationalContextContinuityStateBuilder builder = new();
-
-        OperationalContextContinuityState state = builder.Build(
+        OperationalContextContinuityState state = OperationalContextContinuityStateBuilder.Build(
             """
             Current objective:
             Review verifier feedback and close remaining gaps.

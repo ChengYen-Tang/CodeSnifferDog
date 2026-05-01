@@ -5,6 +5,8 @@ namespace CodeSnifferDog.Tests.Modules.Concurrency;
 [TestClass]
 public sealed class ReviewAgentConcurrencyGateTests
 {
+    public required TestContext TestContext { get; init; }
+
     [TestMethod]
     public async Task AcquireAsync_RespectsConfiguredParallelLimit()
     {
@@ -12,7 +14,7 @@ public sealed class ReviewAgentConcurrencyGateTests
         int currentConcurrency = 0;
         int maxObservedConcurrency = 0;
 
-        Task[] tasks = Enumerable.Range(0, 6)
+        Task[] tasks = [.. Enumerable.Range(0, 6)
             .Select(_ => Task.Run(async () =>
             {
                 await using IAsyncDisposable lease = await gate.AcquireAsync(CancellationToken.None);
@@ -21,16 +23,15 @@ public sealed class ReviewAgentConcurrencyGateTests
 
                 try
                 {
-                    await Task.Delay(40);
+                    await Task.Delay(40, TestContext.CancellationToken);
                 }
                 finally
                 {
                     Interlocked.Decrement(ref currentConcurrency);
                 }
-            }))
-            .ToArray();
+            }, TestContext.CancellationToken))];
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).WaitAsync(TestContext.CancellationToken);
 
         Assert.AreEqual(2, maxObservedConcurrency);
     }

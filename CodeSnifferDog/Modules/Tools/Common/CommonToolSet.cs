@@ -58,8 +58,8 @@ public sealed class CommonToolSet(string repositoryRootPath)
         ArgumentException.ThrowIfNullOrWhiteSpace(args.Command);
 
         return OperatingSystem.IsWindows()
-            ? _processRunner.RunAsync("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(args.Command)], _repositoryRootPath, cancellationToken)
-            : _processRunner.RunAsync("/bin/bash", ["-lc", args.Command], _repositoryRootPath, cancellationToken);
+            ? CommandProcessRunner.RunAsync("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(args.Command)], _repositoryRootPath, cancellationToken)
+            : CommandProcessRunner.RunAsync("/bin/bash", ["-lc", args.Command], _repositoryRootPath, cancellationToken);
     }
 
     public ValueTask<CommandExecutionResult> RunRipgrepCommandAsync(
@@ -74,7 +74,7 @@ public sealed class CommonToolSet(string repositoryRootPath)
         if (StartsWithRipgrepExecutable(trimmedCommand))
             throw new ArgumentException("Command must not include the rg executable name.", nameof(args));
 
-        return _processRunner.RunAsync(
+        return CommandProcessRunner.RunAsync(
             _ripgrepAssetLocator.GetExecutablePath(),
             trimmedCommand,
             _repositoryRootPath,

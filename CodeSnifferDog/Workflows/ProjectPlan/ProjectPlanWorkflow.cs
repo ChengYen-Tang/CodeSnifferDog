@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
@@ -8,6 +7,7 @@ using CodeSnifferDog.Modules.Tools.Review;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.ProjectPlan;
 
@@ -144,17 +144,17 @@ public sealed class ProjectPlanWorkflow(
         int projectPlanAgentResetCount,
         bool projectVerifierApproved,
         bool continuedAfterVerifierRejectionLimit) => new()
-    {
-        ScanProject = scanProject,
-        TaskItems = taskItems,
-        Verdict = verdict,
-        ProjectVerifierApproved = projectVerifierApproved,
-        ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
-        ShouldEnterRuleReview = true,
-        PlanAttempts = planAttempts,
-        VerifierAttempts = verifierAttempts,
-        ProjectPlanAgentResetCount = projectPlanAgentResetCount,
-    };
+        {
+            ScanProject = scanProject,
+            TaskItems = taskItems,
+            Verdict = verdict,
+            ProjectVerifierApproved = projectVerifierApproved,
+            ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
+            ShouldEnterRuleReview = true,
+            PlanAttempts = planAttempts,
+            VerifierAttempts = verifierAttempts,
+            ProjectPlanAgentResetCount = projectPlanAgentResetCount,
+        };
 
     private static async Task<Result> RunAgentAsync(
         AIAgent agent,

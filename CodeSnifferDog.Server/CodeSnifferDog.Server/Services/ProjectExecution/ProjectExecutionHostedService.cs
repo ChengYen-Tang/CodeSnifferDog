@@ -1,10 +1,10 @@
-using System.IO.Compression;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.ProjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.IO.Compression;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution;
 

@@ -6,7 +6,6 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;

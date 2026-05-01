@@ -163,7 +163,7 @@ public sealed class ProjectPlanToolSet(IProjectPlanTaskItemStore taskItemStore, 
 
     public ValueTask<bool> SubmitReviewVerdictAsync(
         SubmitReviewVerdictArgs args,
-        CancellationToken cancellationToken)
+        CancellationToken _)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrWhiteSpace(args.Message);

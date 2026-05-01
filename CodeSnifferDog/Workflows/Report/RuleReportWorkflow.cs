@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
@@ -9,6 +8,7 @@ using CodeSnifferDog.Modules.Tools.Review;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.Report;
 

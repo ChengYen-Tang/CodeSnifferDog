@@ -6,9 +6,9 @@ using FluentResults;
 
 namespace CodeSnifferDog.Workflows.ReviewGroup;
 
-internal sealed class ReviewGroupWorkflow
+internal static class ReviewGroupWorkflow
 {
-    public Result<ReviewGroupWorkflowResult> Run(
+    public static Result<ReviewGroupWorkflowResult> Run(
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
         IReadOnlyList<RuleFlowWorkflowResult> flowResults)
@@ -42,7 +42,7 @@ internal sealed class ReviewGroupWorkflow
             }
         }
 
-        return Result.Ok(CreateResult(taskItem, ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey).ToArray(), flowResults));
+        return Result.Ok(CreateResult(taskItem, [.. ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey)], flowResults));
     }
 
     private static ReviewGroupWorkflowResult CreateResult(
@@ -55,8 +55,8 @@ internal sealed class ReviewGroupWorkflow
         return new ReviewGroupWorkflowResult
         {
             TaskItem = taskItem,
-            RuleKeys = ruleKeys.ToArray(),
-            FlowResults = flowResults.ToArray(),
+            RuleKeys = [.. ruleKeys],
+            FlowResults = [.. flowResults],
             HasAnyRuleFlows = flowResults.Count > 0,
             AllRuleFlowsFinished = true,
             ApprovedCompletionCount = approvedCompletionCount,

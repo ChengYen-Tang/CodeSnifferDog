@@ -1,15 +1,13 @@
 using Azure;
 using Azure.AI.OpenAI;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using OpenAI;
-using System.ClientModel;
-using System.ClientModel.Primitives;
 using OpenAI.Chat;
 using OpenAI.Responses;
+using System.ClientModel;
+using System.ClientModel.Primitives;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution;

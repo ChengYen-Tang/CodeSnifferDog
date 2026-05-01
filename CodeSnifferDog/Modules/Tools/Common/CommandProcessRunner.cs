@@ -1,11 +1,11 @@
-using System.Diagnostics;
 using CodeSnifferDog.Models.Common.Tools;
+using System.Diagnostics;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
 
 internal sealed class CommandProcessRunner
 {
-    public ValueTask<CommandExecutionResult> RunAsync(
+    public static ValueTask<CommandExecutionResult> RunAsync(
         string fileName,
         IReadOnlyList<string> arguments,
         string workingDirectory,
@@ -21,7 +21,7 @@ internal sealed class CommandProcessRunner
         return RunAsync(startInfo, cancellationToken);
     }
 
-    public async ValueTask<CommandExecutionResult> RunAsync(
+    public static async ValueTask<CommandExecutionResult> RunAsync(
         string fileName,
         string arguments,
         string workingDirectory,

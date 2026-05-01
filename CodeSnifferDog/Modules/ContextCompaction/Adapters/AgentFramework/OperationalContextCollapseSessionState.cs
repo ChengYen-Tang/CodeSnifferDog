@@ -77,7 +77,7 @@ public sealed class OperationalContextCollapseSessionState
             snapshot: CloneSnapshot(
                 currentState.Snapshot,
                 lastCommittedCollapseId: committedSpan.CollapseId,
-                lastStagedCollapseId: remainingStagedSpans.LastOrDefault()?.CollapseId,
+                lastStagedCollapseId: remainingStagedSpans.Count > 0 ? remainingStagedSpans[^1].CollapseId : null,
                 preserveLastStagedCollapseId: false,
                 armed: remainingStagedSpans.Count > 0,
                 preserveArmed: false));
@@ -100,7 +100,7 @@ public sealed class OperationalContextCollapseSessionState
             stagedSpans: remainingStagedSpans,
             snapshot: CloneSnapshot(
                 currentState.Snapshot,
-                lastStagedCollapseId: remainingStagedSpans.LastOrDefault()?.CollapseId,
+                lastStagedCollapseId: remainingStagedSpans.Count > 0 ? remainingStagedSpans[^1].CollapseId : null,
                 preserveLastStagedCollapseId: false,
                 armed: remainingStagedSpans.Count > 0,
                 preserveArmed: false,
@@ -155,8 +155,10 @@ public sealed class OperationalContextCollapseSessionState
         OperationalContextCompactionResult result,
         OperationalContextCompactionReason reason)
     {
-        OperationalContextCompactionMessageReference? firstArchivedReference = result.ArchivedMessageReferences.FirstOrDefault();
-        OperationalContextCompactionMessageReference? lastArchivedReference = result.ArchivedMessageReferences.LastOrDefault();
+        OperationalContextCompactionMessageReference? firstArchivedReference =
+            result.ArchivedMessageReferences.Count > 0 ? result.ArchivedMessageReferences[0] : null;
+        OperationalContextCompactionMessageReference? lastArchivedReference =
+            result.ArchivedMessageReferences.Count > 0 ? result.ArchivedMessageReferences[^1] : null;
         if (firstArchivedReference is null || lastArchivedReference is null)
             throw new InvalidOperationException("Context collapse requires at least one archived message reference.");
 

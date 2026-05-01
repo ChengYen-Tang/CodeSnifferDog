@@ -1,7 +1,7 @@
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using System.Collections;
 using System.Globalization;
 using System.Reflection;
@@ -414,7 +414,7 @@ public static class OperationalContextCompactionAgentBuilderExtensions
                     .ConfigureAwait(false),
             };
 
-        IReadOnlyList<ChatMessage> retryMessages = options.MessageShrinker.ApplySnip(originalMessages, options.Reducer.Options).Messages;
+        IReadOnlyList<ChatMessage> retryMessages = OperationalContextMessageShrinker.ApplySnip(originalMessages, options.Reducer.Options).Messages;
         OperationalContextCompactionResult result =
             await options.Reducer.CompactReactiveAsync(retryMessages, cancellationToken).ConfigureAwait(false);
         IReadOnlyList<ChatMessage> compactedMessages = OperationalContextChatReducer.BuildMessages(result);

@@ -1,5 +1,5 @@
-using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
+using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 

@@ -1,7 +1,7 @@
-using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
+using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
@@ -9,7 +9,6 @@ public sealed class OperationalContextChatReducer : IChatReducer
 {
     private const string SummaryOpenTag = "<summary>";
     private const string SummaryCloseTag = "</summary>";
-    private readonly OperationalContextContinuityStateBuilder _continuityStateBuilder = new();
     private readonly IOperationalContextCompactionArtifactsProvider? _artifactsProvider;
     private readonly IReadOnlyList<IOperationalContextCompactionCleanupHandler> _cleanupHandlers;
     private readonly IReadOnlyList<IOperationalContextCompactionHook> _hooks;
@@ -132,12 +131,12 @@ public sealed class OperationalContextChatReducer : IChatReducer
         OperationalContextCompactionReason reason,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<ChatMessage> preservedSystemMessages = [.. originalMessages.Where(static message => message.Role == ChatRole.System)];
-        IReadOnlyList<ChatMessage> nonSystemMessages = [.. originalMessages.Where(static message => message.Role != ChatRole.System)];
-        IReadOnlyList<ChatMessage> messagesToKeep = SelectMessagesToKeep(nonSystemMessages);
-        IReadOnlyList<OperationalContextCompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, messagesToKeep);
-        IReadOnlyList<OperationalContextCompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, messagesToKeep);
-        OperationalContextContinuityState continuityState = _continuityStateBuilder.Build(normalizedSummary);
+        List<ChatMessage> preservedSystemMessages = [.. originalMessages.Where(static message => message.Role == ChatRole.System)];
+        List<ChatMessage> nonSystemMessages = [.. originalMessages.Where(static message => message.Role != ChatRole.System)];
+        List<ChatMessage> messagesToKeep = SelectMessagesToKeep(nonSystemMessages);
+        List<OperationalContextCompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, messagesToKeep);
+        List<OperationalContextCompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, messagesToKeep);
+        OperationalContextContinuityState continuityState = OperationalContextContinuityStateBuilder.Build(normalizedSummary);
         OperationalContextCompactionArtifacts artifacts = _artifactsProvider is null
             ? OperationalContextCompactionArtifacts.Empty
             : await _artifactsProvider.GetArtifactsAsync(
@@ -149,7 +148,7 @@ public sealed class OperationalContextChatReducer : IChatReducer
 
         ChatMessage boundaryMessage = CreateBoundaryMessage(originalMessages, messageReferences, normalizedSummary, reason);
         ChatMessage summaryMessage = CreateSummaryMessage(normalizedSummary, reason, messagesToKeep.Count > 0);
-        ChatMessage continuityStateMessage = _continuityStateBuilder.CreateMessage(continuityState, reason);
+        ChatMessage continuityStateMessage = OperationalContextContinuityStateBuilder.CreateMessage(continuityState, reason);
         boundaryMessage.AdditionalProperties![OperationalContextCompactionArtifactMetadata.AttachmentsCountKey] = artifacts.AttachmentMessages.Count;
         boundaryMessage.AdditionalProperties![OperationalContextCompactionArtifactMetadata.HookResultsCountKey] = artifacts.HookResultMessages.Count;
 
@@ -261,23 +260,24 @@ public sealed class OperationalContextChatReducer : IChatReducer
     {
         ChatMessage summaryMessage = new(
             ChatRole.Assistant,
-            $"Operational summary checkpoint{Environment.NewLine}{Environment.NewLine}{summary}");
-
-        summaryMessage.AdditionalProperties = new AdditionalPropertiesDictionary
+            $"Operational summary checkpoint{Environment.NewLine}{Environment.NewLine}{summary}")
         {
-            [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
-            [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
-            [OperationalContextCompactionArtifactMetadata.SummaryFormatVersionKey] = OperationalContextCompactionArtifactMetadata.CurrentSummaryFormatVersion,
-            [OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey] = true,
-            [OperationalContextCompactionArtifactMetadata.HasPreservedTailKey] = hasPreservedTail,
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
+                [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
+                [OperationalContextCompactionArtifactMetadata.SummaryFormatVersionKey] = OperationalContextCompactionArtifactMetadata.CurrentSummaryFormatVersion,
+                [OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey] = true,
+                [OperationalContextCompactionArtifactMetadata.HasPreservedTailKey] = hasPreservedTail,
+            },
         };
 
         return summaryMessage;
     }
 
-    private ChatMessage CreateBoundaryMessage(
+    private static ChatMessage CreateBoundaryMessage(
         IReadOnlyList<ChatMessage> originalMessages,
-        IReadOnlyList<OperationalContextCompactionMessageReference> messageReferences,
+        List<OperationalContextCompactionMessageReference> messageReferences,
         string summary,
         OperationalContextCompactionReason reason)
     {
@@ -285,8 +285,8 @@ public sealed class OperationalContextChatReducer : IChatReducer
             ChatRole.System,
             "Operational compact boundary");
 
-        OperationalContextCompactionMessageReference? tailReference = messageReferences.LastOrDefault();
-        OperationalContextCompactionMessageReference? headReference = messageReferences.FirstOrDefault();
+        OperationalContextCompactionMessageReference? tailReference = messageReferences.Count > 0 ? messageReferences[^1] : null;
+        OperationalContextCompactionMessageReference? headReference = messageReferences.Count > 0 ? messageReferences[0] : null;
 
         boundaryMessage.AdditionalProperties = new AdditionalPropertiesDictionary
         {
@@ -326,7 +326,7 @@ public sealed class OperationalContextChatReducer : IChatReducer
         return boundaryMessage;
     }
 
-    private IReadOnlyList<ChatMessage> SelectMessagesToKeep(IReadOnlyList<ChatMessage> nonSystemMessages)
+    private List<ChatMessage> SelectMessagesToKeep(List<ChatMessage> nonSystemMessages)
     {
         if (nonSystemMessages.Count == 0)
             return [];
@@ -358,9 +358,9 @@ public sealed class OperationalContextChatReducer : IChatReducer
         return keptMessages;
     }
 
-    private static IReadOnlyList<OperationalContextCompactionMessageReference> CreateMessageReferences(
-        IReadOnlyList<ChatMessage> sourceMessages,
-        IReadOnlyList<ChatMessage> keptMessages)
+    private static List<OperationalContextCompactionMessageReference> CreateMessageReferences(
+        List<ChatMessage> sourceMessages,
+        List<ChatMessage> keptMessages)
     {
         List<OperationalContextCompactionMessageReference> references = [];
 
@@ -381,9 +381,9 @@ public sealed class OperationalContextChatReducer : IChatReducer
         return references;
     }
 
-    private static IReadOnlyList<OperationalContextCompactionMessageReference> CreateArchivedMessageReferences(
-        IReadOnlyList<ChatMessage> sourceMessages,
-        IReadOnlyList<ChatMessage> keptMessages)
+    private static List<OperationalContextCompactionMessageReference> CreateArchivedMessageReferences(
+        List<ChatMessage> sourceMessages,
+        List<ChatMessage> keptMessages)
     {
         List<OperationalContextCompactionMessageReference> references = [];
 
@@ -419,7 +419,7 @@ public sealed class OperationalContextChatReducer : IChatReducer
         HookResultMessages = [],
     };
 
-    private static void EnsureMessageIdentities(IReadOnlyList<ChatMessage> messages)
+    private static void EnsureMessageIdentities(List<ChatMessage> messages)
     {
         for (int index = 0; index < messages.Count; index++)
             _ = GetMessageIdentity(messages[index], index);

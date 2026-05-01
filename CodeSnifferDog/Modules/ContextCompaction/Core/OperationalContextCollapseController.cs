@@ -5,21 +5,17 @@ using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
-public sealed class OperationalContextCollapseController
+public sealed class OperationalContextCollapseController(
+    OperationalContextChatReducer reducer,
+    OperationalContextCollapseProjectionBuilder? projectionBuilder = null,
+    OperationalContextCollapseSessionState? sessionState = null)
 {
-    private readonly OperationalContextCollapseProjectionBuilder _projectionBuilder;
-    private readonly OperationalContextChatReducer _reducer;
-    private readonly OperationalContextCollapseSessionState _sessionState;
-
-    public OperationalContextCollapseController(
-        OperationalContextChatReducer reducer,
-        OperationalContextCollapseProjectionBuilder? projectionBuilder = null,
-        OperationalContextCollapseSessionState? sessionState = null)
-    {
-        _reducer = reducer ?? throw new ArgumentNullException(nameof(reducer));
-        _projectionBuilder = projectionBuilder ?? new OperationalContextCollapseProjectionBuilder();
-        _sessionState = sessionState ?? new OperationalContextCollapseSessionState();
-    }
+    private readonly OperationalContextCollapseProjectionBuilder _projectionBuilder =
+        projectionBuilder ?? new OperationalContextCollapseProjectionBuilder();
+    private readonly OperationalContextChatReducer _reducer =
+        reducer ?? throw new ArgumentNullException(nameof(reducer));
+    private readonly OperationalContextCollapseSessionState _sessionState =
+        sessionState ?? new OperationalContextCollapseSessionState();
 
     public IReadOnlyList<ChatMessage> PrepareMessages(
         IReadOnlyList<ChatMessage> requestMessages,
@@ -27,7 +23,7 @@ public sealed class OperationalContextCollapseController
     {
         ArgumentNullException.ThrowIfNull(requestMessages);
 
-        (IReadOnlyList<ChatMessage> messages, IReadOnlyList<string> projectedCollapseIds) = _projectionBuilder.BuildProjection(
+        (IReadOnlyList<ChatMessage> messages, IReadOnlyList<string> projectedCollapseIds) = OperationalContextCollapseProjectionBuilder.BuildProjection(
             requestMessages,
             _sessionState.Get(session),
             _reducer.Options);
@@ -121,7 +117,7 @@ public sealed class OperationalContextCollapseController
     }
 
     private IReadOnlyList<string> StagePendingCollapse(
-        IReadOnlyList<ChatMessage> baseMessages,
+        IReadOnlyList<ChatMessage> _,
         AgentSession? session,
         OperationalContextCompactionResult result,
         OperationalContextCompactionReason reason)

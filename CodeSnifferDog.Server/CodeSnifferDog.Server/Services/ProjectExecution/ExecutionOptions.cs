@@ -1,5 +1,5 @@
-using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution;
 
