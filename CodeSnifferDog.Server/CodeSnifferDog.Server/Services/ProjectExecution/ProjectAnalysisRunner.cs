@@ -292,6 +292,7 @@ public sealed class ProjectAnalysisRunner(
 
             drafts.Add(new ProjectRuleReportDraft
             {
+                RuleKey = ruleReport.RuleKey,
                 RuleName = ruleName,
                 MarkdownContent = ruleReport.MarkdownContent,
             });

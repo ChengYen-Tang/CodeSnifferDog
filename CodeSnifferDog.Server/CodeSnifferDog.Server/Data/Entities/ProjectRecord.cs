@@ -25,4 +25,6 @@ public sealed class ProjectRecord
     public string? FailureReason { get; set; }
 
     public List<ProjectRuleReportRecord> RuleReports { get; set; } = [];
+
+    public List<ProjectAgentGroupRecord> AgentGroups { get; set; } = [];
 }

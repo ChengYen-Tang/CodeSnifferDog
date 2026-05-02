@@ -2,6 +2,8 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Shared.Reports;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace CodeSnifferDog.Server.Services.ProjectReports;
 
@@ -28,6 +30,7 @@ public sealed class ProjectReportService(CodeSnifferDogServerDbContext dbContext
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
         foreach (ProjectRuleReportDraft report in reports)
         {
+            string ruleKey = ValidateRequiredText(report.RuleKey, nameof(ProjectRuleReportDraft.RuleKey));
             string ruleName = ValidateRequiredText(report.RuleName, nameof(ProjectRuleReportDraft.RuleName));
             string markdownContent = ValidateRequiredText(report.MarkdownContent, nameof(ProjectRuleReportDraft.MarkdownContent));
 
@@ -35,6 +38,8 @@ public sealed class ProjectReportService(CodeSnifferDogServerDbContext dbContext
             {
                 Id = Guid.NewGuid(),
                 ProjectId = projectId,
+                RuleKey = ruleKey,
+                RuleKeyHash = ComputeStableHash(ruleKey),
                 RuleName = ruleName,
                 MarkdownContent = markdownContent,
                 CreatedAtUtc = nowUtc,
@@ -93,5 +98,12 @@ public sealed class ProjectReportService(CodeSnifferDogServerDbContext dbContext
             throw new ArgumentException($"{parameterName} cannot be null, empty, or whitespace.", parameterName);
 
         return value;
+    }
+
+    private static string ComputeStableHash(string value)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(value);
+        byte[] hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash);
     }
 }

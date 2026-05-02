@@ -2,8 +2,15 @@ namespace CodeSnifferDog.Server.Services.ProjectReports;
 
 public sealed class ProjectRuleReportDraft
 {
+    private string _ruleKey = string.Empty;
     private string _ruleName = string.Empty;
     private string _markdownContent = string.Empty;
+
+    public required string RuleKey
+    {
+        get => _ruleKey;
+        init => _ruleKey = ValidateRequiredText(value, nameof(RuleKey));
+    }
 
     public required string RuleName
     {

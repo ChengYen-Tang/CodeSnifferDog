@@ -6,6 +6,10 @@ public sealed class ProjectRuleReportRecord
 
     public Guid ProjectId { get; set; }
 
+    public required string RuleKey { get; set; }
+
+    public required string RuleKeyHash { get; set; }
+
     public required string RuleName { get; set; }
 
     public required string MarkdownContent { get; set; }
