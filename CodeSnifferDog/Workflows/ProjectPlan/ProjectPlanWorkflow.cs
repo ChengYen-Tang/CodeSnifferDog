@@ -112,7 +112,6 @@ public sealed class ProjectPlanWorkflow(
                     planAttempts,
                     verifierAttempts,
                     projectPlanAgentResetCount,
-                    projectVerifierApproved: true,
                     continuedAfterVerifierRejectionLimit: false));
             }
 
@@ -127,7 +126,6 @@ public sealed class ProjectPlanWorkflow(
                     planAttempts,
                     verifierAttempts,
                     projectPlanAgentResetCount,
-                    projectVerifierApproved: false,
                     continuedAfterVerifierRejectionLimit: true));
             }
 
@@ -142,15 +140,12 @@ public sealed class ProjectPlanWorkflow(
         int planAttempts,
         int verifierAttempts,
         int projectPlanAgentResetCount,
-        bool projectVerifierApproved,
         bool continuedAfterVerifierRejectionLimit) => new()
         {
             ScanProject = scanProject,
             TaskItems = taskItems,
             Verdict = verdict,
-            ProjectVerifierApproved = projectVerifierApproved,
             ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
-            ShouldEnterRuleReview = true,
             PlanAttempts = planAttempts,
             VerifierAttempts = verifierAttempts,
             ProjectPlanAgentResetCount = projectPlanAgentResetCount,

@@ -122,11 +122,9 @@ public sealed class RuleReportWorkflow(
                     {
                         RuleKey = ruleKey,
                         TaskItem = taskItem,
-                        CurrentFlowIssues = currentFlowIssues,
                         Diff = diff,
                         RepositoryIssues = repositoryIssues,
                         Verdict = verdict,
-                        ReportVerifierApproved = true,
                         ContinuedAfterVerifierRejectionLimit = false,
                         AggregatorAttempts = aggregatorAttempts,
                         VerifierAttempts = verifierAttempts,
@@ -145,11 +143,9 @@ public sealed class RuleReportWorkflow(
                     {
                         RuleKey = ruleKey,
                         TaskItem = taskItem,
-                        CurrentFlowIssues = currentFlowIssues,
                         Diff = diff,
                         RepositoryIssues = repositoryIssues,
                         Verdict = verdict,
-                        ReportVerifierApproved = false,
                         ContinuedAfterVerifierRejectionLimit = true,
                         AggregatorAttempts = aggregatorAttempts,
                         VerifierAttempts = verifierAttempts,

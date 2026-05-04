@@ -11,11 +11,7 @@ public sealed class ProjectPlanWorkflowResult
 
     public required ReviewVerdict Verdict { get; init; }
 
-    public required bool ProjectVerifierApproved { get; init; }
-
     public required bool ContinuedAfterVerifierRejectionLimit { get; init; }
-
-    public required bool ShouldEnterRuleReview { get; init; }
 
     public required int PlanAttempts { get; init; }
 

@@ -59,14 +59,14 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
             _concurrencyGate);
         _reviewStageWorkflow = new ReviewStageWorkflow(
             scheduler,
-            (taskItem, ruleMarkdowns, flowResults) => ReviewGroupWorkflow.Run(taskItem, ruleMarkdowns, flowResults));
+            ReviewGroupWorkflow.Run);
     }
 
     public int MaxParallelAgents { get; }
 
     public ReviewAgentTeamExecutionOptions ExecutionOptions { get; }
 
-    public Task<Result<ReviewAgentTeamRunResult>> AnalyzeAsync(CancellationToken cancellationToken = default)
+    public Task<Result> AnalyzeAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
@@ -93,25 +93,21 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
         return _reviewStageWorkflow.RunAsync(_repositoryRootPath, preparationResult, _ruleDefinitions, cancellationToken);
     }
 
-    private async Task<Result<ReviewAgentTeamRunResult>> AnalyzeCoreAsync(CancellationToken cancellationToken)
+    private async Task<Result> AnalyzeCoreAsync(CancellationToken cancellationToken)
     {
         Result<RepositoryPreparationWorkflowResult> preparationResult =
             await RunPreparationAsync(cancellationToken).ConfigureAwait(false);
 
         if (preparationResult.IsFailed)
-            return preparationResult.ToResult<ReviewAgentTeamRunResult>();
+            return preparationResult.ToResult();
 
         Result<ReviewStageWorkflowResult> reviewStageResult =
             await RunReviewStageAsync(preparationResult.Value, cancellationToken).ConfigureAwait(false);
 
         if (reviewStageResult.IsFailed)
-            return reviewStageResult.ToResult<ReviewAgentTeamRunResult>();
+            return reviewStageResult.ToResult();
 
-        return Result.Ok(new ReviewAgentTeamRunResult
-        {
-            PreparationResult = preparationResult.Value,
-            ReviewStageResult = reviewStageResult.Value,
-        });
+        return Result.Ok();
     }
 
     private async Task<IReadOnlyList<ReviewAgentTeamRuleReport>> BuildRuleReportsAsync(CancellationToken cancellationToken)

@@ -8,12 +8,6 @@ public sealed class ScanWorkflowResult
 
     public required ReviewVerdict Verdict { get; init; }
 
-    public required bool ScanVerifierApproved { get; init; }
-
-    public required bool ContinuedAfterVerifierRejectionLimit { get; init; }
-
-    public required bool ShouldEnterProjectPlanning { get; init; }
-
     public required int ScanAttempts { get; init; }
 
     public required int VerifierAttempts { get; init; }

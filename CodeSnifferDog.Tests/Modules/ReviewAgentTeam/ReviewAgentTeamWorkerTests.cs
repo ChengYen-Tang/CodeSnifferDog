@@ -23,19 +23,16 @@ public sealed class ReviewAgentTeamWorkerTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
-    public async Task AnalyzeAsync_UsesSharedWorkerBudget_AndReturnsPreparationAndReviewResults()
+    public async Task AnalyzeAsync_UsesSharedWorkerBudget_AndCompletesSuccessfully()
     {
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
         using ReviewAgentTeamWorker worker = CreateWorker(teamFactory);
 
-        Result<ReviewAgentTeamRunResult> result = await worker.AnalyzeAsync(TestContext.CancellationToken);
+        Result result = await worker.AnalyzeAsync(TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, worker.MaxParallelAgents);
         Assert.AreEqual(128_000L, worker.ExecutionOptions.ModelContextWindowTokens);
-        Assert.HasCount(1, result.Value.PreparationResult.ProjectPlanResults);
-        Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults);
-        Assert.HasCount(1, result.Value.ReviewStageResult.ProjectResults[0].ReviewGroupResults);
     }
 
     [TestMethod]
@@ -44,7 +41,7 @@ public sealed class ReviewAgentTeamWorkerTests
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory();
         using ReviewAgentTeamWorker worker = CreateWorker(teamFactory);
 
-        Result<ReviewAgentTeamRunResult> analyzeResult = await worker.AnalyzeAsync(TestContext.CancellationToken);
+        Result analyzeResult = await worker.AnalyzeAsync(TestContext.CancellationToken);
         IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports = await worker.GetRuleReportsAsync(TestContext.CancellationToken);
 
         Assert.IsTrue(analyzeResult.IsSuccess, string.Join(Environment.NewLine, analyzeResult.Errors.Select(error => error.Message)));
@@ -81,7 +78,6 @@ public sealed class ReviewAgentTeamWorkerTests
         {
             ScanResult = CreateScanResult(CreateScanProject("scan-1", "ProjectOne")),
             ProjectPlanResults = [CreateProjectPlanResult(CreateScanProject("scan-1", "ProjectOne"))],
-            ShouldEnterRuleReview = true,
         };
 
         worker.Dispose();
@@ -192,9 +188,6 @@ public sealed class ReviewAgentTeamWorkerTests
                 Approved = true,
                 Message = "Scan complete.",
             },
-            ScanVerifierApproved = true,
-            ContinuedAfterVerifierRejectionLimit = false,
-            ShouldEnterProjectPlanning = true,
             ScanAttempts = 1,
             VerifierAttempts = 1,
             ScanAgentResetCount = 0,
@@ -234,9 +227,7 @@ public sealed class ReviewAgentTeamWorkerTests
                 Approved = true,
                 Message = "Plan complete.",
             },
-            ProjectVerifierApproved = true,
             ContinuedAfterVerifierRejectionLimit = false,
-            ShouldEnterRuleReview = true,
             PlanAttempts = 1,
             VerifierAttempts = 1,
             ProjectPlanAgentResetCount = 0,
@@ -245,8 +236,6 @@ public sealed class ReviewAgentTeamWorkerTests
     private static RuleFlowWorkflowResult CreateRuleFlowResult(StoredProjectPlanTaskItem taskItem, string ruleKey, string _) =>
         new()
         {
-            TaskItem = taskItem,
-            RuleKey = ruleKey,
             ReviewResult = new RuleReviewModels.RuleReviewWorkflowResult
             {
                 TaskItem = taskItem,
@@ -264,16 +253,13 @@ public sealed class ReviewAgentTeamWorkerTests
                     Approved = true,
                     Message = "Review accepted.",
                 },
-                ReviewVerifierApproved = true,
                 ContinuedAfterVerifierRejectionLimit = false,
                 StoppedAfterMissingSubmissionLimit = false,
-                ShouldEnterReportAggregation = false,
                 ReviewAttempts = 1,
                 VerifierAttempts = 1,
                 RuleReviewAgentResetCount = 0,
             },
             ReportResult = null,
-            EnteredReportAggregation = false,
             CompletionState = RuleFlowCompletionState.ApprovedNoIssue,
         };
 }

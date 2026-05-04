@@ -35,9 +35,6 @@ public sealed class ScanWorkflowTests
         Assert.AreEqual(2, result.Value.ScanAttempts);
         Assert.AreEqual(2, result.Value.VerifierAttempts);
         Assert.AreEqual(0, result.Value.ScanAgentResetCount);
-        Assert.IsTrue(result.Value.ScanVerifierApproved);
-        Assert.IsFalse(result.Value.ContinuedAfterVerifierRejectionLimit);
-        Assert.IsTrue(result.Value.ShouldEnterProjectPlanning);
         Assert.IsTrue(result.Value.Verdict.Approved);
         Assert.HasCount(2, result.Value.Projects);
         Assert.AreEqual("CodeSnifferDog", result.Value.Projects[0].ProjectName);
@@ -186,9 +183,6 @@ public sealed class ScanWorkflowTests
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(3, result.Value.ScanAttempts);
         Assert.AreEqual(3, result.Value.VerifierAttempts);
-        Assert.IsFalse(result.Value.ScanVerifierApproved);
-        Assert.IsTrue(result.Value.ContinuedAfterVerifierRejectionLimit);
-        Assert.IsTrue(result.Value.ShouldEnterProjectPlanning);
         Assert.IsFalse(result.Value.Verdict.Approved);
         Assert.AreEqual("Add the missing test project before continuing.", result.Value.Verdict.Message);
         Assert.HasCount(1, result.Value.Projects);

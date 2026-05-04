@@ -20,7 +20,7 @@ internal static class ReviewGroupWorkflow
         if (ruleDefinitions.Count == 0)
         {
             return flowResults.Count == 0
-                ? Result.Ok(CreateResult(taskItem, [], []))
+                ? Result.Ok(CreateResult(taskItem, []))
                 : Result.Fail<ReviewGroupWorkflowResult>("Flow results must be empty when no rules exist.");
         }
 
@@ -42,25 +42,15 @@ internal static class ReviewGroupWorkflow
             }
         }
 
-        return Result.Ok(CreateResult(taskItem, [.. ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey)], flowResults));
+        return Result.Ok(CreateResult(taskItem, flowResults));
     }
 
     private static ReviewGroupWorkflowResult CreateResult(
         StoredProjectPlanTaskItem taskItem,
-        IReadOnlyList<string> ruleKeys,
         IReadOnlyList<RuleFlowWorkflowResult> flowResults)
-    {
-        int approvedCompletionCount = flowResults.Count(result => result.IsApprovedCompletion);
-
-        return new ReviewGroupWorkflowResult
+        => new()
         {
             TaskItem = taskItem,
-            RuleKeys = [.. ruleKeys],
             FlowResults = [.. flowResults],
-            HasAnyRuleFlows = flowResults.Count > 0,
-            AllRuleFlowsFinished = true,
-            ApprovedCompletionCount = approvedCompletionCount,
-            DegradedCompletionCount = flowResults.Count - approvedCompletionCount,
         };
-    }
 }

@@ -8,6 +8,4 @@ public sealed class RepositoryPreparationWorkflowResult
     public required ScanWorkflowResult ScanResult { get; init; }
 
     public required IReadOnlyList<ProjectPlanWorkflowResult> ProjectPlanResults { get; init; }
-
-    public required bool ShouldEnterRuleReview { get; init; }
 }

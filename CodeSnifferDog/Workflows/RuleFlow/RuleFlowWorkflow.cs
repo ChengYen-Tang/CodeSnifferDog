@@ -44,26 +44,20 @@ public sealed class RuleFlowWorkflow(
         if (reviewResult.Value.StoppedAfterMissingSubmissionLimit)
         {
             return Result.Ok(CreateResult(
-                taskItem,
-                ruleKey,
                 reviewResult.Value,
                 reportResult: null,
-                enteredReportAggregation: false,
                 RuleFlowCompletionState.DegradedMissingSubmission));
         }
 
-        if (!reviewResult.Value.ShouldEnterReportAggregation)
+        if (reviewResult.Value.Issues.Count == 0)
         {
-            RuleFlowCompletionState completionState = reviewResult.Value.ReviewVerifierApproved
+            RuleFlowCompletionState completionState = reviewResult.Value.Verdict.Approved
                 ? RuleFlowCompletionState.ApprovedNoIssue
                 : RuleFlowCompletionState.DegradedNoIssue;
 
             return Result.Ok(CreateResult(
-                taskItem,
-                ruleKey,
                 reviewResult.Value,
                 reportResult: null,
-                enteredReportAggregation: false,
                 completionState));
         }
 
@@ -79,33 +73,24 @@ public sealed class RuleFlowWorkflow(
             return reportResult.ToResult<RuleFlowWorkflowResult>();
 
         RuleFlowCompletionState reportCompletionState =
-            reviewResult.Value.ReviewVerifierApproved && reportResult.Value.ReportVerifierApproved
+            reviewResult.Value.Verdict.Approved && reportResult.Value.Verdict.Approved
                 ? RuleFlowCompletionState.ApprovedWithReport
                 : RuleFlowCompletionState.DegradedWithReport;
 
         return Result.Ok(CreateResult(
-            taskItem,
-            ruleKey,
             reviewResult.Value,
             reportResult.Value,
-            enteredReportAggregation: true,
             reportCompletionState));
     }
 
     private static RuleFlowWorkflowResult CreateResult(
-        StoredProjectPlanTaskItem taskItem,
-        string ruleKey,
         RuleReviewWorkflowResult reviewResult,
         RuleReportWorkflowResult? reportResult,
-        bool enteredReportAggregation,
         RuleFlowCompletionState completionState) =>
         new()
         {
-            TaskItem = taskItem,
-            RuleKey = ruleKey,
             ReviewResult = reviewResult,
             ReportResult = reportResult,
-            EnteredReportAggregation = enteredReportAggregation,
             CompletionState = completionState,
         };
 }

@@ -84,7 +84,7 @@ public sealed class ProjectAnalysisRunner(
                 ContextCompactionMode = _options.ContextCompactionMode,
             });
 
-        Result<ReviewAgentTeamRunResult> result = await worker.AnalyzeAsync(cancellationToken);
+        Result result = await worker.AnalyzeAsync(cancellationToken);
         if (result.IsFailed)
             throw new InvalidOperationException(string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
 

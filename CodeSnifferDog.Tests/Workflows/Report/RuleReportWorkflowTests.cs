@@ -86,7 +86,6 @@ public sealed class RuleReportWorkflowTests
             TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsFalse(result.Value.ReportVerifierApproved);
         Assert.IsTrue(result.Value.ContinuedAfterVerifierRejectionLimit);
         Assert.AreEqual(3, result.Value.AggregatorAttempts);
         Assert.AreEqual(3, result.Value.VerifierAttempts);

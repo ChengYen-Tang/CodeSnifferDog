@@ -36,9 +36,7 @@ public sealed class ProjectPlanWorkflowTests
         Assert.AreEqual(2, result.Value.PlanAttempts);
         Assert.AreEqual(2, result.Value.VerifierAttempts);
         Assert.AreEqual(0, result.Value.ProjectPlanAgentResetCount);
-        Assert.IsTrue(result.Value.ProjectVerifierApproved);
         Assert.IsFalse(result.Value.ContinuedAfterVerifierRejectionLimit);
-        Assert.IsTrue(result.Value.ShouldEnterRuleReview);
         Assert.IsTrue(result.Value.Verdict.Approved);
         Assert.HasCount(2, result.Value.TaskItems);
     }
@@ -220,9 +218,7 @@ public sealed class ProjectPlanWorkflowTests
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(3, result.Value.PlanAttempts);
         Assert.AreEqual(3, result.Value.VerifierAttempts);
-        Assert.IsFalse(result.Value.ProjectVerifierApproved);
         Assert.IsTrue(result.Value.ContinuedAfterVerifierRejectionLimit);
-        Assert.IsTrue(result.Value.ShouldEnterRuleReview);
         Assert.IsFalse(result.Value.Verdict.Approved);
     }
 

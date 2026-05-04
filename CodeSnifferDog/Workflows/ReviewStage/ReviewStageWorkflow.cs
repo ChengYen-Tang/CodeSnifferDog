@@ -30,25 +30,25 @@ internal sealed class ReviewStageWorkflow(
 
         repositoryRootPath = repositoryRootPath.Trim();
 
-        ReviewStageProjectResult[] projectResults =
-            [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ReviewStageProjectResult
-            {
-                ScanProject = projectPlanResult.ScanProject,
-                ProjectPlanResult = projectPlanResult,
-                ReviewGroupResults = new ReviewGroupWorkflowResult[projectPlanResult.TaskItems.Count],
-            })];
-
-        if (!preparationResult.ShouldEnterRuleReview)
+        if (preparationResult.ProjectPlanResults.Count == 0)
         {
             return Result.Ok(new ReviewStageWorkflowResult
             {
-                PreparationResult = preparationResult,
-                ProjectResults = projectResults,
-                RuleKeys = [.. ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey)],
-                HasAnyReviewGroups = false,
-                AllReviewGroupsFinished = false,
+                ProjectResults =
+                    [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ReviewStageProjectResult
+                    {
+                        ProjectPlanResult = projectPlanResult,
+                        ReviewGroupResults = [],
+                    })],
             });
         }
+
+        ReviewStageProjectResult[] projectResults =
+            [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ReviewStageProjectResult
+            {
+                ProjectPlanResult = projectPlanResult,
+                ReviewGroupResults = new ReviewGroupWorkflowResult[projectPlanResult.TaskItems.Count],
+            })];
 
         Result<IReadOnlyList<ReviewStageProjectFlowResult>> scheduledFlowResults =
             await _scheduler.RunAsync(repositoryRootPath, preparationResult.ProjectPlanResults, ruleDefinitions, cancellationToken).ConfigureAwait(false);
@@ -65,8 +65,9 @@ internal sealed class ReviewStageWorkflow(
             for (int taskItemIndex = 0; taskItemIndex < projectFlowResult.TaskItemResults.Count; taskItemIndex++)
             {
                 ReviewStageTaskItemFlowResult taskItemFlowResult = projectFlowResult.TaskItemResults[taskItemIndex];
+                StoredProjectPlanTaskItem taskItem = preparationResult.ProjectPlanResults[projectIndex].TaskItems[taskItemIndex];
                 Result<ReviewGroupWorkflowResult> reviewGroupResult =
-                    _reviewGroupWorkflowRunner(taskItemFlowResult.TaskItem, ruleDefinitions, taskItemFlowResult.FlowResults);
+                    _reviewGroupWorkflowRunner(taskItem, ruleDefinitions, taskItemFlowResult.FlowResults);
 
                 if (reviewGroupResult.IsSuccess)
                 {
@@ -83,11 +84,7 @@ internal sealed class ReviewStageWorkflow(
 
         return Result.Ok(new ReviewStageWorkflowResult
         {
-            PreparationResult = preparationResult,
             ProjectResults = projectResults,
-            RuleKeys = [.. ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey)],
-            HasAnyReviewGroups = projectResults.Any(project => project.ReviewGroupResults.Count > 0),
-            AllReviewGroupsFinished = true,
         });
     }
 }

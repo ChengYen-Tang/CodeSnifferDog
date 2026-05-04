@@ -15,13 +15,9 @@ public sealed class RuleReviewWorkflowResult
 
     public required ReviewVerdict Verdict { get; init; }
 
-    public required bool ReviewVerifierApproved { get; init; }
-
     public required bool ContinuedAfterVerifierRejectionLimit { get; init; }
 
     public required bool StoppedAfterMissingSubmissionLimit { get; init; }
-
-    public required bool ShouldEnterReportAggregation { get; init; }
 
     public required int ReviewAttempts { get; init; }
 

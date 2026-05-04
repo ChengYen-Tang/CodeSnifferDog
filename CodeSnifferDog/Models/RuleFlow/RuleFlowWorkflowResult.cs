@@ -6,17 +6,15 @@ namespace CodeSnifferDog.Models.RuleFlow;
 
 public sealed class RuleFlowWorkflowResult
 {
-    public required StoredProjectPlanTaskItem TaskItem { get; init; }
-
-    public required string RuleKey { get; init; }
-
     public required RuleReviewWorkflowResult ReviewResult { get; init; }
 
     public RuleReportWorkflowResult? ReportResult { get; init; }
 
-    public required bool EnteredReportAggregation { get; init; }
-
     public required RuleFlowCompletionState CompletionState { get; init; }
+
+    public StoredProjectPlanTaskItem TaskItem => ReviewResult.TaskItem;
+
+    public string RuleKey => ReviewResult.RuleKey;
 
     public bool IsApprovedCompletion =>
         CompletionState is RuleFlowCompletionState.ApprovedNoIssue or RuleFlowCompletionState.ApprovedWithReport;

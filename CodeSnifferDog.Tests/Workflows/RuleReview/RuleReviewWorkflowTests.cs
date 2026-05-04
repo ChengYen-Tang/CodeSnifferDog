@@ -43,10 +43,8 @@ public sealed class RuleReviewWorkflowTests
         Assert.AreEqual(2, result.Value.ReviewAttempts);
         Assert.AreEqual(2, result.Value.VerifierAttempts);
         Assert.AreEqual(0, result.Value.RuleReviewAgentResetCount);
-        Assert.IsTrue(result.Value.ReviewVerifierApproved);
         Assert.IsFalse(result.Value.ContinuedAfterVerifierRejectionLimit);
         Assert.IsFalse(result.Value.StoppedAfterMissingSubmissionLimit);
-        Assert.IsTrue(result.Value.ShouldEnterReportAggregation);
         Assert.HasCount(2, result.Value.Issues);
         Assert.IsNull(result.Value.NoIssueConclusion);
         Assert.IsTrue(result.Value.Verdict.Approved);
@@ -69,9 +67,7 @@ public sealed class RuleReviewWorkflowTests
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, result.Value.ReviewAttempts);
         Assert.AreEqual(2, result.Value.VerifierAttempts);
-        Assert.IsTrue(result.Value.ReviewVerifierApproved);
         Assert.IsFalse(result.Value.StoppedAfterMissingSubmissionLimit);
-        Assert.IsFalse(result.Value.ShouldEnterReportAggregation);
         Assert.IsNotNull(result.Value.NoIssueConclusion);
         Assert.HasCount(0, result.Value.Issues);
         Assert.IsTrue(result.Value.Verdict.Approved);
@@ -177,10 +173,9 @@ public sealed class RuleReviewWorkflowTests
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(3, result.Value.ReviewAttempts);
         Assert.AreEqual(3, result.Value.VerifierAttempts);
-        Assert.IsFalse(result.Value.ReviewVerifierApproved);
         Assert.IsTrue(result.Value.ContinuedAfterVerifierRejectionLimit);
         Assert.IsFalse(result.Value.StoppedAfterMissingSubmissionLimit);
-        Assert.IsTrue(result.Value.ShouldEnterReportAggregation);
+        Assert.IsNotEmpty(result.Value.Issues);
         Assert.IsFalse(result.Value.Verdict.Approved);
     }
 
@@ -219,10 +214,9 @@ public sealed class RuleReviewWorkflowTests
             TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsFalse(result.Value.ReviewVerifierApproved);
         Assert.IsTrue(result.Value.ContinuedAfterVerifierRejectionLimit);
         Assert.IsFalse(result.Value.StoppedAfterMissingSubmissionLimit);
-        Assert.IsFalse(result.Value.ShouldEnterReportAggregation);
+        Assert.HasCount(0, result.Value.Issues);
         Assert.IsNotNull(result.Value.NoIssueConclusion);
     }
 
@@ -246,10 +240,8 @@ public sealed class RuleReviewWorkflowTests
             TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsFalse(result.Value.ReviewVerifierApproved);
         Assert.IsTrue(result.Value.StoppedAfterMissingSubmissionLimit);
         Assert.IsFalse(result.Value.ContinuedAfterVerifierRejectionLimit);
-        Assert.IsFalse(result.Value.ShouldEnterReportAggregation);
         Assert.HasCount(0, result.Value.Issues);
         Assert.IsNull(result.Value.NoIssueConclusion);
         Assert.IsFalse(result.Value.Verdict.Approved);

@@ -34,12 +34,9 @@ public sealed class ReviewGroupWorkflowTests
             ]);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        CollectionAssert.AreEqual(RuleKeys, result.Value.RuleKeys.ToArray());
-        CollectionAssert.AreEqual(RuleKeys, result.Value.FlowResults.Select(flow => flow.RuleKey).ToArray());
-        Assert.IsTrue(result.Value.HasAnyRuleFlows);
-        Assert.IsTrue(result.Value.AllRuleFlowsFinished);
-        Assert.AreEqual(1, result.Value.ApprovedCompletionCount);
-        Assert.AreEqual(2, result.Value.DegradedCompletionCount);
+        CollectionAssert.AreEqual(RuleKeys, result.Value.FlowResults.Select(flow => flow.ReviewResult.RuleKey).ToArray());
+        Assert.AreEqual(1, result.Value.FlowResults.Count(flow => flow.IsApprovedCompletion));
+        Assert.AreEqual(2, result.Value.FlowResults.Count(flow => flow.IsDegradedCompletion));
     }
 
     [TestMethod]
@@ -48,8 +45,6 @@ public sealed class ReviewGroupWorkflowTests
         Result<ReviewGroupWorkflowResult> result = ReviewGroupWorkflow.Run(CreateTaskItem(), [], []);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsFalse(result.Value.HasAnyRuleFlows);
-        Assert.IsTrue(result.Value.AllRuleFlowsFinished);
         Assert.IsEmpty(result.Value.FlowResults);
     }
 
@@ -127,8 +122,6 @@ public sealed class ReviewGroupWorkflowTests
 
         return new RuleFlowWorkflowResult
         {
-            TaskItem = taskItem,
-            RuleKey = ruleKey,
             ReviewResult = new RuleReviewWorkflowResult
             {
                 TaskItem = taskItem,
@@ -140,10 +133,8 @@ public sealed class ReviewGroupWorkflowTests
                     Approved = approved,
                     Message = approved ? "Review accepted." : "Review degraded.",
                 },
-                ReviewVerifierApproved = approved,
                 ContinuedAfterVerifierRejectionLimit = !approved && !hasNoIssue && enteredReportAggregation,
                 StoppedAfterMissingSubmissionLimit = completionState == RuleFlowCompletionState.DegradedMissingSubmission,
-                ShouldEnterReportAggregation = enteredReportAggregation,
                 ReviewAttempts = 1,
                 VerifierAttempts = 1,
                 RuleReviewAgentResetCount = 0,
@@ -153,7 +144,6 @@ public sealed class ReviewGroupWorkflowTests
                 {
                     RuleKey = ruleKey,
                     TaskItem = taskItem,
-                    CurrentFlowIssues = reviewIssues,
                     Diff = new RuleReportDiff
                     {
                         CreatedIssues = [CreateReportIssue()],
@@ -166,13 +156,11 @@ public sealed class ReviewGroupWorkflowTests
                         Approved = approved,
                         Message = approved ? "Report accepted." : "Report degraded.",
                     },
-                    ReportVerifierApproved = approved,
                     ContinuedAfterVerifierRejectionLimit = !approved,
                     AggregatorAttempts = 1,
                     VerifierAttempts = 1,
                 }
                 : null,
-            EnteredReportAggregation = enteredReportAggregation,
             CompletionState = completionState,
         };
     }

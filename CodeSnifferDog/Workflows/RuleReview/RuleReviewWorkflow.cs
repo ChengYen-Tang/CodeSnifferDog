@@ -118,7 +118,6 @@ public sealed class RuleReviewWorkflow(
                                 reviewAttempts,
                                 verifierAttempts,
                                 ruleReviewAgentResetCount,
-                                reviewVerifierApproved: false,
                                 continuedAfterVerifierRejectionLimit: false,
                                 stoppedAfterMissingSubmissionLimit: true));
                         }
@@ -169,7 +168,6 @@ public sealed class RuleReviewWorkflow(
                         reviewAttempts,
                         verifierAttempts,
                         ruleReviewAgentResetCount,
-                        reviewVerifierApproved: true,
                         continuedAfterVerifierRejectionLimit: false,
                         stoppedAfterMissingSubmissionLimit: false));
                 }
@@ -188,7 +186,6 @@ public sealed class RuleReviewWorkflow(
                         reviewAttempts,
                         verifierAttempts,
                         ruleReviewAgentResetCount,
-                        reviewVerifierApproved: false,
                         continuedAfterVerifierRejectionLimit: true,
                         stoppedAfterMissingSubmissionLimit: false));
                 }
@@ -213,7 +210,6 @@ public sealed class RuleReviewWorkflow(
         int reviewAttempts,
         int verifierAttempts,
         int ruleReviewAgentResetCount,
-        bool reviewVerifierApproved,
         bool continuedAfterVerifierRejectionLimit,
         bool stoppedAfterMissingSubmissionLimit) =>
         new()
@@ -223,10 +219,8 @@ public sealed class RuleReviewWorkflow(
             Issues = issues,
             NoIssueConclusion = noIssueConclusion,
             Verdict = verdict,
-            ReviewVerifierApproved = reviewVerifierApproved,
             ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
             StoppedAfterMissingSubmissionLimit = stoppedAfterMissingSubmissionLimit,
-            ShouldEnterReportAggregation = issues.Count > 0,
             ReviewAttempts = reviewAttempts,
             VerifierAttempts = verifierAttempts,
             RuleReviewAgentResetCount = ruleReviewAgentResetCount,

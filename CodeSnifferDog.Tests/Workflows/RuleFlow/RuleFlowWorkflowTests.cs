@@ -36,7 +36,7 @@ public sealed class RuleFlowWorkflowTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(reportWorkflowCalled);
-        Assert.IsFalse(result.Value.EnteredReportAggregation);
+        Assert.IsNull(result.Value.ReportResult);
         Assert.AreEqual(RuleFlowCompletionState.ApprovedNoIssue, result.Value.CompletionState);
         Assert.IsTrue(result.Value.IsApprovedCompletion);
         Assert.IsNull(result.Value.ReportResult);
@@ -65,11 +65,11 @@ public sealed class RuleFlowWorkflowTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsTrue(reportWorkflowCalled);
-        Assert.IsTrue(result.Value.EnteredReportAggregation);
+        Assert.IsNotNull(result.Value.ReportResult);
         Assert.AreEqual(RuleFlowCompletionState.ApprovedWithReport, result.Value.CompletionState);
         Assert.IsTrue(result.Value.IsApprovedCompletion);
         Assert.IsNotNull(result.Value.ReportResult);
-        Assert.IsTrue(result.Value.ReportResult.ReportVerifierApproved);
+        Assert.IsTrue(result.Value.ReportResult.Verdict.Approved);
     }
 
     [TestMethod]
@@ -90,11 +90,11 @@ public sealed class RuleFlowWorkflowTests
             TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsTrue(result.Value.EnteredReportAggregation);
+        Assert.IsNotNull(result.Value.ReportResult);
         Assert.AreEqual(RuleFlowCompletionState.DegradedWithReport, result.Value.CompletionState);
         Assert.IsTrue(result.Value.IsDegradedCompletion);
         Assert.IsNotNull(result.Value.ReportResult);
-        Assert.IsTrue(result.Value.ReportResult.ReportVerifierApproved);
+        Assert.IsTrue(result.Value.ReportResult.Verdict.Approved);
     }
 
     [TestMethod]
@@ -119,7 +119,7 @@ public sealed class RuleFlowWorkflowTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(reportWorkflowCalled);
-        Assert.IsFalse(result.Value.EnteredReportAggregation);
+        Assert.IsNull(result.Value.ReportResult);
         Assert.AreEqual(RuleFlowCompletionState.DegradedMissingSubmission, result.Value.CompletionState);
         Assert.IsNull(result.Value.ReportResult);
     }
@@ -204,10 +204,8 @@ public sealed class RuleFlowWorkflowTests
                 Approved = reviewVerifierApproved,
                 Message = reviewVerifierApproved ? "Review accepted." : "Review degraded.",
             },
-            ReviewVerifierApproved = reviewVerifierApproved,
             ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
             StoppedAfterMissingSubmissionLimit = stoppedAfterMissingSubmissionLimit,
-            ShouldEnterReportAggregation = shouldEnterReportAggregation,
             ReviewAttempts = 1,
             VerifierAttempts = 1,
             RuleReviewAgentResetCount = 0,
@@ -223,7 +221,6 @@ public sealed class RuleFlowWorkflowTests
         {
             RuleKey = ruleFileName,
             TaskItem = taskItem,
-            CurrentFlowIssues = issues,
             Diff = new RuleReportDiff
             {
                 CreatedIssues = [CreateReportIssue()],
@@ -236,7 +233,6 @@ public sealed class RuleFlowWorkflowTests
                 Approved = reportVerifierApproved,
                 Message = reportVerifierApproved ? "Report accepted." : "Report degraded.",
             },
-            ReportVerifierApproved = reportVerifierApproved,
             ContinuedAfterVerifierRejectionLimit = !reportVerifierApproved,
             AggregatorAttempts = 1,
             VerifierAttempts = 1,

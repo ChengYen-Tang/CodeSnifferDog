@@ -31,11 +31,9 @@ internal sealed class ReviewStageRuleLaneScheduler(
         ReviewStageProjectFlowResult[] projectResults =
             [.. projectPlanResults.Select(projectPlanResult => new ReviewStageProjectFlowResult
             {
-                ProjectPlanResult = projectPlanResult,
                 TaskItemResults =
                     [.. projectPlanResult.TaskItems.Select(taskItem => new ReviewStageTaskItemFlowResult
                     {
-                        TaskItem = taskItem,
                         FlowResults = new RuleFlowWorkflowResult[ruleDefinitions.Count],
                     })],
             })];
@@ -50,10 +48,11 @@ internal sealed class ReviewStageRuleLaneScheduler(
         for (int projectIndex = 0; projectIndex < projectResults.Length; projectIndex++)
         {
             ReviewStageProjectFlowResult projectResult = projectResults[projectIndex];
+            ProjectPlanWorkflowResult projectPlanResult = projectPlanResults[projectIndex];
 
             for (int taskItemIndex = 0; taskItemIndex < projectResult.TaskItemResults.Count; taskItemIndex++)
                 foreach (RuleLaneState laneState in laneStates)
-                    laneState.Enqueue(new PendingRuleWorkItem(projectIndex, taskItemIndex, projectResult.TaskItemResults[taskItemIndex].TaskItem));
+                    laneState.Enqueue(new PendingRuleWorkItem(projectIndex, taskItemIndex, projectPlanResult.TaskItems[taskItemIndex]));
         }
 
         List<RunningRuleFlow> runningFlows = [];

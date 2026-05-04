@@ -10,15 +10,11 @@ public sealed class RuleReportWorkflowResult
 
     public required StoredProjectPlanTaskItem TaskItem { get; init; }
 
-    public required IReadOnlyList<StoredRuleReviewIssue> CurrentFlowIssues { get; init; }
-
     public required RuleReportDiff Diff { get; init; }
 
     public required IReadOnlyList<StoredRuleReportIssue> RepositoryIssues { get; init; }
 
     public required ReviewVerdict Verdict { get; init; }
-
-    public required bool ReportVerifierApproved { get; init; }
 
     public required bool ContinuedAfterVerifierRejectionLimit { get; init; }
 

@@ -101,9 +101,7 @@ public sealed class ScanWorkflow(
                     verdict,
                     scanAttempts,
                     verifierAttempts,
-                    scanAgentResetCount,
-                    scanVerifierApproved: true,
-                    continuedAfterVerifierRejectionLimit: false));
+                    scanAgentResetCount));
 
             verifierRejectionAttempts++;
 
@@ -113,9 +111,7 @@ public sealed class ScanWorkflow(
                     verdict,
                     scanAttempts,
                     verifierAttempts,
-                    scanAgentResetCount,
-                    scanVerifierApproved: false,
-                    continuedAfterVerifierRejectionLimit: true));
+                    scanAgentResetCount));
 
             scanMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
         }
@@ -126,15 +122,10 @@ public sealed class ScanWorkflow(
         ReviewVerdict verdict,
         int scanAttempts,
         int verifierAttempts,
-        int scanAgentResetCount,
-        bool scanVerifierApproved,
-        bool continuedAfterVerifierRejectionLimit) => new()
+        int scanAgentResetCount) => new()
         {
             Projects = projects,
             Verdict = verdict,
-            ScanVerifierApproved = scanVerifierApproved,
-            ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
-            ShouldEnterProjectPlanning = true,
             ScanAttempts = scanAttempts,
             VerifierAttempts = verifierAttempts,
             ScanAgentResetCount = scanAgentResetCount,

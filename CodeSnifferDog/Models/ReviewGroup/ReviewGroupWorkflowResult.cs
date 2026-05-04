@@ -7,15 +7,5 @@ public sealed class ReviewGroupWorkflowResult
 {
     public required StoredProjectPlanTaskItem TaskItem { get; init; }
 
-    public required IReadOnlyList<string> RuleKeys { get; init; }
-
     public required IReadOnlyList<RuleFlowWorkflowResult> FlowResults { get; init; }
-
-    public required bool HasAnyRuleFlows { get; init; }
-
-    public required bool AllRuleFlowsFinished { get; init; }
-
-    public required int ApprovedCompletionCount { get; init; }
-
-    public required int DegradedCompletionCount { get; init; }
 }

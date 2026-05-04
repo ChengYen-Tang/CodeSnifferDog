@@ -81,8 +81,7 @@ public sealed class ReviewStageWorkflowTests
         CollectionAssert.AreEqual(
             SecondProjectTaskIds,
             result.Value.ProjectResults[1].ReviewGroupResults.Select(group => group.TaskItem.ProjectPlanTaskItemId).ToArray());
-        Assert.IsTrue(result.Value.HasAnyReviewGroups);
-        Assert.IsTrue(result.Value.AllReviewGroupsFinished);
+        Assert.IsTrue(result.Value.ProjectResults.Any(project => project.ReviewGroupResults.Count > 0));
     }
 
     [TestMethod]
@@ -231,8 +230,33 @@ public sealed class ReviewStageWorkflowTests
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(ruleFlowCalled);
-        Assert.IsFalse(result.Value.HasAnyReviewGroups);
-        Assert.IsFalse(result.Value.AllReviewGroupsFinished);
+        Assert.IsFalse(result.Value.ProjectResults.Any(project => project.ReviewGroupResults.Count > 0));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_ReturnsEmptyReviewGroups_WhenProjectPlansContainNoTaskItems()
+    {
+        bool ruleFlowCalled = false;
+        RepositoryPreparationWorkflowResult preparationResult = CreatePreparationResult(
+            CreateProjectPlanResult("scan-1", "ProjectOne"));
+        ReviewStageWorkflow workflow = CreateWorkflow(
+            (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
+            {
+                ruleFlowCalled = true;
+                return Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue)));
+            },
+            new ReviewAgentConcurrencyGate(4));
+
+        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+            @"Z:\GitHub\CodeSnifferDog",
+            preparationResult,
+            CreateRuleDefinitions(("rule-a", "- Rule A")),
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsFalse(ruleFlowCalled);
+        Assert.HasCount(1, result.Value.ProjectResults);
+        Assert.IsEmpty(result.Value.ProjectResults[0].ReviewGroupResults);
     }
 
     [TestMethod]
@@ -292,15 +316,11 @@ public sealed class ReviewStageWorkflowTests
                     Approved = true,
                     Message = "Scan complete.",
                 },
-                ScanVerifierApproved = true,
-                ContinuedAfterVerifierRejectionLimit = false,
-                ShouldEnterProjectPlanning = true,
                 ScanAttempts = 1,
                 VerifierAttempts = 1,
                 ScanAgentResetCount = 0,
             },
-            ProjectPlanResults = projectPlanResults,
-            ShouldEnterRuleReview = shouldEnterRuleReview,
+            ProjectPlanResults = shouldEnterRuleReview ? projectPlanResults : [],
         };
 
     private static ProjectPlanWorkflowResult CreateProjectPlanResult(
@@ -323,9 +343,7 @@ public sealed class ReviewStageWorkflowTests
                 Approved = true,
                 Message = "Plan complete.",
             },
-            ProjectVerifierApproved = true,
             ContinuedAfterVerifierRejectionLimit = false,
-            ShouldEnterRuleReview = true,
             PlanAttempts = 1,
             VerifierAttempts = 1,
             ProjectPlanAgentResetCount = 0,
@@ -352,12 +370,7 @@ public sealed class ReviewStageWorkflowTests
         new()
         {
             TaskItem = taskItem,
-            RuleKeys = [.. ruleDefinitions.Select(ruleDefinition => ruleDefinition.RuleKey)],
             FlowResults = [.. flowResults],
-            HasAnyRuleFlows = ruleDefinitions.Count > 0,
-            AllRuleFlowsFinished = true,
-            ApprovedCompletionCount = flowResults.Count(result => result.IsApprovedCompletion),
-            DegradedCompletionCount = flowResults.Count(result => !result.IsApprovedCompletion),
         };
 
     private static RuleFlowWorkflowResult CreateRuleFlowResult(
@@ -373,8 +386,6 @@ public sealed class ReviewStageWorkflowTests
 
         return new RuleFlowWorkflowResult
         {
-            TaskItem = taskItem,
-            RuleKey = ruleKey,
             ReviewResult = new RuleReviewModels.RuleReviewWorkflowResult
             {
                 TaskItem = taskItem,
@@ -392,10 +403,8 @@ public sealed class ReviewStageWorkflowTests
                     Approved = approved,
                     Message = approved ? "Review accepted." : "Review degraded.",
                 },
-                ReviewVerifierApproved = approved,
                 ContinuedAfterVerifierRejectionLimit = !approved && enteredReportAggregation,
                 StoppedAfterMissingSubmissionLimit = completionState == RuleFlowCompletionState.DegradedMissingSubmission,
-                ShouldEnterReportAggregation = enteredReportAggregation,
                 ReviewAttempts = 1,
                 VerifierAttempts = 1,
                 RuleReviewAgentResetCount = 0,
@@ -404,7 +413,6 @@ public sealed class ReviewStageWorkflowTests
             {
                 RuleKey = ruleKey,
                 TaskItem = taskItem,
-                CurrentFlowIssues = reviewIssues,
                 Diff = new RuleReportDiff
                 {
                     CreatedIssues = [CreateReportIssue()],
@@ -417,12 +425,10 @@ public sealed class ReviewStageWorkflowTests
                     Approved = approved,
                     Message = approved ? "Report accepted." : "Report degraded.",
                 },
-                ReportVerifierApproved = approved,
                 ContinuedAfterVerifierRejectionLimit = !approved,
                 AggregatorAttempts = 1,
                 VerifierAttempts = 1,
             } : null,
-            EnteredReportAggregation = enteredReportAggregation,
             CompletionState = completionState,
         };
     }

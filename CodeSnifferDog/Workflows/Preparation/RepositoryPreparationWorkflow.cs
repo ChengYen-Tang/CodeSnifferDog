@@ -29,13 +29,12 @@ internal sealed class RepositoryPreparationWorkflow(
         if (scanResult.IsFailed)
             return scanResult.ToResult<RepositoryPreparationWorkflowResult>();
 
-        if (!scanResult.Value.ShouldEnterProjectPlanning)
+        if (scanResult.Value.Projects.Count == 0)
         {
             return Result.Ok(new RepositoryPreparationWorkflowResult
             {
                 ScanResult = scanResult.Value,
                 ProjectPlanResults = [],
-                ShouldEnterRuleReview = false,
             });
         }
 
@@ -54,7 +53,6 @@ internal sealed class RepositoryPreparationWorkflow(
         {
             ScanResult = scanResult.Value,
             ProjectPlanResults = orderedResults,
-            ShouldEnterRuleReview = orderedResults.All(result => result.ShouldEnterRuleReview),
         });
     }
 

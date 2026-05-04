@@ -47,7 +47,6 @@ public sealed class RepositoryPreparationWorkflowTests
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         CollectionAssert.AreEqual(PlannedProjectIds, plannedProjectIds);
         Assert.HasCount(2, result.Value.ProjectPlanResults);
-        Assert.IsTrue(result.Value.ShouldEnterRuleReview);
     }
 
     [TestMethod]
@@ -85,15 +84,12 @@ public sealed class RepositoryPreparationWorkflowTests
         RepositoryPreparationWorkflow workflow = new(
             (repositoryRootPath, cancellationToken) => Task.FromResult(Result.Ok(new ScanWorkflowResult
             {
-                Projects = [CreateScanProject("scan-1", "ProjectOne")],
+                Projects = [],
                 Verdict = new ReviewVerdict
                 {
                     Approved = false,
                     Message = "Do not continue.",
                 },
-                ScanVerifierApproved = false,
-                ContinuedAfterVerifierRejectionLimit = false,
-                ShouldEnterProjectPlanning = false,
                 ScanAttempts = 1,
                 VerifierAttempts = 1,
                 ScanAgentResetCount = 0,
@@ -111,7 +107,25 @@ public sealed class RepositoryPreparationWorkflowTests
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsFalse(projectPlanCalled);
         Assert.IsEmpty(result.Value.ProjectPlanResults);
-        Assert.IsFalse(result.Value.ShouldEnterRuleReview);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PreservesSuccessfulProjectPlans_EvenWhenAllTaskItemListsAreEmpty()
+    {
+        RepositoryPreparationWorkflow workflow = new(
+            (repositoryRootPath, cancellationToken) => Task.FromResult(Result.Ok(CreateScanResult(
+                CreateScanProject("scan-1", "ProjectOne"),
+                CreateScanProject("scan-2", "ProjectTwo")))),
+            (repositoryRootPath, scanProject, cancellationToken) =>
+                Task.FromResult(Result.Ok(CreateProjectPlanResult(scanProject, taskItems: []))),
+            new ReviewAgentConcurrencyGate(2));
+
+        Result<RepositoryPreparationWorkflowResult> result =
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.HasCount(2, result.Value.ProjectPlanResults);
+        Assert.IsTrue(result.Value.ProjectPlanResults.All(projectPlan => projectPlan.TaskItems.Count == 0));
     }
 
     [TestMethod]
@@ -153,9 +167,6 @@ public sealed class RepositoryPreparationWorkflowTests
                 Approved = true,
                 Message = "Scan complete.",
             },
-            ScanVerifierApproved = true,
-            ContinuedAfterVerifierRejectionLimit = false,
-            ShouldEnterProjectPlanning = true,
             ScanAttempts = 1,
             VerifierAttempts = 1,
             ScanAgentResetCount = 0,
@@ -172,34 +183,34 @@ public sealed class RepositoryPreparationWorkflowTests
             Reason = $"Reason for {name}.",
         };
 
-    private static ProjectPlanWorkflowResult CreateProjectPlanResult(StoredScanProject scanProject)
+    private static ProjectPlanWorkflowResult CreateProjectPlanResult(
+        StoredScanProject scanProject,
+        IReadOnlyList<StoredProjectPlanTaskItem>? taskItems = null)
         =>
         new()
         {
             ScanProject = scanProject,
-            TaskItems =
-            [
-                new StoredProjectPlanTaskItem
-                {
-                    ProjectPlanTaskItemId = $"task-{scanProject.ScanProjectId}",
-                    Files =
-                    [
-                        new ProjectPlanFile
-                        {
-                            FilePath = $"src/{scanProject.ProjectName}/Program.cs",
-                            TotalLines = 100,
-                        },
-                    ],
-                },
-            ],
+            TaskItems = taskItems ??
+                [
+                    new StoredProjectPlanTaskItem
+                    {
+                        ProjectPlanTaskItemId = $"task-{scanProject.ScanProjectId}",
+                        Files =
+                        [
+                            new ProjectPlanFile
+                            {
+                                FilePath = $"src/{scanProject.ProjectName}/Program.cs",
+                                TotalLines = 100,
+                            },
+                        ],
+                    },
+                ],
             Verdict = new ReviewVerdict
             {
                 Approved = true,
                 Message = "Plan complete.",
             },
-            ProjectVerifierApproved = true,
             ContinuedAfterVerifierRejectionLimit = false,
-            ShouldEnterRuleReview = true,
             PlanAttempts = 1,
             VerifierAttempts = 1,
             ProjectPlanAgentResetCount = 0,
