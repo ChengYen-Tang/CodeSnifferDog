@@ -17,9 +17,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents();
 builder.Services.AddSignalR();
-builder.Services.AddDbContext<CodeSnifferDogServerDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("CodeSnifferDogServer")));
-builder.Services.AddDbContextFactory<CodeSnifferDogServerDbContext>(options =>
+builder.Services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("CodeSnifferDogServer")));
 builder.Services.Configure<ProjectExecutionOptions>(
     builder.Configuration.GetSection(ProjectExecutionOptions.SectionName));

@@ -7,9 +7,9 @@ using System.Text;
 
 namespace CodeSnifferDog.Server.Services.ProjectReports;
 
-public sealed class ProjectReportService(CodeSnifferDogServerDbContext dbContext) : IProjectReportService
+public sealed class ProjectReportService(IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory) : IProjectReportService
 {
-    private readonly CodeSnifferDogServerDbContext _dbContext = dbContext;
+    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
 
     public async Task ReplaceProjectReportsAsync(
         Guid projectId,
@@ -18,14 +18,16 @@ public sealed class ProjectReportService(CodeSnifferDogServerDbContext dbContext
     {
         ArgumentNullException.ThrowIfNull(reports);
 
-        ProjectRecord? project = await _dbContext.Projects
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectRecord? project = await dbContext.Projects
             .Include(project => project.RuleReports)
             .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
 
         if (project is null)
             throw new InvalidOperationException($"Project was not found: {projectId}");
 
-        _dbContext.ProjectRuleReports.RemoveRange(project.RuleReports);
+        dbContext.ProjectRuleReports.RemoveRange(project.RuleReports);
 
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
         foreach (ProjectRuleReportDraft report in reports)
@@ -45,15 +47,17 @@ public sealed class ProjectReportService(CodeSnifferDogServerDbContext dbContext
                 CreatedAtUtc = nowUtc,
             };
 
-            _dbContext.ProjectRuleReports.Add(reportRecord);
+            dbContext.ProjectRuleReports.Add(reportRecord);
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<ProjectReportBundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
-        ProjectRecord? project = await _dbContext.Projects
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectRecord? project = await dbContext.Projects
             .AsNoTracking()
             .Include(project => project.RuleReports.OrderBy(report => report.RuleName))
             .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
@@ -76,7 +80,9 @@ public sealed class ProjectReportService(CodeSnifferDogServerDbContext dbContext
         Guid reportId,
         CancellationToken cancellationToken = default)
     {
-        ProjectRuleReportRecord? report = await _dbContext.ProjectRuleReports
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectRuleReportRecord? report = await dbContext.ProjectRuleReports
             .AsNoTracking()
             .SingleOrDefaultAsync(
                 item => item.ProjectId == projectId && item.Id == reportId,

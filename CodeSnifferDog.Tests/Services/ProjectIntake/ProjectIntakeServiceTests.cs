@@ -5,6 +5,7 @@ using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.ProjectStorage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -19,7 +20,8 @@ public sealed class ProjectIntakeServiceTests
     public async Task CancelAsync_DoesNotPublishProjectChanges_BeforeExecutionCompletesCancellation()
     {
         Guid projectId = Guid.NewGuid();
-        await using CodeSnifferDogServerDbContext dbContext = CreateDbContext();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
+        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
         dbContext.Projects.Add(new ProjectRecord
         {
             Id = projectId,
@@ -35,7 +37,7 @@ public sealed class ProjectIntakeServiceTests
 
         TrackingProjectChangePublisher projectChangePublisher = new();
         ProjectIntakeService service = new(
-            dbContext,
+            dbContextFactory,
             projectChangePublisher,
             new ProjectTemporaryStoragePaths(),
             new StubProjectExecutionLeaseRegistry(projectId),
@@ -49,13 +51,13 @@ public sealed class ProjectIntakeServiceTests
         Assert.AreEqual(0, projectChangePublisher.PublishCallCount);
     }
 
-    private static CodeSnifferDogServerDbContext CreateDbContext()
+    private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
             .Options;
 
-        return new CodeSnifferDogServerDbContext(options);
+        return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);
     }
 
     private sealed class TrackingProjectChangePublisher : IProjectChangePublisher

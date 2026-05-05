@@ -10,12 +10,14 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution;
 
 public sealed class ProjectExecutionHostedService(
     IServiceScopeFactory serviceScopeFactory,
+    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectExecutionLeaseRegistry leaseRegistry,
     IProjectExecutionQueueLock queueLock,
     IOptions<ProjectExecutionOptions> options,
     ILogger<ProjectExecutionHostedService> logger) : BackgroundService
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
+    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectExecutionLeaseRegistry _leaseRegistry = leaseRegistry;
     private readonly IProjectExecutionQueueLock _queueLock = queueLock;
     private readonly ProjectExecutionOptions _options = options.Value;
@@ -89,9 +91,8 @@ public sealed class ProjectExecutionHostedService(
     private async Task<ProjectExecutionClaim?> TryClaimNextProjectAsync(CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();
-        CodeSnifferDogServerDbContext dbContext = scope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
         IProjectChangePublisher projectChangePublisher = scope.ServiceProvider.GetRequiredService<IProjectChangePublisher>();
-        ProjectExecutionClaimData? claimData = await TryClaimNextProjectFromDatabaseAsync(dbContext, cancellationToken);
+        ProjectExecutionClaimData? claimData = await TryClaimNextProjectFromDatabaseAsync(cancellationToken);
         if (claimData is null)
             return null;
 
@@ -115,10 +116,10 @@ public sealed class ProjectExecutionHostedService(
         }
     }
 
-    private static async Task<ProjectExecutionClaimData?> TryClaimNextProjectFromDatabaseAsync(
-        CodeSnifferDogServerDbContext dbContext,
-        CancellationToken cancellationToken)
+    private async Task<ProjectExecutionClaimData?> TryClaimNextProjectFromDatabaseAsync(CancellationToken cancellationToken)
     {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
         ProjectRecord? project = await dbContext.Projects
             .OrderBy(project => project.Status == ProjectProcessingStatus.Queued ? 0 : 1)
             .ThenBy(project => project.QueueTimestampUtc)
@@ -155,9 +156,8 @@ public sealed class ProjectExecutionHostedService(
             await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();
             ProjectTemporaryStoragePaths storagePaths = scope.ServiceProvider.GetRequiredService<ProjectTemporaryStoragePaths>();
             IProjectAnalysisRunner analysisRunner = scope.ServiceProvider.GetRequiredService<IProjectAnalysisRunner>();
-            CodeSnifferDogServerDbContext dbContext = scope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
 
-            if (!await CanStartExecutionAsync(dbContext, claim.ProjectId, lease.CancellationToken))
+            if (!await CanStartExecutionAsync(claim.ProjectId, lease.CancellationToken))
             {
                 TryDeleteUploadedZipFile(claim.StoredZipRelativePath, claim.ProjectId);
                 TryDeleteExtractedProjectDirectory(claim.ProjectId);
@@ -200,11 +200,10 @@ public sealed class ProjectExecutionHostedService(
         }
     }
 
-    private static async Task<bool> CanStartExecutionAsync(
-        CodeSnifferDogServerDbContext dbContext,
-        Guid projectId,
-        CancellationToken cancellationToken)
+    private async Task<bool> CanStartExecutionAsync(Guid projectId, CancellationToken cancellationToken)
     {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
         ProjectProcessingStatus? status = await dbContext.Projects
             .Where(project => project.Id == projectId)
             .Select(project => (ProjectProcessingStatus?)project.Status)
@@ -254,8 +253,8 @@ public sealed class ProjectExecutionHostedService(
         CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();
-        CodeSnifferDogServerDbContext dbContext = scope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
         IProjectChangePublisher projectChangePublisher = scope.ServiceProvider.GetRequiredService<IProjectChangePublisher>();
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
         ProjectRecord? project = await dbContext.Projects
             .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
@@ -276,9 +275,9 @@ public sealed class ProjectExecutionHostedService(
     private async Task FailInterruptedProjectsAsync(CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();
-        CodeSnifferDogServerDbContext dbContext = scope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
         IProjectChangePublisher projectChangePublisher = scope.ServiceProvider.GetRequiredService<IProjectChangePublisher>();
         ProjectTemporaryStoragePaths storagePaths = scope.ServiceProvider.GetRequiredService<ProjectTemporaryStoragePaths>();
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
         List<ProjectRecord> interruptedProjects = await dbContext.Projects
             .Where(project => project.Status == ProjectProcessingStatus.Reviewing)

@@ -34,8 +34,8 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
         await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
 
-        await using AsyncServiceScope verificationScope = services.CreateAsyncScope();
-        CodeSnifferDogServerDbContext dbContext = verificationScope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
         ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId, TestContext.CancellationToken);
 
         Assert.AreEqual(ProjectProcessingStatus.Canceled, project.Status);
@@ -61,8 +61,8 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
         await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
 
-        await using AsyncServiceScope verificationScope = services.CreateAsyncScope();
-        CodeSnifferDogServerDbContext dbContext = verificationScope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
         ProjectRecord project = await dbContext.Projects.SingleAsync(project => project.Id == projectId, TestContext.CancellationToken);
 
         Assert.AreEqual(ProjectProcessingStatus.Reviewing, project.Status);
@@ -74,6 +74,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     private static ProjectExecutionHostedService CreateHostedService(ServiceProvider services) =>
         new(
             services.GetRequiredService<IServiceScopeFactory>(),
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
             services.GetRequiredService<IProjectExecutionLeaseRegistry>(),
             services.GetRequiredService<IProjectExecutionQueueLock>(),
             Options.Create(new ProjectExecutionOptions()),
@@ -86,7 +87,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         InMemoryDatabaseRoot databaseRoot = new();
         string databaseName = Guid.NewGuid().ToString("N");
         ServiceCollection services = [];
-        services.AddDbContext<CodeSnifferDogServerDbContext>(options =>
+        services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
         services.AddSingleton<ProjectTemporaryStoragePaths>(_ => GetStoragePaths());
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
@@ -98,8 +99,8 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
     private static async Task SeedReviewingProjectAsync(ServiceProvider services, Guid projectId)
     {
-        await using AsyncServiceScope scope = services.CreateAsyncScope();
-        CodeSnifferDogServerDbContext dbContext = scope.ServiceProvider.GetRequiredService<CodeSnifferDogServerDbContext>();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
 
         dbContext.Projects.Add(new ProjectRecord

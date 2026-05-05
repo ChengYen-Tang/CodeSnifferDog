@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace CodeSnifferDog.Server.Services.ProjectIntake;
 
 public sealed class ProjectIntakeService(
-    CodeSnifferDogServerDbContext dbContext,
+    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectChangePublisher projectChangePublisher,
     ProjectTemporaryStoragePaths storagePaths,
     IProjectExecutionLeaseRegistry executionLeaseRegistry,
@@ -18,7 +18,7 @@ public sealed class ProjectIntakeService(
     IOptions<ProjectExecutionOptions> projectExecutionOptions,
     ILogger<ProjectIntakeService> logger) : IProjectIntakeService
 {
-    private readonly CodeSnifferDogServerDbContext _dbContext = dbContext;
+    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectChangePublisher _projectChangePublisher = projectChangePublisher;
     private readonly ProjectTemporaryStoragePaths _storagePaths = storagePaths;
     private readonly IProjectExecutionLeaseRegistry _executionLeaseRegistry = executionLeaseRegistry;
@@ -86,7 +86,9 @@ public sealed class ProjectIntakeService(
         if (_projectExecutionOptions.MaxQueuedProjects <= 0)
             throw new InvalidOperationException("ProjectExecution:MaxQueuedProjects must be greater than zero.");
 
-        int queuedProjects = await _dbContext.Projects
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        int queuedProjects = await dbContext.Projects
             .CountAsync(project => project.Status == ProjectProcessingStatus.Queued, cancellationToken);
 
         if (queuedProjects >= _projectExecutionOptions.MaxQueuedProjects)
@@ -104,8 +106,8 @@ public sealed class ProjectIntakeService(
             QueueTimestampUtc = nowUtc,
         };
 
-        _dbContext.Projects.Add(project);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        dbContext.Projects.Add(project);
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         return new ProjectUploadResult
         {
@@ -118,8 +120,11 @@ public sealed class ProjectIntakeService(
         };
     }
 
-    public async Task<IReadOnlyList<ProjectListItemDto>> ListAsync(CancellationToken cancellationToken = default) =>
-        await _dbContext.Projects
+    public async Task<IReadOnlyList<ProjectListItemDto>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        return await dbContext.Projects
             .AsNoTracking()
             .OrderBy(project =>
                 project.Status == ProjectProcessingStatus.Queued ? 0 :
@@ -134,10 +139,13 @@ public sealed class ProjectIntakeService(
             .ThenBy(project => project.CreatedAtUtc)
             .Select(project => MapListItem(project))
             .ToListAsync(cancellationToken);
+    }
 
     public async Task<ProjectSummaryDto?> GetAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
-        ProjectRecord? project = await _dbContext.Projects
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectRecord? project = await dbContext.Projects
             .AsNoTracking()
             .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
 
@@ -150,7 +158,9 @@ public sealed class ProjectIntakeService(
 
         using IDisposable queueLease = await _queueLock.AcquireAsync(cancellationToken);
 
-        ProjectRecord? project = await _dbContext.Projects
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectRecord? project = await dbContext.Projects
             .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
 
         if (project is null)
@@ -177,7 +187,9 @@ public sealed class ProjectIntakeService(
 
     private async Task<bool> DeleteStoredProjectAsync(Guid projectId, CancellationToken cancellationToken)
     {
-        ProjectRecord? project = await _dbContext.Projects
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectRecord? project = await dbContext.Projects
             .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
 
         if (project is null)
@@ -192,8 +204,8 @@ public sealed class ProjectIntakeService(
         DeleteFileIfExists(uploadedZipPath);
         DeleteDirectoryIfExists(extractedProjectPath);
 
-        _dbContext.Projects.Remove(project);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        dbContext.Projects.Remove(project);
+        await dbContext.SaveChangesAsync(cancellationToken);
         await _projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
         return true;
     }
