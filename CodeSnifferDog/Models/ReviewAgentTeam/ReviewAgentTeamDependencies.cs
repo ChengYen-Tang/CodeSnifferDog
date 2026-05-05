@@ -16,5 +16,7 @@ public sealed class ReviewAgentTeamDependencies
 
     public required IRuleReportIssueStore RuleReportIssueStore { get; init; }
 
+    public IAgentStatusEventPublisher? AgentStatusEventPublisher { get; init; }
+
     public Func<CancellationToken, ValueTask>? CleanupAsync { get; init; }
 }

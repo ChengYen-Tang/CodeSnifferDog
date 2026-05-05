@@ -18,6 +18,7 @@ using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Modules.Tools.Scan;
+using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Workflows.ProjectPlan;
 using CodeSnifferDog.Workflows.Report;
@@ -25,6 +26,7 @@ using CodeSnifferDog.Workflows.RuleFlow;
 using CodeSnifferDog.Workflows.RuleReview;
 using CodeSnifferDog.Workflows.Scan;
 using FluentResults;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 
@@ -34,6 +36,7 @@ public sealed class ProjectAnalysisRunner(
     IProjectChatClientProvider chatClientProvider,
     IReviewRuleMarkdownProvider ruleMarkdownProvider,
     IProjectReportService projectReportService,
+    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IOptions<ProjectExecutionOptions> options,
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider,
@@ -42,6 +45,7 @@ public sealed class ProjectAnalysisRunner(
     private readonly IProjectChatClientProvider _chatClientProvider = chatClientProvider;
     private readonly IReviewRuleMarkdownProvider _ruleMarkdownProvider = ruleMarkdownProvider;
     private readonly IProjectReportService _projectReportService = projectReportService;
+    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
@@ -62,6 +66,8 @@ public sealed class ProjectAnalysisRunner(
         if (_options.ModelContextWindowTokens <= 0)
             throw new InvalidOperationException("ExecutionOptions:ModelContextWindowTokens must be greater than zero.");
 
+        await ClearAgentStatusDataAsync(context.ProjectId, cancellationToken);
+
         IChatClient chatClient = _chatClientProvider.CreateChatClient();
         IReadOnlyList<ProjectExecutionRuleDefinition> rules = await _ruleMarkdownProvider.LoadRulesAsync(cancellationToken);
 
@@ -69,33 +75,63 @@ public sealed class ProjectAnalysisRunner(
             throw new InvalidOperationException("No review rule markdown files were found.");
 
         InMemoryRuleReportIssueStore ruleReportIssueStore = new();
-        ReviewAgentTeamFactory teamFactory = CreateTeamFactory(chatClient, ruleReportIssueStore);
-        await using ReviewAgentTeamWorker worker = teamFactory.CreateWorker(
-            context.RepositoryRootPath,
-            rules.Select(rule => new ReviewAgentRuleDefinition
-            {
-                RuleKey = rule.RuleKey,
-                RuleMarkdown = rule.RuleMarkdown,
-            }).ToArray(),
-            new ReviewAgentTeamExecutionOptions
-            {
-                MaxParallelAgents = _options.MaxParallelAgents,
-                ModelContextWindowTokens = _options.ModelContextWindowTokens,
-                ContextCompactionMode = _options.ContextCompactionMode,
-            });
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber eventSubscriber =
+            new(context.ProjectId, _dbContextFactory, eventStream.Events);
+        ReviewAgentTeamFactory teamFactory = CreateTeamFactory(chatClient, ruleReportIssueStore, eventStream);
+        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports;
 
-        Result result = await worker.AnalyzeAsync(cancellationToken);
-        if (result.IsFailed)
-            throw new InvalidOperationException(string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        try
+        {
+            await using ReviewAgentTeamWorker worker = teamFactory.CreateWorker(
+                context.RepositoryRootPath,
+                rules.Select(rule => new ReviewAgentRuleDefinition
+                {
+                    RuleKey = rule.RuleKey,
+                    RuleMarkdown = rule.RuleMarkdown,
+                }).ToArray(),
+                new ReviewAgentTeamExecutionOptions
+                {
+                    MaxParallelAgents = _options.MaxParallelAgents,
+                    ModelContextWindowTokens = _options.ModelContextWindowTokens,
+                    ContextCompactionMode = _options.ContextCompactionMode,
+                });
 
-        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports = await worker.GetRuleReportsAsync(cancellationToken);
+            Result result = await worker.AnalyzeAsync(cancellationToken);
+            if (result.IsFailed)
+                throw new InvalidOperationException(string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+
+            ruleReports = await worker.GetRuleReportsAsync(cancellationToken);
+        }
+        finally
+        {
+            eventStream.Complete();
+        }
+
         await PersistReportsAsync(context.ProjectId, rules, ruleReports, cancellationToken);
         _logger.LogInformation("Project {ProjectId} analysis completed.", context.ProjectId);
     }
 
+    private async Task ClearAgentStatusDataAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        List<Data.Entities.ProjectAgentGroupRecord> existingGroups = await dbContext.ProjectAgentGroups
+            .Where(group => group.ProjectId == projectId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existingGroups.Count == 0)
+            return;
+
+        dbContext.ProjectAgentGroups.RemoveRange(existingGroups);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private ReviewAgentTeamFactory CreateTeamFactory(
         IChatClient chatClient,
-        InMemoryRuleReportIssueStore ruleReportIssueStore)
+        InMemoryRuleReportIssueStore ruleReportIssueStore,
+        IAgentStatusEventPublisher agentStatusEventPublisher)
     {
         PromptAssetReader promptAssetReader = new();
         ChatClientOperationalContextCompactionSummarizer summarizer = new(chatClient);
@@ -107,9 +143,9 @@ public sealed class ProjectAnalysisRunner(
         return new ReviewAgentTeamFactory(new ReviewAgentTeamDependencies
         {
             ScanWorkflowRunner = (repositoryRootPath, cancellationToken) =>
-                RunScanWorkflowAsync(chatClient, repositoryRootPath, agentCompactionOptions.Scan, promptAssetReader, cancellationToken),
+                RunScanWorkflowAsync(chatClient, repositoryRootPath, agentCompactionOptions.Scan, promptAssetReader, agentStatusEventPublisher, cancellationToken),
             ProjectPlanWorkflowRunner = (repositoryRootPath, scanProject, cancellationToken) =>
-                RunProjectPlanWorkflowAsync(chatClient, repositoryRootPath, scanProject, agentCompactionOptions.ProjectPlan, promptAssetReader, cancellationToken),
+                RunProjectPlanWorkflowAsync(chatClient, repositoryRootPath, scanProject, agentCompactionOptions.ProjectPlan, promptAssetReader, agentStatusEventPublisher, cancellationToken),
             RuleFlowWorkflowRunner = (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
                 RunRuleFlowWorkflowAsync(
                     chatClient,
@@ -122,8 +158,10 @@ public sealed class ProjectAnalysisRunner(
                     ruleReviewIssueStore,
                     ruleReportIssueStore,
                     promptAssetReader,
+                    agentStatusEventPublisher,
                     cancellationToken),
             RuleReportIssueStore = ruleReportIssueStore,
+            AgentStatusEventPublisher = agentStatusEventPublisher,
         });
     }
 
@@ -149,6 +187,7 @@ public sealed class ProjectAnalysisRunner(
         string repositoryRootPath,
         OperationalContextAgentCompactionOptions compactionOptions,
         PromptAssetReader promptAssetReader,
+        IAgentStatusEventPublisher agentStatusEventPublisher,
         CancellationToken cancellationToken)
     {
         InMemoryScanProjectStore scanProjectStore = new();
@@ -160,7 +199,8 @@ public sealed class ProjectAnalysisRunner(
             scanRepositoryRootPath => scanVerifierAgentFactory.Create(chatClient, scanRepositoryRootPath, scanProjectStore, verdictBuffer),
             scanProjectStore,
             verdictBuffer,
-            promptAssetReader);
+            promptAssetReader,
+            agentStatusEventPublisher: agentStatusEventPublisher);
 
         return workflow.RunAsync(repositoryRootPath, cancellationToken);
     }
@@ -171,6 +211,7 @@ public sealed class ProjectAnalysisRunner(
         StoredScanProject scanProject,
         OperationalContextAgentCompactionOptions compactionOptions,
         PromptAssetReader promptAssetReader,
+        IAgentStatusEventPublisher agentStatusEventPublisher,
         CancellationToken cancellationToken)
     {
         InMemoryProjectPlanTaskItemStore taskItemStore = new();
@@ -182,7 +223,8 @@ public sealed class ProjectAnalysisRunner(
             (planRepositoryRootPath, verifierScanProject) => projectVerifierAgentFactory.Create(chatClient, planRepositoryRootPath, verifierScanProject, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
-            promptAssetReader);
+            promptAssetReader,
+            agentStatusEventPublisher: agentStatusEventPublisher);
 
         return workflow.RunAsync(repositoryRootPath, scanProject, cancellationToken);
     }
@@ -198,6 +240,7 @@ public sealed class ProjectAnalysisRunner(
         IRuleReviewIssueStore ruleReviewIssueStore,
         IRuleReportIssueStore ruleReportIssueStore,
         PromptAssetReader promptAssetReader,
+        IAgentStatusEventPublisher agentStatusEventPublisher,
         CancellationToken cancellationToken)
     {
         RuleFlowWorkflow workflow = new(
@@ -211,6 +254,7 @@ public sealed class ProjectAnalysisRunner(
                     ruleReviewCompactionOptions,
                     ruleReviewIssueStore,
                     promptAssetReader,
+                    agentStatusEventPublisher,
                     reviewCancellationToken),
             (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, currentFlowIssues, reportCancellationToken) =>
                 RunRuleReportWorkflowAsync(
@@ -223,6 +267,7 @@ public sealed class ProjectAnalysisRunner(
                     reportCompactionOptions,
                     ruleReportIssueStore,
                     promptAssetReader,
+                    agentStatusEventPublisher,
                     reportCancellationToken));
 
         return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
@@ -237,6 +282,7 @@ public sealed class ProjectAnalysisRunner(
         OperationalContextAgentCompactionOptions compactionOptions,
         IRuleReviewIssueStore issueStore,
         PromptAssetReader promptAssetReader,
+        IAgentStatusEventPublisher agentStatusEventPublisher,
         CancellationToken cancellationToken)
     {
         ReviewVerdictBuffer verdictBuffer = new();
@@ -247,7 +293,8 @@ public sealed class ProjectAnalysisRunner(
             (reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem) => reviewVerifierAgentFactory.Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,
-            promptAssetReader);
+            promptAssetReader,
+            agentStatusEventPublisher: agentStatusEventPublisher);
 
         return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
     }
@@ -262,6 +309,7 @@ public sealed class ProjectAnalysisRunner(
         OperationalContextAgentCompactionOptions compactionOptions,
         IRuleReportIssueStore reportIssueStore,
         PromptAssetReader promptAssetReader,
+        IAgentStatusEventPublisher agentStatusEventPublisher,
         CancellationToken cancellationToken)
     {
         ReviewVerdictBuffer verdictBuffer = new();
@@ -272,7 +320,8 @@ public sealed class ProjectAnalysisRunner(
             (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues) => reportVerifierAgentFactory.Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer),
             reportIssueStore,
             verdictBuffer,
-            promptAssetReader);
+            promptAssetReader,
+            agentStatusEventPublisher: agentStatusEventPublisher);
 
         return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken);
     }

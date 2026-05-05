@@ -11,10 +11,12 @@ namespace CodeSnifferDog.Workflows.ReviewStage;
 
 internal sealed class ReviewStageWorkflow(
     ReviewStageRuleLaneScheduler scheduler,
-    Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner)
+    Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner,
+    IAgentStatusEventPublisher? agentStatusEventPublisher = null)
 {
     private readonly ReviewStageRuleLaneScheduler _scheduler = scheduler;
     private readonly Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> _reviewGroupWorkflowRunner = reviewGroupWorkflowRunner;
+    private readonly IAgentStatusEventPublisher _agentStatusEventPublisher = agentStatusEventPublisher ?? NoOpAgentStatusEventPublisher.Instance;
 
     public async Task<Result<ReviewStageWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -49,6 +51,19 @@ internal sealed class ReviewStageWorkflow(
                 ProjectPlanResult = projectPlanResult,
                 ReviewGroupResults = new ReviewGroupWorkflowResult[projectPlanResult.TaskItems.Count],
             })];
+
+        foreach (ProjectPlanWorkflowResult projectPlanResult in preparationResult.ProjectPlanResults)
+        {
+            foreach (StoredProjectPlanTaskItem taskItem in projectPlanResult.TaskItems)
+            {
+                await _agentStatusEventPublisher.PublishAsync(new AgentGroupCreatedEvent
+                {
+                    GroupKey = AgentStatusCatalog.CreateReviewTaskGroupKey(taskItem),
+                    DisplayName = AgentStatusCatalog.CreateReviewTaskGroupDisplayName(taskItem),
+                    OccurredAtUtc = DateTimeOffset.UtcNow,
+                }, cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         Result<IReadOnlyList<ReviewStageProjectFlowResult>> scheduledFlowResults =
             await _scheduler.RunAsync(repositoryRootPath, preparationResult.ProjectPlanResults, ruleDefinitions, cancellationToken).ConfigureAwait(false);

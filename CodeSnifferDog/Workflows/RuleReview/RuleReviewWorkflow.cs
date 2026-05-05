@@ -1,7 +1,9 @@
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using FluentResults;
@@ -17,7 +19,8 @@ public sealed class RuleReviewWorkflow(
     IRuleReviewIssueStore issueStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
-    RuleReviewWorkflowOptions? options = null)
+    RuleReviewWorkflowOptions? options = null,
+    IAgentStatusEventPublisher? agentStatusEventPublisher = null)
 {
     private readonly Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> _ruleReviewAgentFactory = ruleReviewAgentFactory;
     private readonly Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> _reviewVerifierAgentFactory = reviewVerifierAgentFactory;
@@ -26,6 +29,7 @@ public sealed class RuleReviewWorkflow(
     private readonly RuleReviewWorkflowMessageTemplates _messageTemplates =
         new(promptAssetReader ?? new PromptAssetReader());
     private readonly RuleReviewWorkflowOptions _options = options ?? new();
+    private readonly IAgentStatusEventPublisher _agentStatusEventPublisher = agentStatusEventPublisher ?? NoOpAgentStatusEventPublisher.Instance;
 
     public async Task<Result<RuleReviewWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -56,12 +60,24 @@ public sealed class RuleReviewWorkflow(
 
         try
         {
+            string groupKey = AgentStatusCatalog.CreateReviewTaskGroupKey(taskItem);
+            string reviewAgentKey = AgentStatusCatalog.CreateRuleReviewAgentKey(taskItem, ruleKey);
+            string verifierAgentKey = AgentStatusCatalog.CreateReviewVerifierAgentKey(taskItem, ruleKey);
+
             Result<AIAgent> createRuleReviewAgentResult = TryCreateAgent(
                 () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
                 "Rule Review Agent");
 
             if (createRuleReviewAgentResult.IsFailed)
                 return createRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
+            await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
+            {
+                AgentKey = reviewAgentKey,
+                DisplayName = AgentStatusCatalog.CreateRuleReviewAgentDisplayName(ruleKey),
+                InitialStatus = AgentStatusCatalog.WaitingStatus,
+                GroupKey = groupKey,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken).ConfigureAwait(false);
 
             Result<AIAgent> createReviewVerifierAgentResult = TryCreateAgent(
                 () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
@@ -69,6 +85,14 @@ public sealed class RuleReviewWorkflow(
 
             if (createReviewVerifierAgentResult.IsFailed)
                 return createReviewVerifierAgentResult.ToResult<RuleReviewWorkflowResult>();
+            await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
+            {
+                AgentKey = verifierAgentKey,
+                DisplayName = AgentStatusCatalog.CreateReviewVerifierAgentDisplayName(ruleKey),
+                InitialStatus = AgentStatusCatalog.WaitingStatus,
+                GroupKey = groupKey,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken).ConfigureAwait(false);
 
             AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value;
             AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value;
@@ -83,11 +107,17 @@ public sealed class RuleReviewWorkflow(
             while (true)
             {
                 reviewAttempts++;
+                await PublishStatusAsync(groupKey, reviewAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
                 Result runReviewResult = await RunAgentAsync(ruleReviewAgent, reviewMessages, cancellationToken).ConfigureAwait(false);
 
                 if (runReviewResult.IsFailed)
+                {
+                    await PublishStatusAsync(groupKey, reviewAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runReviewResult.ToResult<RuleReviewWorkflowResult>();
+                }
+
+                await PublishStatusAsync(groupKey, reviewAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 IReadOnlyList<StoredRuleReviewIssue> issues = await _issueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
                 NoIssueConclusion? noIssueConclusion = await _issueStore.GetNoIssueConclusionAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
@@ -102,6 +132,7 @@ public sealed class RuleReviewWorkflow(
 
                         if (ruleReviewAgentResetCount > _options.MaxRuleReviewAgentResets)
                         {
+                            await PublishStatusAsync(groupKey, reviewAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                             ReviewVerdict missingSubmissionVerdict = new()
                             {
                                 Approved = false,
@@ -130,6 +161,7 @@ public sealed class RuleReviewWorkflow(
                             return recreateRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
 
                         ruleReviewAgent = recreateRuleReviewAgentResult.Value;
+                        await PublishStatusAsync(groupKey, reviewAgentKey, AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
                         reviewMessages = CreateReviewMessages();
                         missingSubmissionAttempts = 0;
                         continue;
@@ -142,6 +174,7 @@ public sealed class RuleReviewWorkflow(
                 missingSubmissionAttempts = 0;
                 verifierAttempts++;
                 _verdictBuffer.Reset(reviewVerdictScopeKey);
+                await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
                 List<ChatMessage> verifierMessages =
                 [
@@ -151,10 +184,18 @@ public sealed class RuleReviewWorkflow(
                 Result runVerifierResult = await RunAgentAsync(reviewVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
 
                 if (runVerifierResult.IsFailed)
+                {
+                    await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runVerifierResult.ToResult<RuleReviewWorkflowResult>();
+                }
+
+                await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 if (_verdictBuffer.GetLatest(reviewVerdictScopeKey) is not ReviewVerdict verdict)
+                {
+                    await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return Result.Fail<RuleReviewWorkflowResult>("Review Verifier Agent finished without submitting a verdict.");
+                }
 
                 if (verdict.Approved)
                 {
@@ -176,6 +217,7 @@ public sealed class RuleReviewWorkflow(
 
                 if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
                 {
+                    await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return Result.Ok(CreateResult(
                         taskItem,
                         ruleKey,
@@ -225,6 +267,19 @@ public sealed class RuleReviewWorkflow(
             VerifierAttempts = verifierAttempts,
             RuleReviewAgentResetCount = ruleReviewAgentResetCount,
         };
+
+    private ValueTask PublishStatusAsync(
+        string groupKey,
+        string agentKey,
+        string status,
+        CancellationToken cancellationToken)
+        => _agentStatusEventPublisher.PublishAsync(new AgentStatusChangedEvent
+        {
+            GroupKey = groupKey,
+            AgentKey = agentKey,
+            Status = status,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+        }, cancellationToken);
 
     private static async Task<Result> RunAgentAsync(
         AIAgent agent,

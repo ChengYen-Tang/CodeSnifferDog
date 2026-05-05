@@ -63,6 +63,12 @@ public sealed class CodeSnifferDogServerDbContext(DbContextOptions<CodeSnifferDo
             entity.HasIndex(group => new
             {
                 group.ProjectId,
+                group.RuntimeKey,
+            }).IsUnique();
+
+            entity.HasIndex(group => new
+            {
+                group.ProjectId,
                 group.CreatedAtUtc,
             });
 
@@ -76,6 +82,12 @@ public sealed class CodeSnifferDogServerDbContext(DbContextOptions<CodeSnifferDo
         {
             entity.ToTable("ProjectAgents");
             entity.HasKey(agent => agent.Id);
+
+            entity.HasIndex(agent => new
+            {
+                agent.ProjectAgentGroupId,
+                agent.RuntimeKey,
+            }).IsUnique();
 
             entity.HasIndex(agent => new
             {

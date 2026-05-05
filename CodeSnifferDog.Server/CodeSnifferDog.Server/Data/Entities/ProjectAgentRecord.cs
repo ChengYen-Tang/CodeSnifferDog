@@ -6,6 +6,8 @@ public sealed class ProjectAgentRecord
 
     public Guid ProjectAgentGroupId { get; set; }
 
+    public required string RuntimeKey { get; set; }
+
     public required string DisplayName { get; set; }
 
     public ProjectAgentStatus Status { get; set; }

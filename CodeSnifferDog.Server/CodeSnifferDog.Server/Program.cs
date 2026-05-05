@@ -19,6 +19,8 @@ builder.Services.AddRazorComponents()
 builder.Services.AddSignalR();
 builder.Services.AddDbContext<CodeSnifferDogServerDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("CodeSnifferDogServer")));
+builder.Services.AddDbContextFactory<CodeSnifferDogServerDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("CodeSnifferDogServer")));
 builder.Services.Configure<ProjectExecutionOptions>(
     builder.Configuration.GetSection(ProjectExecutionOptions.SectionName));
 builder.Services.Configure<InferenceProviderOptions>(

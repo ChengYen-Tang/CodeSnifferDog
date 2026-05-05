@@ -21,6 +21,7 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
     private readonly ReviewStageWorkflow _reviewStageWorkflow;
     private readonly ReviewAgentConcurrencyGate _concurrencyGate;
     private readonly IRuleReportIssueStore _ruleReportIssueStore;
+    private readonly IAgentStatusEventPublisher _agentStatusEventPublisher;
     private readonly Func<CancellationToken, ValueTask>? _cleanupAsync;
     private bool _disposed;
 
@@ -48,6 +49,7 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
                 RuleMarkdown = ruleDefinition?.RuleMarkdown?.Trim() ?? string.Empty,
             })];
         _ruleReportIssueStore = dependencies.RuleReportIssueStore;
+        _agentStatusEventPublisher = dependencies.AgentStatusEventPublisher ?? NoOpAgentStatusEventPublisher.Instance;
         _cleanupAsync = dependencies.CleanupAsync;
         ExecutionOptions = executionOptions;
         MaxParallelAgents = executionOptions.MaxParallelAgents;
@@ -59,7 +61,8 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
             _concurrencyGate);
         _reviewStageWorkflow = new ReviewStageWorkflow(
             scheduler,
-            ReviewGroupWorkflow.Run);
+            ReviewGroupWorkflow.Run,
+            _agentStatusEventPublisher);
     }
 
     public int MaxParallelAgents { get; }

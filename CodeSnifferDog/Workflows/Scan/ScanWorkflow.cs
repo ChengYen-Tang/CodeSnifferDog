@@ -1,4 +1,6 @@
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -16,7 +18,8 @@ public sealed class ScanWorkflow(
     IScanProjectStore scanProjectStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
-    ScanWorkflowOptions? options = null)
+    ScanWorkflowOptions? options = null,
+    IAgentStatusEventPublisher? agentStatusEventPublisher = null)
 {
     private readonly Func<string, AIAgent> _scanAgentFactory = scanAgentFactory;
     private readonly Func<string, AIAgent> _scanVerifierAgentFactory = scanVerifierAgentFactory;
@@ -25,6 +28,7 @@ public sealed class ScanWorkflow(
     private readonly ScanWorkflowMessageTemplates _messageTemplates =
         new(promptAssetReader ?? new PromptAssetReader());
     private readonly ScanWorkflowOptions _options = options ?? new ScanWorkflowOptions();
+    private readonly IAgentStatusEventPublisher _agentStatusEventPublisher = agentStatusEventPublisher ?? NoOpAgentStatusEventPublisher.Instance;
 
     public async Task<Result<ScanWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -35,9 +39,37 @@ public sealed class ScanWorkflow(
 
         repositoryRootPath = repositoryRootPath.Trim();
         await _scanProjectStore.ClearAsync(cancellationToken).ConfigureAwait(false);
+        string scanGroupKey = AgentStatusCatalog.CreateScanGroupKey();
+        string scanAgentKey = AgentStatusCatalog.CreateScanAgentKey();
+        string scanVerifierAgentKey = AgentStatusCatalog.CreateScanVerifierAgentKey();
+
+        await _agentStatusEventPublisher.PublishAsync(new AgentGroupCreatedEvent
+        {
+            GroupKey = scanGroupKey,
+            DisplayName = AgentStatusCatalog.CreateScanGroupDisplayName(),
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+        }, cancellationToken).ConfigureAwait(false);
 
         AIAgent scanAgent = _scanAgentFactory(repositoryRootPath);
+        await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
+        {
+            AgentKey = scanAgentKey,
+            DisplayName = AgentStatusCatalog.CreateScanAgentDisplayName(),
+            InitialStatus = AgentStatusCatalog.WaitingStatus,
+            GroupKey = scanGroupKey,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+        }, cancellationToken).ConfigureAwait(false);
+
         AIAgent scanVerifierAgent = _scanVerifierAgentFactory(repositoryRootPath);
+        await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
+        {
+            AgentKey = scanVerifierAgentKey,
+            DisplayName = AgentStatusCatalog.CreateScanVerifierAgentDisplayName(),
+            InitialStatus = AgentStatusCatalog.WaitingStatus,
+            GroupKey = scanGroupKey,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+        }, cancellationToken).ConfigureAwait(false);
+
         List<ChatMessage> scanMessages = CreateScanMessages(repositoryRootPath);
 
         int scanAttempts = 0;
@@ -49,11 +81,17 @@ public sealed class ScanWorkflow(
         while (true)
         {
             scanAttempts++;
+            await PublishStatusAsync(scanGroupKey, scanAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
             Result runScanResult = await RunAgentAsync(scanAgent, scanMessages, cancellationToken).ConfigureAwait(false);
 
             if (runScanResult.IsFailed)
+            {
+                await PublishStatusAsync(scanGroupKey, scanAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runScanResult.ToResult<ScanWorkflowResult>();
+            }
+
+            await PublishStatusAsync(scanGroupKey, scanAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             IReadOnlyList<StoredScanProject> projects = await _scanProjectStore.ListAsync(cancellationToken).ConfigureAwait(false);
 
@@ -66,9 +104,13 @@ public sealed class ScanWorkflow(
                     scanAgentResetCount++;
 
                     if (scanAgentResetCount > _options.MaxScanAgentResets)
+                    {
+                        await PublishStatusAsync(scanGroupKey, scanAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                         return Result.Fail<ScanWorkflowResult>("Scan Agent did not submit any scan projects after the allowed reset limit.");
+                    }
 
                     scanAgent = _scanAgentFactory(repositoryRootPath);
+                    await PublishStatusAsync(scanGroupKey, scanAgentKey, AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
                     scanMessages = CreateScanMessages(repositoryRootPath);
                     missingSubmissionAttempts = 0;
                     continue;
@@ -81,6 +123,7 @@ public sealed class ScanWorkflow(
             missingSubmissionAttempts = 0;
             verifierAttempts++;
             _verdictBuffer.Reset();
+            await PublishStatusAsync(scanGroupKey, scanVerifierAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
             List<ChatMessage> verifierMessages =
             [
@@ -90,10 +133,18 @@ public sealed class ScanWorkflow(
             Result runVerifierResult = await RunAgentAsync(scanVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
 
             if (runVerifierResult.IsFailed)
+            {
+                await PublishStatusAsync(scanGroupKey, scanVerifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runVerifierResult.ToResult<ScanWorkflowResult>();
+            }
+
+            await PublishStatusAsync(scanGroupKey, scanVerifierAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             if (_verdictBuffer.Latest is not ReviewVerdict verdict)
+            {
+                await PublishStatusAsync(scanGroupKey, scanVerifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return Result.Fail<ScanWorkflowResult>("Scan Verifier Agent finished without submitting a verdict.");
+            }
 
             if (verdict.Approved)
                 return Result.Ok(CreateResult(
@@ -106,12 +157,15 @@ public sealed class ScanWorkflow(
             verifierRejectionAttempts++;
 
             if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
+            {
+                await PublishStatusAsync(scanGroupKey, scanVerifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return Result.Ok(CreateResult(
                     projects,
                     verdict,
                     scanAttempts,
                     verifierAttempts,
                     scanAgentResetCount));
+            }
 
             scanMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
         }
@@ -130,6 +184,19 @@ public sealed class ScanWorkflow(
             VerifierAttempts = verifierAttempts,
             ScanAgentResetCount = scanAgentResetCount,
         };
+
+    private ValueTask PublishStatusAsync(
+        string groupKey,
+        string agentKey,
+        string status,
+        CancellationToken cancellationToken)
+        => _agentStatusEventPublisher.PublishAsync(new AgentStatusChangedEvent
+        {
+            GroupKey = groupKey,
+            AgentKey = agentKey,
+            Status = status,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+        }, cancellationToken);
 
     private static async Task<Result> RunAgentAsync(
         AIAgent agent,
