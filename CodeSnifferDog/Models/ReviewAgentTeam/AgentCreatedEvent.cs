@@ -1,6 +1,6 @@
 namespace CodeSnifferDog.Models.ReviewAgentTeam;
 
-public sealed record AgentCreatedEvent : AgentStatusEvent
+internal sealed record AgentCreatedEvent : AgentStatusEvent
 {
     public required string AgentKey { get; init; }
 

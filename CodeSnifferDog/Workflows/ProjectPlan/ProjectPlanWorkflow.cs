@@ -14,21 +14,21 @@ using System.Text.Json;
 namespace CodeSnifferDog.Workflows.ProjectPlan;
 
 public sealed class ProjectPlanWorkflow(
-    Func<string, AIAgent> projectPlanAgentFactory,
-    Func<string, StoredScanProject, AIAgent> projectVerifierAgentFactory,
+    Func<string, IAgentEventScope, AIAgent> projectPlanAgentFactory,
+    Func<string, StoredScanProject, IAgentEventScope, AIAgent> projectVerifierAgentFactory,
     IProjectPlanTaskItemStore taskItemStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     ProjectPlanWorkflowOptions? options = null,
-    IAgentStatusEventPublisher? agentStatusEventPublisher = null)
+    IAgentEventBus? agentEventBus = null)
 {
-    private readonly Func<string, AIAgent> _projectPlanAgentFactory = projectPlanAgentFactory;
-    private readonly Func<string, StoredScanProject, AIAgent> _projectVerifierAgentFactory = projectVerifierAgentFactory;
+    private readonly Func<string, IAgentEventScope, AIAgent> _projectPlanAgentFactory = projectPlanAgentFactory;
+    private readonly Func<string, StoredScanProject, IAgentEventScope, AIAgent> _projectVerifierAgentFactory = projectVerifierAgentFactory;
     private readonly IProjectPlanTaskItemStore _taskItemStore = taskItemStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
     private readonly ProjectPlanWorkflowOptions _options = options ?? new();
-    private readonly IAgentStatusEventPublisher _agentStatusEventPublisher = agentStatusEventPublisher ?? NoOpAgentStatusEventPublisher.Instance;
+    private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
     public async Task<Result<ProjectPlanWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -45,35 +45,25 @@ public sealed class ProjectPlanWorkflow(
 
         ProjectPlanWorkflowMessageTemplates messageTemplates = new(_promptAssetReader);
         string groupKey = AgentStatusCatalog.CreateProjectPlanGroupKey(scanProject);
-        string plannerAgentKey = AgentStatusCatalog.CreateProjectPlannerAgentKey(scanProject);
-        string verifierAgentKey = AgentStatusCatalog.CreateProjectVerifierAgentKey(scanProject);
+        IAgentEventScope plannerAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateProjectPlannerAgentKey(scanProject));
+        IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateProjectVerifierAgentKey(scanProject));
 
-        await _agentStatusEventPublisher.PublishAsync(new AgentGroupCreatedEvent
-        {
-            GroupKey = groupKey,
-            DisplayName = AgentStatusCatalog.CreateProjectPlanGroupDisplayName(scanProject),
-            OccurredAtUtc = DateTimeOffset.UtcNow,
-        }, cancellationToken).ConfigureAwait(false);
+        await _agentEventBus.PublishGroupCreatedAsync(
+            groupKey,
+            AgentStatusCatalog.CreateProjectPlanGroupDisplayName(scanProject),
+            cancellationToken).ConfigureAwait(false);
 
-        AIAgent projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath);
-        await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
-        {
-            AgentKey = plannerAgentKey,
-            DisplayName = AgentStatusCatalog.CreateProjectPlannerAgentDisplayName(),
-            InitialStatus = AgentStatusCatalog.WaitingStatus,
-            GroupKey = groupKey,
-            OccurredAtUtc = DateTimeOffset.UtcNow,
-        }, cancellationToken).ConfigureAwait(false);
+        AIAgent projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope);
+        await plannerAgentScope.PublishCreatedAsync(
+            AgentStatusCatalog.CreateProjectPlannerAgentDisplayName(),
+            AgentStatusCatalog.WaitingStatus,
+            cancellationToken).ConfigureAwait(false);
 
-        AIAgent projectVerifierAgent = _projectVerifierAgentFactory(repositoryRootPath, scanProject);
-        await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
-        {
-            AgentKey = verifierAgentKey,
-            DisplayName = AgentStatusCatalog.CreateProjectVerifierAgentDisplayName(),
-            InitialStatus = AgentStatusCatalog.WaitingStatus,
-            GroupKey = groupKey,
-            OccurredAtUtc = DateTimeOffset.UtcNow,
-        }, cancellationToken).ConfigureAwait(false);
+        AIAgent projectVerifierAgent = _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope);
+        await verifierAgentScope.PublishCreatedAsync(
+            AgentStatusCatalog.CreateProjectVerifierAgentDisplayName(),
+            AgentStatusCatalog.WaitingStatus,
+            cancellationToken).ConfigureAwait(false);
 
         List<ChatMessage> planMessages = CreatePlanMessages(messageTemplates, scanProject);
 
@@ -86,17 +76,17 @@ public sealed class ProjectPlanWorkflow(
         while (true)
         {
             planAttempts++;
-            await PublishStatusAsync(groupKey, plannerAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
+            await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
             Result runPlanResult = await RunAgentAsync(projectPlanAgent, planMessages, cancellationToken).ConfigureAwait(false);
 
             if (runPlanResult.IsFailed)
             {
-                await PublishStatusAsync(groupKey, plannerAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runPlanResult.ToResult<ProjectPlanWorkflowResult>();
             }
 
-            await PublishStatusAsync(groupKey, plannerAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
+            await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             IReadOnlyList<StoredProjectPlanTaskItem> taskItems =
                 await _taskItemStore.ListAsync(cancellationToken).ConfigureAwait(false);
@@ -111,13 +101,13 @@ public sealed class ProjectPlanWorkflow(
 
                     if (projectPlanAgentResetCount > _options.MaxProjectPlanAgentResets)
                     {
-                        await PublishStatusAsync(groupKey, plannerAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                        await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                         return Result.Fail<ProjectPlanWorkflowResult>(
                             "Project Plan Agent did not submit any task items after the allowed reset limit.");
                     }
 
-                    projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath);
-                    await PublishStatusAsync(groupKey, plannerAgentKey, AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
+                    projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope);
+                    await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
                     planMessages = CreatePlanMessages(messageTemplates, scanProject);
                     missingSubmissionAttempts = 0;
                     continue;
@@ -130,7 +120,7 @@ public sealed class ProjectPlanWorkflow(
             missingSubmissionAttempts = 0;
             verifierAttempts++;
             _verdictBuffer.Reset();
-            await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
+            await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
             List<ChatMessage> verifierMessages =
             [
@@ -141,15 +131,15 @@ public sealed class ProjectPlanWorkflow(
 
             if (runVerifierResult.IsFailed)
             {
-                await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runVerifierResult.ToResult<ProjectPlanWorkflowResult>();
             }
 
-            await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
+            await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             if (_verdictBuffer.Latest is not ReviewVerdict verdict)
             {
-                await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return Result.Fail<ProjectPlanWorkflowResult>("Project Verifier Agent finished without submitting a verdict.");
             }
 
@@ -169,7 +159,7 @@ public sealed class ProjectPlanWorkflow(
 
             if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
             {
-                await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return Result.Ok(CreateResult(
                     scanProject,
                     taskItems,
@@ -201,19 +191,6 @@ public sealed class ProjectPlanWorkflow(
             VerifierAttempts = verifierAttempts,
             ProjectPlanAgentResetCount = projectPlanAgentResetCount,
         };
-
-    private ValueTask PublishStatusAsync(
-        string groupKey,
-        string agentKey,
-        string status,
-        CancellationToken cancellationToken)
-        => _agentStatusEventPublisher.PublishAsync(new AgentStatusChangedEvent
-        {
-            GroupKey = groupKey,
-            AgentKey = agentKey,
-            Status = status,
-            OccurredAtUtc = DateTimeOffset.UtcNow,
-        }, cancellationToken);
 
     private static async Task<Result> RunAgentAsync(
         AIAgent agent,

@@ -70,6 +70,10 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             case AgentStatusChangedEvent statusChangedEvent:
                 await UpdateAgentStatusAsync(statusChangedEvent, cancellationToken).ConfigureAwait(false);
                 return;
+
+            case AgentCompactionEvent compactionEvent:
+                await AppendCompactionEntryAsync(compactionEvent, cancellationToken).ConfigureAwait(false);
+                return;
         }
     }
 
@@ -146,20 +150,49 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        ProjectAgentRecord agent = await dbContext.ProjectAgents
+        ProjectAgentRecord agent = await GetAgentAsync(dbContext, agentEvent.GroupKey, agentEvent.AgentKey, cancellationToken).ConfigureAwait(false);
+
+        agent.Status = ParseStatus(agentEvent.Status);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task AppendCompactionEntryAsync(AgentCompactionEvent agentEvent, CancellationToken cancellationToken)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectAgentRecord agent = await GetAgentAsync(dbContext, agentEvent.GroupKey, agentEvent.AgentKey, cancellationToken).ConfigureAwait(false);
+        long nextSequence = (await dbContext.ProjectAgentTimelineEntries
+            .Where(entry => entry.ProjectAgentId == agent.Id)
+            .MaxAsync(entry => (long?)entry.Sequence, cancellationToken)
+            .ConfigureAwait(false) ?? 0) + 1;
+
+        dbContext.ProjectAgentTimelineEntries.Add(new ProjectAgentTimelineEntryRecord
+        {
+            Id = Guid.NewGuid(),
+            ProjectAgentId = agent.Id,
+            Sequence = nextSequence,
+            EntryType = ProjectAgentTimelineEntryType.Compaction,
+            OccurredAtUtc = agentEvent.OccurredAtUtc,
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ProjectAgentRecord> GetAgentAsync(
+        CodeSnifferDogServerDbContext dbContext,
+        string groupKey,
+        string agentKey,
+        CancellationToken cancellationToken) =>
+        await dbContext.ProjectAgents
             .Include(candidate => candidate.Group)
             .SingleAsync(
                 candidate =>
                     candidate.Group != null &&
                     candidate.Group.ProjectId == _projectId &&
-                    candidate.Group.RuntimeKey == agentEvent.GroupKey &&
-                    candidate.RuntimeKey == agentEvent.AgentKey,
+                    candidate.Group.RuntimeKey == groupKey &&
+                    candidate.RuntimeKey == agentKey,
                 cancellationToken)
             .ConfigureAwait(false);
-
-        agent.Status = ParseStatus(agentEvent.Status);
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-    }
 
     private static ProjectAgentStatus ParseStatus(string status) =>
         status.Trim() switch

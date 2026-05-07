@@ -124,12 +124,12 @@ public sealed class ScanWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         ScanWorkflow workflow = new(
-            repositoryRootPath =>
+            (repositoryRootPath, _) =>
             {
                 createdScanAgents++;
                 return CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer);
             },
-            repositoryRootPath => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
+            (repositoryRootPath, _) => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
             scanProjectStore,
             verdictBuffer,
             promptAssetReader,
@@ -266,7 +266,7 @@ public sealed class ScanWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         ScanWorkflow workflow = new(
-            repositoryRootPath => new ScanAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, _) => new ScanAgentFactory(compactionOptions).Create(
                 scanChatClient,
                 """
                 You are the Scan Agent for CodeSnifferDog.
@@ -276,7 +276,7 @@ public sealed class ScanWorkflowTests
                 repositoryRootPath,
                 scanProjectStore,
                 verdictBuffer),
-            repositoryRootPath => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
+            (repositoryRootPath, _) => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
             scanProjectStore,
             verdictBuffer,
             promptAssetReader);
@@ -380,8 +380,8 @@ public sealed class ScanWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         return new ScanWorkflow(
-            repositoryRootPath => CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer),
-            repositoryRootPath => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
+            (repositoryRootPath, _) => CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer),
+            (repositoryRootPath, _) => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
             scanProjectStore,
             verdictBuffer,
             promptAssetReader,

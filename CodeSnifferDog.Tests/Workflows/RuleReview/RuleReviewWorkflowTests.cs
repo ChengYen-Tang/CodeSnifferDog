@@ -304,7 +304,7 @@ public sealed class RuleReviewWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => new RuleReviewAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) => new RuleReviewAgentFactory(compactionOptions).Create(
                 reviewChatClient,
                 repositoryRootPath,
                 ruleFileName,
@@ -312,7 +312,7 @@ public sealed class RuleReviewWorkflowTests
                 taskItem,
                 issueStore,
                 verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => new ReviewVerifierAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) => new ReviewVerifierAgentFactory(compactionOptions).Create(
                 verifierChatClient,
                 repositoryRootPath,
                 ruleFileName,
@@ -366,8 +366,8 @@ public sealed class RuleReviewWorkflowTests
     public async Task RunAsync_ReturnsFailedResult_WhenAgentFactoryThrows()
     {
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => throw new InvalidOperationException("factory failed"),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => throw new InvalidOperationException("verifier factory should not run"),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) => throw new InvalidOperationException("factory failed"),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) => throw new InvalidOperationException("verifier factory should not run"),
             new InMemoryRuleReviewIssueStore(),
             new ReviewVerdictBuffer(),
             new PromptAssetReader());
@@ -394,17 +394,17 @@ public sealed class RuleReviewWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         RuleReviewWorkflow firstWorkflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
             sharedIssueStore,
             sharedVerdictBuffer,
             promptAssetReader);
         RuleReviewWorkflow secondWorkflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reviewChatClient, sharedIssueStore, sharedVerdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, verifierChatClient, sharedIssueStore, sharedVerdictBuffer),
             sharedIssueStore,
             sharedVerdictBuffer,
@@ -447,9 +447,9 @@ public sealed class RuleReviewWorkflowTests
         InMemoryRuleReviewIssueStore issueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueVerifierInvocation), issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,
@@ -480,9 +480,9 @@ public sealed class RuleReviewWorkflowTests
         InMemoryRuleReviewIssueStore issueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReviewWorkflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleIssueReviewInvocation), issueStore, verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,
@@ -519,9 +519,9 @@ public sealed class RuleReviewWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         return new RuleReviewWorkflow(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reviewChatClient, issueStore, verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, verifierChatClient, issueStore, verdictBuffer),
             issueStore,
             verdictBuffer,

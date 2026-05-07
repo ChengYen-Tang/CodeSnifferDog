@@ -174,7 +174,7 @@ public sealed class RuleReportWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         RuleReportWorkflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) => new ReportAggregatorAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) => new ReportAggregatorAgentFactory(compactionOptions).Create(
                 aggregatorChatClient,
                 repositoryRootPath,
                 ruleFileName,
@@ -182,7 +182,7 @@ public sealed class RuleReportWorkflowTests
                 taskItem,
                 reportIssueStore,
                 verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) => new ReportVerifierAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) => new ReportVerifierAgentFactory(compactionOptions).Create(
                 verifierChatClient,
                 repositoryRootPath,
                 ruleFileName,
@@ -267,9 +267,9 @@ public sealed class RuleReportWorkflowTests
         InMemoryRuleReportIssueStore reportIssueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReportWorkflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(HandleVerifierInvocation), reportIssueStore, verdictBuffer),
             reportIssueStore,
             verdictBuffer,
@@ -301,9 +301,9 @@ public sealed class RuleReportWorkflowTests
         InMemoryRuleReportIssueStore reportIssueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReportWorkflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), reportIssueStore, verdictBuffer),
             reportIssueStore,
             verdictBuffer,
@@ -342,9 +342,9 @@ public sealed class RuleReportWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         return new RuleReportWorkflow(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
                 CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, aggregatorChatClient, store, verdictBuffer),
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues) =>
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, verifierChatClient, store, verdictBuffer),
             store,
             verdictBuffer,

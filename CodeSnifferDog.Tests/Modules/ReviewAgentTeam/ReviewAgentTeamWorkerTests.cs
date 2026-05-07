@@ -157,6 +157,7 @@ public sealed class ReviewAgentTeamWorkerTests
             RuleFlowWorkflowRunner = (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
                 Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown))),
             RuleReportIssueStore = new InMemoryRuleReportIssueStore(),
+            AgentEventBus = null,
             CleanupAsync = _ =>
             {
                 cleanupAction?.Invoke();

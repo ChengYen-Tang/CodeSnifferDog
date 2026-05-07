@@ -15,22 +15,22 @@ using System.Text.Json;
 namespace CodeSnifferDog.Workflows.Report;
 
 public sealed class RuleReportWorkflow(
-    Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> reportAggregatorAgentFactory,
-    Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, AIAgent> reportVerifierAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> reportAggregatorAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, IAgentEventScope, AIAgent> reportVerifierAgentFactory,
     IRuleReportIssueStore reportIssueStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     RuleReportWorkflowOptions? options = null,
-    IAgentStatusEventPublisher? agentStatusEventPublisher = null)
+    IAgentEventBus? agentEventBus = null)
 {
-    private readonly Func<string, string, string, StoredProjectPlanTaskItem, AIAgent> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
-    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, AIAgent> _reportVerifierAgentFactory = reportVerifierAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, IAgentEventScope, AIAgent> _reportVerifierAgentFactory = reportVerifierAgentFactory;
     private readonly IRuleReportIssueStore _reportIssueStore = reportIssueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly RuleReportWorkflowMessageTemplates _messageTemplates =
         new(promptAssetReader ?? new PromptAssetReader());
     private readonly RuleReportWorkflowOptions _options = options ?? new();
-    private readonly IAgentStatusEventPublisher _agentStatusEventPublisher = agentStatusEventPublisher ?? NoOpAgentStatusEventPublisher.Instance;
+    private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
     public async Task<Result<RuleReportWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -68,38 +68,30 @@ public sealed class RuleReportWorkflow(
         try
         {
             string groupKey = AgentStatusCatalog.CreateReviewTaskGroupKey(taskItem);
-            string aggregatorAgentKey = AgentStatusCatalog.CreateReportAggregatorAgentKey(taskItem, ruleKey);
-            string verifierAgentKey = AgentStatusCatalog.CreateReportVerifierAgentKey(taskItem, ruleKey);
+            IAgentEventScope aggregatorAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportAggregatorAgentKey(taskItem, ruleKey));
+            IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportVerifierAgentKey(taskItem, ruleKey));
 
             Result<AIAgent> createAggregatorResult = TryCreateAgent(
-                () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
+                () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope),
                 "Report Aggregator Agent");
 
             if (createAggregatorResult.IsFailed)
                 return createAggregatorResult.ToResult<RuleReportWorkflowResult>();
-            await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
-            {
-                AgentKey = aggregatorAgentKey,
-                DisplayName = AgentStatusCatalog.CreateReportAggregatorAgentDisplayName(ruleKey),
-                InitialStatus = AgentStatusCatalog.WaitingStatus,
-                GroupKey = groupKey,
-                OccurredAtUtc = DateTimeOffset.UtcNow,
-            }, cancellationToken).ConfigureAwait(false);
+            await aggregatorAgentScope.PublishCreatedAsync(
+                AgentStatusCatalog.CreateReportAggregatorAgentDisplayName(ruleKey),
+                AgentStatusCatalog.WaitingStatus,
+                cancellationToken).ConfigureAwait(false);
 
             Result<AIAgent> createVerifierResult = TryCreateAgent(
-                () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues),
+                () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope),
                 "Report Verifier Agent");
 
             if (createVerifierResult.IsFailed)
                 return createVerifierResult.ToResult<RuleReportWorkflowResult>();
-            await _agentStatusEventPublisher.PublishAsync(new AgentCreatedEvent
-            {
-                AgentKey = verifierAgentKey,
-                DisplayName = AgentStatusCatalog.CreateReportVerifierAgentDisplayName(ruleKey),
-                InitialStatus = AgentStatusCatalog.WaitingStatus,
-                GroupKey = groupKey,
-                OccurredAtUtc = DateTimeOffset.UtcNow,
-            }, cancellationToken).ConfigureAwait(false);
+            await verifierAgentScope.PublishCreatedAsync(
+                AgentStatusCatalog.CreateReportVerifierAgentDisplayName(ruleKey),
+                AgentStatusCatalog.WaitingStatus,
+                cancellationToken).ConfigureAwait(false);
 
             AIAgent reportAggregatorAgent = createAggregatorResult.Value;
             AIAgent reportVerifierAgent = createVerifierResult.Value;
@@ -112,23 +104,23 @@ public sealed class RuleReportWorkflow(
             while (true)
             {
                 aggregatorAttempts++;
-                await PublishStatusAsync(groupKey, aggregatorAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
+                await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
                 Result runAggregatorResult = await RunAgentAsync(reportAggregatorAgent, aggregatorMessages, cancellationToken).ConfigureAwait(false);
 
                 if (runAggregatorResult.IsFailed)
                 {
-                    await PublishStatusAsync(groupKey, aggregatorAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                    await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runAggregatorResult.ToResult<RuleReportWorkflowResult>();
                 }
 
-                await PublishStatusAsync(groupKey, aggregatorAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
+                await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 RuleReportDiff diff = await ComputeAndStoreDiffAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
                 verifierAttempts++;
                 _verdictBuffer.Reset(reportVerdictScopeKey);
-                await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
+                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
                 List<ChatMessage> verifierMessages =
                 [
@@ -139,15 +131,15 @@ public sealed class RuleReportWorkflow(
 
                 if (runVerifierResult.IsFailed)
                 {
-                    await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runVerifierResult.ToResult<RuleReportWorkflowResult>();
                 }
 
-                await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
+                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 if (_verdictBuffer.GetLatest(reportVerdictScopeKey) is not ReviewVerdict verdict)
                 {
-                    await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return Result.Fail<RuleReportWorkflowResult>("Report Verifier Agent finished without submitting a verdict.");
                 }
 
@@ -174,7 +166,7 @@ public sealed class RuleReportWorkflow(
 
                 if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
                 {
-                    await PublishStatusAsync(groupKey, verifierAgentKey, AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
                     IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
                         await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
@@ -213,19 +205,6 @@ public sealed class RuleReportWorkflow(
         await _reportIssueStore.SetLatestDiffAsync(ruleFlowKey, diff, cancellationToken).ConfigureAwait(false);
         return diff;
     }
-
-    private ValueTask PublishStatusAsync(
-        string groupKey,
-        string agentKey,
-        string status,
-        CancellationToken cancellationToken)
-        => _agentStatusEventPublisher.PublishAsync(new AgentStatusChangedEvent
-        {
-            GroupKey = groupKey,
-            AgentKey = agentKey,
-            Status = status,
-            OccurredAtUtc = DateTimeOffset.UtcNow,
-        }, cancellationToken);
 
     private static RuleReportDiff BuildDiff(
         IReadOnlyList<StoredRuleReportIssue> previousSnapshot,

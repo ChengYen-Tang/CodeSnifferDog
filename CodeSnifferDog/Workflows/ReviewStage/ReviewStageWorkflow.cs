@@ -12,11 +12,11 @@ namespace CodeSnifferDog.Workflows.ReviewStage;
 internal sealed class ReviewStageWorkflow(
     ReviewStageRuleLaneScheduler scheduler,
     Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner,
-    IAgentStatusEventPublisher? agentStatusEventPublisher = null)
+    IAgentEventBus? agentEventBus = null)
 {
     private readonly ReviewStageRuleLaneScheduler _scheduler = scheduler;
     private readonly Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> _reviewGroupWorkflowRunner = reviewGroupWorkflowRunner;
-    private readonly IAgentStatusEventPublisher _agentStatusEventPublisher = agentStatusEventPublisher ?? NoOpAgentStatusEventPublisher.Instance;
+    private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
     public async Task<Result<ReviewStageWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -56,12 +56,10 @@ internal sealed class ReviewStageWorkflow(
         {
             foreach (StoredProjectPlanTaskItem taskItem in projectPlanResult.TaskItems)
             {
-                await _agentStatusEventPublisher.PublishAsync(new AgentGroupCreatedEvent
-                {
-                    GroupKey = AgentStatusCatalog.CreateReviewTaskGroupKey(taskItem),
-                    DisplayName = AgentStatusCatalog.CreateReviewTaskGroupDisplayName(taskItem),
-                    OccurredAtUtc = DateTimeOffset.UtcNow,
-                }, cancellationToken).ConfigureAwait(false);
+                await _agentEventBus.PublishGroupCreatedAsync(
+                    AgentStatusCatalog.CreateReviewTaskGroupKey(taskItem),
+                    AgentStatusCatalog.CreateReviewTaskGroupDisplayName(taskItem),
+                    cancellationToken).ConfigureAwait(false);
             }
         }
 

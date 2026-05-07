@@ -132,12 +132,12 @@ public sealed class ProjectPlanWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         ProjectPlanWorkflow workflow = new(
-            repositoryRootPath =>
+            (repositoryRootPath, _) =>
             {
                 createdPlanAgents++;
                 return CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer);
             },
-            (repositoryRootPath, scanProject) =>
+            (repositoryRootPath, scanProject, _) =>
                 CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
@@ -297,8 +297,8 @@ public sealed class ProjectPlanWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         ProjectPlanWorkflow workflow = new(
-            repositoryRootPath => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
-            (repositoryRootPath, currentScanProject) =>
+            (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
+            (repositoryRootPath, currentScanProject, _) =>
             {
                 ProjectVerifierAgentFactory factory =
                     new(CreateCompactionOptions(ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt));
@@ -366,7 +366,7 @@ public sealed class ProjectPlanWorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         ProjectPlanWorkflow workflow = new(
-            repositoryRootPath => new ProjectPlanAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, _) => new ProjectPlanAgentFactory(compactionOptions).Create(
                 planChatClient,
                 """
                 You are the Project Plan Agent for CodeSnifferDog.
@@ -377,7 +377,7 @@ public sealed class ProjectPlanWorkflowTests
                 repositoryRootPath,
                 taskItemStore,
                 verdictBuffer),
-            (repositoryRootPath, scanProject) =>
+            (repositoryRootPath, scanProject, _) =>
                 CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
@@ -471,8 +471,8 @@ public sealed class ProjectPlanWorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         return new ProjectPlanWorkflow(
-            repositoryRootPath => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
-            (repositoryRootPath, scanProject) =>
+            (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
+            (repositoryRootPath, scanProject, _) =>
                 CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
