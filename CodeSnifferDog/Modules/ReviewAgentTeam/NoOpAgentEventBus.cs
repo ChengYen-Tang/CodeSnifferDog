@@ -69,6 +69,26 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        public ValueTask PublishToolCallStartedAsync(
+            string toolCallId,
+            string toolName,
+            string? arguments,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toolCallId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishToolCallCompletedAsync(
+            string toolCallId,
+            string? result,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toolCallId);
+            return ValueTask.CompletedTask;
+        }
+
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
     }

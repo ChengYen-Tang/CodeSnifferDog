@@ -15,6 +15,180 @@ public sealed class ProjectAgentStatusEventSubscriberTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
+    public async Task ToolCallEvents_MergeIntoSingleToolTimelineEntry()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, eventStream.Events);
+
+        string groupKey = "group-1";
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
+        await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        await using CodeSnifferDogServerDbContext dbContext =
+            await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+
+        ProjectAgentGroupRecord group = await dbContext.ProjectAgentGroups
+            .SingleAsync(candidate => candidate.ProjectId == projectId && candidate.RuntimeKey == groupKey, TestContext.CancellationToken);
+        ProjectAgentRecord agent = await dbContext.ProjectAgents
+            .SingleAsync(candidate => candidate.ProjectAgentGroupId == group.Id && candidate.RuntimeKey == "agent-1", TestContext.CancellationToken);
+        List<ProjectAgentTimelineEntryRecord> entries = await dbContext.ProjectAgentTimelineEntries
+            .Where(entry => entry.ProjectAgentId == agent.Id)
+            .OrderBy(entry => entry.Sequence)
+            .ToListAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, entries);
+        Assert.AreEqual(ProjectAgentTimelineEntryType.Tool, entries[0].EntryType);
+        Assert.AreEqual("call-1", entries[0].ToolCallId);
+        Assert.AreEqual("CreateRuleReviewIssue", entries[0].ToolName);
+        Assert.AreEqual("{ \"Severity\": \"High\" }", entries[0].ToolArguments);
+        Assert.AreEqual("Created issue RRI-1", entries[0].ToolResult);
+        Assert.IsNull(entries[0].Message);
+        Assert.AreEqual(1L, entries[0].Sequence);
+    }
+
+    [TestMethod]
+    public async Task ToolCallCompletedEvent_WithoutStart_CreatesSingleToolTimelineEntry()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, eventStream.Events);
+
+        string groupKey = "group-1";
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        await using CodeSnifferDogServerDbContext dbContext =
+            await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+
+        ProjectAgentGroupRecord group = await dbContext.ProjectAgentGroups
+            .SingleAsync(candidate => candidate.ProjectId == projectId && candidate.RuntimeKey == groupKey, TestContext.CancellationToken);
+        ProjectAgentRecord agent = await dbContext.ProjectAgents
+            .SingleAsync(candidate => candidate.ProjectAgentGroupId == group.Id && candidate.RuntimeKey == "agent-1", TestContext.CancellationToken);
+        List<ProjectAgentTimelineEntryRecord> entries = await dbContext.ProjectAgentTimelineEntries
+            .Where(entry => entry.ProjectAgentId == agent.Id)
+            .OrderBy(entry => entry.Sequence)
+            .ToListAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, entries);
+        Assert.AreEqual(ProjectAgentTimelineEntryType.Tool, entries[0].EntryType);
+        Assert.AreEqual("call-1", entries[0].ToolCallId);
+        Assert.AreEqual("Created issue RRI-1", entries[0].ToolResult);
+        Assert.IsNull(entries[0].ToolName);
+        Assert.IsNull(entries[0].ToolArguments);
+        Assert.IsNull(entries[0].Message);
+        Assert.AreEqual(1L, entries[0].Sequence);
+    }
+
+    [TestMethod]
+    public async Task ToolCallStartedEvent_Replayed_UpdatesExistingToolTimelineEntry()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, eventStream.Events);
+
+        string groupKey = "group-1";
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
+        await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"Critical\" }", TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        await using CodeSnifferDogServerDbContext dbContext =
+            await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+
+        ProjectAgentGroupRecord group = await dbContext.ProjectAgentGroups
+            .SingleAsync(candidate => candidate.ProjectId == projectId && candidate.RuntimeKey == groupKey, TestContext.CancellationToken);
+        ProjectAgentRecord agent = await dbContext.ProjectAgents
+            .SingleAsync(candidate => candidate.ProjectAgentGroupId == group.Id && candidate.RuntimeKey == "agent-1", TestContext.CancellationToken);
+        List<ProjectAgentTimelineEntryRecord> entries = await dbContext.ProjectAgentTimelineEntries
+            .Where(entry => entry.ProjectAgentId == agent.Id)
+            .OrderBy(entry => entry.Sequence)
+            .ToListAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, entries);
+        Assert.AreEqual(ProjectAgentTimelineEntryType.Tool, entries[0].EntryType);
+        Assert.AreEqual("call-1", entries[0].ToolCallId);
+        Assert.AreEqual("CreateRuleReviewIssue", entries[0].ToolName);
+        Assert.AreEqual("{ \"Severity\": \"Critical\" }", entries[0].ToolArguments);
+        Assert.IsNull(entries[0].ToolResult);
+        Assert.AreEqual(1L, entries[0].Sequence);
+    }
+
+    [TestMethod]
+    public async Task ToolCallCompletedThenStarted_MergesIntoSingleToolTimelineEntry()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, eventStream.Events);
+
+        string groupKey = "group-1";
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
+        await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        await using CodeSnifferDogServerDbContext dbContext =
+            await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+
+        ProjectAgentGroupRecord group = await dbContext.ProjectAgentGroups
+            .SingleAsync(candidate => candidate.ProjectId == projectId && candidate.RuntimeKey == groupKey, TestContext.CancellationToken);
+        ProjectAgentRecord agent = await dbContext.ProjectAgents
+            .SingleAsync(candidate => candidate.ProjectAgentGroupId == group.Id && candidate.RuntimeKey == "agent-1", TestContext.CancellationToken);
+        List<ProjectAgentTimelineEntryRecord> entries = await dbContext.ProjectAgentTimelineEntries
+            .Where(entry => entry.ProjectAgentId == agent.Id)
+            .OrderBy(entry => entry.Sequence)
+            .ToListAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, entries);
+        Assert.AreEqual(ProjectAgentTimelineEntryType.Tool, entries[0].EntryType);
+        Assert.AreEqual("call-1", entries[0].ToolCallId);
+        Assert.AreEqual("CreateRuleReviewIssue", entries[0].ToolName);
+        Assert.AreEqual("{ \"Severity\": \"High\" }", entries[0].ToolArguments);
+        Assert.AreEqual("Created issue RRI-1", entries[0].ToolResult);
+        Assert.IsNull(entries[0].Message);
+        Assert.AreEqual(1L, entries[0].Sequence);
+    }
+
+    [TestMethod]
     public async Task MessageEvents_PersistInputAndOutputTimelineEntries()
     {
         Guid projectId = Guid.NewGuid();

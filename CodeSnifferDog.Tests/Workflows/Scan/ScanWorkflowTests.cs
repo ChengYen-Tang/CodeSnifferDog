@@ -265,6 +265,29 @@ public sealed class ScanWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_PublishesToolCallLifecycle_ViaAgentEventScope()
+    {
+        RecordingAgentEventBus eventBus = new();
+        ScanWorkflow workflow = CreateWorkflow(
+            HandleScanInvocation,
+            HandleVerifierInvocation,
+            agentEventBus: eventBus);
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsTrue(eventBus.Events.Any(record =>
+            record.EventType == "tool-start" &&
+            record.AgentKey == AgentStatusCatalog.CreateScanAgentKey() &&
+            record.ToolCallId == "scan-add-primary" &&
+            record.Payload == "AddScanProject"));
+        Assert.IsTrue(eventBus.Events.Any(record =>
+            record.EventType == "tool-complete" &&
+            record.AgentKey == AgentStatusCatalog.CreateScanAgentKey() &&
+            record.ToolCallId == "scan-add-primary"));
+    }
+
+    [TestMethod]
     public async Task RunAsync_PreservesCompactionArtifacts_AndCompletesWorkflow()
     {
         List<ChatInvocation> scanInvocations = [];
@@ -614,7 +637,7 @@ public sealed class ScanWorkflowTests
             string displayName,
             CancellationToken cancellationToken = default)
         {
-            Events.Add(new EventRecord("group", groupKey, null, displayName));
+            Events.Add(new EventRecord("group", groupKey, null, displayName, null));
             return ValueTask.CompletedTask;
         }
     }
@@ -633,7 +656,7 @@ public sealed class ScanWorkflowTests
             string initialStatus,
             CancellationToken cancellationToken = default)
         {
-            events.Add(new EventRecord("created", GroupKey, AgentKey, displayName));
+            events.Add(new EventRecord("created", GroupKey, AgentKey, displayName, null));
             return ValueTask.CompletedTask;
         }
 
@@ -641,7 +664,7 @@ public sealed class ScanWorkflowTests
             string status,
             CancellationToken cancellationToken = default)
         {
-            events.Add(new EventRecord("status", GroupKey, AgentKey, status));
+            events.Add(new EventRecord("status", GroupKey, AgentKey, status, null));
             return ValueTask.CompletedTask;
         }
 
@@ -649,7 +672,7 @@ public sealed class ScanWorkflowTests
             string message,
             CancellationToken cancellationToken = default)
         {
-            events.Add(new EventRecord("user", GroupKey, AgentKey, message));
+            events.Add(new EventRecord("user", GroupKey, AgentKey, message, null));
             return ValueTask.CompletedTask;
         }
 
@@ -657,16 +680,35 @@ public sealed class ScanWorkflowTests
             string message,
             CancellationToken cancellationToken = default)
         {
-            events.Add(new EventRecord("assistant", GroupKey, AgentKey, message));
+            events.Add(new EventRecord("assistant", GroupKey, AgentKey, message, null));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishToolCallStartedAsync(
+            string toolCallId,
+            string toolName,
+            string? arguments,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("tool-start", GroupKey, AgentKey, toolName, toolCallId));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishToolCallCompletedAsync(
+            string toolCallId,
+            string? result,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("tool-complete", GroupKey, AgentKey, result, toolCallId));
             return ValueTask.CompletedTask;
         }
 
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default)
         {
-            events.Add(new EventRecord("compaction", GroupKey, AgentKey, null));
+            events.Add(new EventRecord("compaction", GroupKey, AgentKey, null, null));
             return ValueTask.CompletedTask;
         }
     }
 
-    private sealed record EventRecord(string EventType, string GroupKey, string? AgentKey, string? Payload);
+    private sealed record EventRecord(string EventType, string GroupKey, string? AgentKey, string? Payload, string? ToolCallId);
 }

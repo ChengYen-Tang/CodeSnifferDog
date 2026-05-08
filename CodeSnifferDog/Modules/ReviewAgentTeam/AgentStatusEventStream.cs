@@ -140,6 +140,43 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        public ValueTask PublishToolCallStartedAsync(
+            string toolCallId,
+            string toolName,
+            string? arguments,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toolCallId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+
+            return _bus.PublishAsync(new ToolCallStartedEvent
+            {
+                GroupKey = GroupKey,
+                AgentKey = AgentKey,
+                ToolCallId = toolCallId.Trim(),
+                ToolName = toolName.Trim(),
+                Arguments = arguments,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken);
+        }
+
+        public ValueTask PublishToolCallCompletedAsync(
+            string toolCallId,
+            string? result,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toolCallId);
+
+            return _bus.PublishAsync(new ToolCallCompletedEvent
+            {
+                GroupKey = GroupKey,
+                AgentKey = AgentKey,
+                ToolCallId = toolCallId.Trim(),
+                Result = result,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken);
+        }
+
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) =>
             _bus.PublishAsync(new AgentCompactionEvent
             {

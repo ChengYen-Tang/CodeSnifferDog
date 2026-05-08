@@ -288,6 +288,7 @@ public sealed class RuleReviewWorkflow(
             foreach (ChatMessage message in response.Messages)
             {
                 messages.Add(message);
+                await AgentToolEventPublisher.PublishAsync(message, eventScope, cancellationToken).ConfigureAwait(false);
                 if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
                     await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
             }

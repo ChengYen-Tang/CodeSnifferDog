@@ -117,6 +117,13 @@ public sealed class CodeSnifferDogServerDbContext(DbContextOptions<CodeSnifferDo
                 entry.ProjectAgentId,
                 entry.OccurredAtUtc,
             });
+
+            entity.HasIndex(entry => new
+            {
+                entry.ProjectAgentId,
+                entry.ToolCallId,
+            }).IsUnique()
+            .HasFilter("[ToolCallId] IS NOT NULL");
         });
     }
 }

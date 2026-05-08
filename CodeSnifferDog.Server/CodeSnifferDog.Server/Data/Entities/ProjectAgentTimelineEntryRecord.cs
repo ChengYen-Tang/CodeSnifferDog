@@ -14,6 +14,8 @@ public sealed class ProjectAgentTimelineEntryRecord
 
     public string? ToolName { get; set; }
 
+    public string? ToolCallId { get; set; }
+
     public string? ToolArguments { get; set; }
 
     public string? ToolResult { get; set; }

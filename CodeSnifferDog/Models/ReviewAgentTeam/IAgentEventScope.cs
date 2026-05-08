@@ -23,5 +23,16 @@ public interface IAgentEventScope
         string message,
         CancellationToken cancellationToken = default);
 
+    ValueTask PublishToolCallStartedAsync(
+        string toolCallId,
+        string toolName,
+        string? arguments,
+        CancellationToken cancellationToken = default);
+
+    ValueTask PublishToolCallCompletedAsync(
+        string toolCallId,
+        string? result,
+        CancellationToken cancellationToken = default);
+
     ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default);
 }
