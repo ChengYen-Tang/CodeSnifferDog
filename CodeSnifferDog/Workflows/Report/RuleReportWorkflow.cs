@@ -96,6 +96,7 @@ public sealed class RuleReportWorkflow(
             AIAgent reportAggregatorAgent = createAggregatorResult.Value;
             AIAgent reportVerifierAgent = createVerifierResult.Value;
             List<ChatMessage> aggregatorMessages = CreateAggregatorMessages(currentFlowIssues);
+            int aggregatorPublishedMessageCount = 0;
 
             int aggregatorAttempts = 0;
             int verifierAttempts = 0;
@@ -106,7 +107,12 @@ public sealed class RuleReportWorkflow(
                 aggregatorAttempts++;
                 await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-                Result runAggregatorResult = await RunAgentAsync(reportAggregatorAgent, aggregatorMessages, cancellationToken).ConfigureAwait(false);
+                (Result runAggregatorResult, aggregatorPublishedMessageCount) = await RunAgentAsync(
+                    reportAggregatorAgent,
+                    aggregatorMessages,
+                    aggregatorAgentScope,
+                    aggregatorPublishedMessageCount,
+                    cancellationToken).ConfigureAwait(false);
 
                 if (runAggregatorResult.IsFailed)
                 {
@@ -126,8 +132,14 @@ public sealed class RuleReportWorkflow(
                 [
                     new(ChatRole.User, BuildVerifierInput(diff)),
                 ];
+                int verifierPublishedMessageCount = 0;
 
-                Result runVerifierResult = await RunAgentAsync(reportVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
+                (Result runVerifierResult, verifierPublishedMessageCount) = await RunAgentAsync(
+                    reportVerifierAgent,
+                    verifierMessages,
+                    verifierAgentScope,
+                    verifierPublishedMessageCount,
+                    cancellationToken).ConfigureAwait(false);
 
                 if (runVerifierResult.IsFailed)
                 {
@@ -256,23 +268,46 @@ public sealed class RuleReportWorkflow(
         left.ScopeCoverage == right.ScopeCoverage &&
         left.CrossScopeAnalysis == right.CrossScopeAnalysis;
 
-    private static async Task<Result> RunAgentAsync(
+    private static async Task<(Result Result, int PublishedMessageCount)> RunAgentAsync(
         AIAgent agent,
         List<ChatMessage> messages,
+        IAgentEventScope eventScope,
+        int publishedMessageCount,
         CancellationToken cancellationToken)
     {
         try
         {
+            await PublishPendingUserMessagesAsync(messages, eventScope, publishedMessageCount, cancellationToken).ConfigureAwait(false);
             AgentResponse response = await agent.RunAsync(messages, session: null, options: null, cancellationToken).ConfigureAwait(false);
 
             foreach (ChatMessage message in response.Messages)
+            {
                 messages.Add(message);
+                if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
+                    await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
+            }
 
-            return Result.Ok();
+            publishedMessageCount = messages.Count;
+
+            return (Result.Ok(), publishedMessageCount);
         }
         catch (Exception ex)
         {
-            return Result.Fail(new ExceptionalError($"Agent run failed: {ex}", ex));
+            return (Result.Fail(new ExceptionalError($"Agent run failed: {ex}", ex)), publishedMessageCount);
+        }
+    }
+
+    private static async ValueTask PublishPendingUserMessagesAsync(
+        List<ChatMessage> messages,
+        IAgentEventScope eventScope,
+        int publishedMessageCount,
+        CancellationToken cancellationToken)
+    {
+        for (int index = publishedMessageCount; index < messages.Count; index++)
+        {
+            ChatMessage message = messages[index];
+            if (message.Role == ChatRole.User && !string.IsNullOrWhiteSpace(message.Text))
+                await eventScope.PublishUserMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
         }
     }
 

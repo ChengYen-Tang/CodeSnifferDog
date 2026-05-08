@@ -61,6 +61,7 @@ public sealed class ScanWorkflow(
             cancellationToken).ConfigureAwait(false);
 
         List<ChatMessage> scanMessages = CreateScanMessages(repositoryRootPath);
+        int scanPublishedMessageCount = 0;
 
         int scanAttempts = 0;
         int verifierAttempts = 0;
@@ -73,7 +74,12 @@ public sealed class ScanWorkflow(
             scanAttempts++;
             await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-            Result runScanResult = await RunAgentAsync(scanAgent, scanMessages, cancellationToken).ConfigureAwait(false);
+            (Result runScanResult, scanPublishedMessageCount) = await RunAgentAsync(
+                scanAgent,
+                scanMessages,
+                scanAgentScope,
+                scanPublishedMessageCount,
+                cancellationToken).ConfigureAwait(false);
 
             if (runScanResult.IsFailed)
             {
@@ -102,6 +108,7 @@ public sealed class ScanWorkflow(
                     scanAgent = _scanAgentFactory(repositoryRootPath, scanAgentScope);
                     await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
                     scanMessages = CreateScanMessages(repositoryRootPath);
+                    scanPublishedMessageCount = 0;
                     missingSubmissionAttempts = 0;
                     continue;
                 }
@@ -119,8 +126,14 @@ public sealed class ScanWorkflow(
             [
                 new(ChatRole.User, BuildVerifierInput(projects)),
             ];
+            int verifierPublishedMessageCount = 0;
 
-            Result runVerifierResult = await RunAgentAsync(scanVerifierAgent, verifierMessages, cancellationToken).ConfigureAwait(false);
+            (Result runVerifierResult, verifierPublishedMessageCount) = await RunAgentAsync(
+                scanVerifierAgent,
+                verifierMessages,
+                scanVerifierAgentScope,
+                verifierPublishedMessageCount,
+                cancellationToken).ConfigureAwait(false);
 
             if (runVerifierResult.IsFailed)
             {
@@ -175,23 +188,46 @@ public sealed class ScanWorkflow(
             ScanAgentResetCount = scanAgentResetCount,
         };
 
-    private static async Task<Result> RunAgentAsync(
+    private static async Task<(Result Result, int PublishedMessageCount)> RunAgentAsync(
         AIAgent agent,
         List<ChatMessage> messages,
+        IAgentEventScope eventScope,
+        int publishedMessageCount,
         CancellationToken cancellationToken)
     {
         try
         {
+            await PublishPendingUserMessagesAsync(messages, eventScope, publishedMessageCount, cancellationToken).ConfigureAwait(false);
             AgentResponse response = await agent.RunAsync(messages, session: null, options: null, cancellationToken).ConfigureAwait(false);
 
             foreach (ChatMessage message in response.Messages)
+            {
                 messages.Add(message);
+                if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
+                    await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
+            }
 
-            return Result.Ok();
+            publishedMessageCount = messages.Count;
+
+            return (Result.Ok(), publishedMessageCount);
         }
         catch (Exception ex)
         {
-            return Result.Fail(new ExceptionalError($"Agent run failed: {ex}", ex));
+            return (Result.Fail(new ExceptionalError($"Agent run failed: {ex}", ex)), publishedMessageCount);
+        }
+    }
+
+    private static async ValueTask PublishPendingUserMessagesAsync(
+        List<ChatMessage> messages,
+        IAgentEventScope eventScope,
+        int publishedMessageCount,
+        CancellationToken cancellationToken)
+    {
+        for (int index = publishedMessageCount; index < messages.Count; index++)
+        {
+            ChatMessage message = messages[index];
+            if (message.Role == ChatRole.User && !string.IsNullOrWhiteSpace(message.Text))
+                await eventScope.PublishUserMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
         }
     }
 

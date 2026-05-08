@@ -110,6 +110,36 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        public ValueTask PublishUserMessageAsync(
+            string message,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+            return _bus.PublishAsync(new UserMessageAppendedEvent
+            {
+                GroupKey = GroupKey,
+                AgentKey = AgentKey,
+                Message = message.Trim(),
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken);
+        }
+
+        public ValueTask PublishAssistantMessageAsync(
+            string message,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+            return _bus.PublishAsync(new AssistantMessageAppendedEvent
+            {
+                GroupKey = GroupKey,
+                AgentKey = AgentKey,
+                Message = message.Trim(),
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken);
+        }
+
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) =>
             _bus.PublishAsync(new AgentCompactionEvent
             {

@@ -15,5 +15,13 @@ public interface IAgentEventScope
         string status,
         CancellationToken cancellationToken = default);
 
+    ValueTask PublishUserMessageAsync(
+        string message,
+        CancellationToken cancellationToken = default);
+
+    ValueTask PublishAssistantMessageAsync(
+        string message,
+        CancellationToken cancellationToken = default);
+
     ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default);
 }

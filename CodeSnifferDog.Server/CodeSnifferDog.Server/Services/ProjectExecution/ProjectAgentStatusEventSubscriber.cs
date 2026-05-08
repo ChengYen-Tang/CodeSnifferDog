@@ -71,6 +71,26 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
                 await UpdateAgentStatusAsync(statusChangedEvent, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case UserMessageAppendedEvent userMessageEvent:
+                await AppendTimelineEntryAsync(
+                    userMessageEvent.GroupKey,
+                    userMessageEvent.AgentKey,
+                    ProjectAgentTimelineEntryType.Input,
+                    userMessageEvent.Message,
+                    userMessageEvent.OccurredAtUtc,
+                    cancellationToken).ConfigureAwait(false);
+                return;
+
+            case AssistantMessageAppendedEvent assistantMessageEvent:
+                await AppendTimelineEntryAsync(
+                    assistantMessageEvent.GroupKey,
+                    assistantMessageEvent.AgentKey,
+                    ProjectAgentTimelineEntryType.Output,
+                    assistantMessageEvent.Message,
+                    assistantMessageEvent.OccurredAtUtc,
+                    cancellationToken).ConfigureAwait(false);
+                return;
+
             case AgentCompactionEvent compactionEvent:
                 await AppendCompactionEntryAsync(compactionEvent, cancellationToken).ConfigureAwait(false);
                 return;
@@ -158,9 +178,26 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
 
     private async Task AppendCompactionEntryAsync(AgentCompactionEvent agentEvent, CancellationToken cancellationToken)
     {
+        await AppendTimelineEntryAsync(
+            agentEvent.GroupKey,
+            agentEvent.AgentKey,
+            ProjectAgentTimelineEntryType.Compaction,
+            message: null,
+            agentEvent.OccurredAtUtc,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task AppendTimelineEntryAsync(
+        string groupKey,
+        string agentKey,
+        ProjectAgentTimelineEntryType entryType,
+        string? message,
+        DateTimeOffset occurredAtUtc,
+        CancellationToken cancellationToken)
+    {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        ProjectAgentRecord agent = await GetAgentAsync(dbContext, agentEvent.GroupKey, agentEvent.AgentKey, cancellationToken).ConfigureAwait(false);
+        ProjectAgentRecord agent = await GetAgentAsync(dbContext, groupKey, agentKey, cancellationToken).ConfigureAwait(false);
         long nextSequence = (await dbContext.ProjectAgentTimelineEntries
             .Where(entry => entry.ProjectAgentId == agent.Id)
             .MaxAsync(entry => (long?)entry.Sequence, cancellationToken)
@@ -171,8 +208,9 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             Id = Guid.NewGuid(),
             ProjectAgentId = agent.Id,
             Sequence = nextSequence,
-            EntryType = ProjectAgentTimelineEntryType.Compaction,
-            OccurredAtUtc = agentEvent.OccurredAtUtc,
+            EntryType = entryType,
+            Message = message,
+            OccurredAtUtc = occurredAtUtc,
         });
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

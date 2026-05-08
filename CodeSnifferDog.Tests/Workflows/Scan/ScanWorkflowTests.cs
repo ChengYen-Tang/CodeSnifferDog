@@ -1,6 +1,7 @@
 using CodeSnifferDog.Agents.Scan;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
@@ -239,6 +240,31 @@ public sealed class ScanWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_PublishesUserAndAssistantMessages_ViaAgentEventScope()
+    {
+        RecordingAgentEventBus eventBus = new();
+        ScanWorkflow workflow = CreateWorkflow(
+            HandleScanInvocation,
+            HandleVerifierInvocation,
+            agentEventBus: eventBus);
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.IsTrue(eventBus.Events.Any(record => record.EventType == "user" && record.AgentKey == AgentStatusCatalog.CreateScanAgentKey()));
+        Assert.IsTrue(eventBus.Events.Any(record => record.EventType == "assistant" && record.AgentKey == AgentStatusCatalog.CreateScanAgentKey()));
+
+        int firstUserIndex = eventBus.Events.FindIndex(record =>
+            record.EventType == "user" && record.AgentKey == AgentStatusCatalog.CreateScanAgentKey());
+        int firstAssistantIndex = eventBus.Events.FindIndex(record =>
+            record.EventType == "assistant" && record.AgentKey == AgentStatusCatalog.CreateScanAgentKey());
+
+        Assert.IsGreaterThanOrEqualTo(0, firstUserIndex);
+        Assert.IsGreaterThanOrEqualTo(0, firstAssistantIndex);
+        Assert.IsLessThan(firstAssistantIndex, firstUserIndex);
+    }
+
+    [TestMethod]
     public async Task RunAsync_PreservesCompactionArtifacts_AndCompletesWorkflow()
     {
         List<ChatInvocation> scanInvocations = [];
@@ -371,7 +397,8 @@ public sealed class ScanWorkflowTests
     private static ScanWorkflow CreateWorkflow(
         Func<ChatInvocation, ChatResponse> scanResponseFactory,
         Func<ChatInvocation, ChatResponse> verifierResponseFactory,
-        ScanWorkflowOptions? options = null)
+        ScanWorkflowOptions? options = null,
+        IAgentEventBus? agentEventBus = null)
     {
         ScriptedChatClient scanChatClient = new(scanResponseFactory);
         ScriptedChatClient verifierChatClient = new(verifierResponseFactory);
@@ -385,7 +412,8 @@ public sealed class ScanWorkflowTests
             scanProjectStore,
             verdictBuffer,
             promptAssetReader,
-            options);
+            options,
+            agentEventBus);
     }
 
     private static ScanToolSet CreateToolSet()
@@ -573,4 +601,72 @@ public sealed class ScanWorkflowTests
             return ValueTask.FromResult(response);
         }
     }
+
+    private sealed class RecordingAgentEventBus : IAgentEventBus
+    {
+        public List<EventRecord> Events { get; } = [];
+
+        public IAgentEventScope CreateScope(string groupKey, string agentKey) =>
+            new RecordingAgentEventScope(groupKey, agentKey, Events);
+
+        public ValueTask PublishGroupCreatedAsync(
+            string groupKey,
+            string displayName,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add(new EventRecord("group", groupKey, null, displayName));
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingAgentEventScope(
+        string groupKey,
+        string agentKey,
+        List<EventRecord> events) : IAgentEventScope
+    {
+        public string GroupKey { get; } = groupKey;
+
+        public string AgentKey { get; } = agentKey;
+
+        public ValueTask PublishCreatedAsync(
+            string displayName,
+            string initialStatus,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("created", GroupKey, AgentKey, displayName));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishStatusChangedAsync(
+            string status,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("status", GroupKey, AgentKey, status));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishUserMessageAsync(
+            string message,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("user", GroupKey, AgentKey, message));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishAssistantMessageAsync(
+            string message,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("assistant", GroupKey, AgentKey, message));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("compaction", GroupKey, AgentKey, null));
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed record EventRecord(string EventType, string GroupKey, string? AgentKey, string? Payload);
 }

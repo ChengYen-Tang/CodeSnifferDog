@@ -53,6 +53,22 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        public ValueTask PublishUserMessageAsync(
+            string message,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(message);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishAssistantMessageAsync(
+            string message,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(message);
+            return ValueTask.CompletedTask;
+        }
+
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
     }
