@@ -1,90 +1,248 @@
 @page "/agent-status"
 @rendermode InteractiveServer
 
+@using System.Net
+@using System.Net.Http.Json
+@using CodeSnifferDog.Server.Shared.AgentStatus
+@using CodeSnifferDog.Server.Shared.Projects
+@inject HttpClient HttpClient
+
 <PageTitle>Agent Status</PageTitle>
 
 @code {
-    private readonly IReadOnlyList<AgentGroup> _agentGroups =
-    [
-        new(
-            "TG-001",
-            "Controllers + Services",
-            "Running",
-            [
-                new("Rule Review Agent", "Created 10:14", "Running"),
-                new("Review Verifier Agent", "Created 10:15", "Waiting"),
-                new("Report Aggregator", "Created 10:16", "Waiting"),
-                new("Report Verifier", "Created 10:16", "Waiting")
-            ]),
-        new(
-            "TG-002",
-            "Repositories + Models",
-            "Running",
-            [
-                new("Rule Review Agent", "Created 10:13", "Running"),
-                new("Review Verifier Agent", "Created 10:14", "Waiting")
-            ]),
-        new(
-            "TG-003",
-            "Interop Boundary",
-            "Completed",
-            [
-                new("Rule Review Agent", "Created 10:08", "Completed"),
-                new("Review Verifier Agent", "Created 10:08", "Completed"),
-                new("Report Aggregator", "Created 10:09", "Completed"),
-                new("Report Verifier", "Created 10:09", "Completed")
-            ])
-    ];
+    [SupplyParameterFromQuery(Name = "projectId")]
+    public Guid? ProjectId { get; set; }
 
-    private readonly IReadOnlyList<HistoryEntry> _history =
-    [
-        HistoryEntry.Input("Start review for task group TG-001 using memory-leak.md."),
-        HistoryEntry.Output("I will inspect the scope entry files first, then follow ownership across reconnect, session lifecycle, and event subscription paths before submitting issues or a no-issue conclusion."),
-        HistoryEntry.Tool("RunRipgrepCommand", "rg -n \"Connected|Disconnected|Dispose|CancellationToken\" Payment.Service", "18 matches across 6 files"),
-        HistoryEntry.Tool("RunShellCommand", "Get-ChildItem Payment.Service -Recurse -Filter *.cs", "42 files"),
-        HistoryEntry.Output("The reconnect path attaches a handler in SessionCache, then replacement is delegated through RetryCoordinator. I need to inspect WorkerSession before deciding whether the old handler is detached on cancellation."),
-        HistoryEntry.Tool("RunRipgrepCommand", "rg -n \"class WorkerSession|event|OnConnected\" Payment.Service", "7 matches across 3 files"),
-        HistoryEntry.Compaction("Context automatically compacted"),
-        HistoryEntry.Input("Verifier rejected the first result. Continue with the missing cross-scope evidence."),
-        HistoryEntry.Output("Rejected. The issue is plausible, but the submitted evidence does not yet prove whether the previous session remains reachable after reconnect. Follow WorkerSession ownership and submit an updated issue with the missing evidence chain."),
-        HistoryEntry.Output("I followed WorkerSession and ConnectionEvents. The previous session remains subscribed until replacement completes, but cancellation can interrupt before detach."),
-        HistoryEntry.Tool("CreateRuleReviewIssue", "{ IssueType = \"Memory leak risk\", Severity = \"High\", Confidence = \"High\" }", "Created issue RRI-1042"),
-        HistoryEntry.Tool("ListRuleReviewIssues", "No arguments", "1 issue returned"),
-        HistoryEntry.Output("I submitted one RuleReviewIssue with updated ScopeCoverage and CrossScopeAnalysis.")
-    ];
+    private readonly AgentStatusPageState _pageState = AgentStatusPageState.CreateEmpty();
+    private bool _hasHandledParameters;
+    private Guid? _loadedProjectId;
 
-    private readonly HashSet<string> _expandedToolDetails = ["tool-2", "tool-9"];
+    private AgentStatusSnapshotState Snapshot => _pageState.Snapshot;
 
-    private void ToggleToolDetails(string key)
+    private AgentStatusLiveConnectionState LiveConnection => _pageState.LiveConnection;
+
+    private AgentStatusSelectionState Selection => _pageState.Selection;
+
+    private ProjectAgentSnapshotDto? SelectedAgent =>
+        Selection.SelectedAgentId is null
+            ? null
+            : Snapshot.FindAgent(Selection.SelectedAgentId.Value);
+
+    private IReadOnlyList<ProjectAgentTimelineEntryDto> SelectedHistory =>
+        Selection.SelectedAgentId is null
+            ? []
+            : Snapshot.GetHistory(Selection.SelectedAgentId.Value);
+
+    protected override async Task OnParametersSetAsync()
     {
-        if (!_expandedToolDetails.Add(key))
+        if (_hasHandledParameters && _loadedProjectId == ProjectId)
+            return;
+
+        _hasHandledParameters = true;
+        await LoadSnapshotAsync().ConfigureAwait(false);
+    }
+
+    private async Task LoadSnapshotAsync()
+    {
+        if (ProjectId is null)
         {
-            _expandedToolDetails.Remove(key);
+            _pageState.SetSnapshot(null);
+            _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "No project selected.");
+            _loadedProjectId = null;
+            return;
+        }
+
+        _pageState.SetSnapshotLoadState(isLoading: true, errorMessage: null);
+        StateHasChanged();
+
+        try
+        {
+            HttpResponseMessage response = await HttpClient.GetAsync(
+                $"/api/projects/{ProjectId.Value}/agent-status",
+                HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _pageState.SetSnapshot(null);
+                _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "Project snapshot was not found.");
+                return;
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            ProjectAgentStatusSnapshotDto? snapshot = await response.Content
+                .ReadFromJsonAsync<ProjectAgentStatusSnapshotDto>()
+                .ConfigureAwait(false);
+
+            if (snapshot is null)
+            {
+                _pageState.SetSnapshot(null);
+                _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "Project snapshot response was empty.");
+                return;
+            }
+
+            _pageState.SetSnapshot(snapshot);
+            _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: null);
+            _loadedProjectId = ProjectId;
+        }
+        catch (Exception exception)
+        {
+            _pageState.SetSnapshot(null);
+            _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: $"Failed to load snapshot: {exception.Message}");
         }
     }
 
-    private static string StatusCss(string status) => status switch
+    private void SelectAgent(Guid agentId)
     {
-        "Running" => "status-running",
-        "Waiting" => "status-waiting",
-        "Completed" => "status-completed",
-        "Degraded" => "status-degraded",
+        Selection.SelectAgent(agentId);
+    }
+
+    private void ToggleToolDetails(string key)
+    {
+        Selection.ToggleToolDetails(key);
+    }
+
+    private static string StatusCss(ProjectAgentRunStatus status) => status switch
+    {
+        ProjectAgentRunStatus.Running => "status-running",
+        ProjectAgentRunStatus.Waiting => "status-waiting",
+        ProjectAgentRunStatus.Completed => "status-completed",
+        ProjectAgentRunStatus.Degraded => "status-degraded",
         _ => "status-waiting"
     };
 
-    private sealed record AgentGroup(string Id, string Name, string Status, IReadOnlyList<AgentNode> Agents);
-
-    private sealed record AgentNode(string Name, string CreatedAt, string Status);
-
-    private sealed record HistoryEntry(string Kind, string Message, string? ToolName, string? Arguments, string? Result)
+    private static string FormatStatus(ProjectAgentRunStatus status) => status switch
     {
-        public static HistoryEntry Input(string message) => new("Input", message, null, null, null);
+        ProjectAgentRunStatus.Running => "Running",
+        ProjectAgentRunStatus.Waiting => "Waiting",
+        ProjectAgentRunStatus.Completed => "Completed",
+        ProjectAgentRunStatus.Degraded => "Degraded",
+        _ => "Waiting"
+    };
 
-        public static HistoryEntry Output(string message) => new("Output", message, null, null, null);
+    private static string FormatCreatedAt(DateTimeOffset createdAtUtc) => $"Created {createdAtUtc:HH:mm}";
 
-        public static HistoryEntry Tool(string toolName, string arguments, string result) => new("Tool", string.Empty, toolName, arguments, result);
+    private sealed class AgentStatusPageState(
+        AgentStatusSnapshotState snapshot,
+        AgentStatusLiveConnectionState liveConnection,
+        AgentStatusSelectionState selection)
+    {
+        public AgentStatusSnapshotState Snapshot { get; } = snapshot;
 
-        public static HistoryEntry Compaction(string message) => new("Compaction", message, null, null, null);
+        public AgentStatusLiveConnectionState LiveConnection { get; } = liveConnection;
+
+        public AgentStatusSelectionState Selection { get; } = selection;
+
+        public bool IsSnapshotLoading { get; private set; }
+
+        public string? SnapshotLoadErrorMessage { get; private set; }
+
+        public string SnapshotLoadStatusText =>
+            SnapshotLoadErrorMessage is not null
+                ? "Snapshot unavailable"
+                : IsSnapshotLoading
+                    ? "Snapshot loading"
+                    : Snapshot.Snapshot is not null
+                        ? "Snapshot loaded"
+                        : "Idle";
+
+        public static AgentStatusPageState CreateEmpty() =>
+            new(
+                new AgentStatusSnapshotState(null),
+                new AgentStatusLiveConnectionState(isConnected: false, isSubscribed: false, statusText: "Idle"),
+                new AgentStatusSelectionState(selectedAgentId: null, expandedToolDetails: []));
+
+        public void SetSnapshot(ProjectAgentStatusSnapshotDto? snapshot)
+        {
+            Snapshot.Replace(snapshot);
+            Selection.ApplySnapshot(snapshot);
+        }
+
+        public void SetLiveConnection(bool isConnected, bool isSubscribed, string statusText)
+        {
+            LiveConnection.Update(isConnected, isSubscribed, statusText);
+        }
+
+        public void SetSnapshotLoadState(bool isLoading, string? errorMessage)
+        {
+            IsSnapshotLoading = isLoading;
+            SnapshotLoadErrorMessage = errorMessage;
+        }
+    }
+
+    private sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
+    {
+        public ProjectAgentStatusSnapshotDto? Snapshot { get; private set; } = snapshot;
+
+        public IReadOnlyList<ProjectAgentGroupSnapshotDto> Groups => Snapshot?.AgentGroups ?? [];
+
+        public void Replace(ProjectAgentStatusSnapshotDto? snapshot)
+        {
+            Snapshot = snapshot;
+        }
+
+        public ProjectAgentSnapshotDto? FindAgent(Guid agentId) =>
+            Groups.SelectMany(group => group.Agents).FirstOrDefault(agent => agent.AgentId == agentId);
+
+        public IReadOnlyList<ProjectAgentTimelineEntryDto> GetHistory(Guid agentId) =>
+            FindAgent(agentId)?.TimelineEntries ?? [];
+    }
+
+    private sealed class AgentStatusLiveConnectionState(bool isConnected, bool isSubscribed, string statusText)
+    {
+        public bool IsConnected { get; private set; } = isConnected;
+
+        public bool IsSubscribed { get; private set; } = isSubscribed;
+
+        public string StatusText { get; private set; } = statusText;
+
+        public void Update(bool isConnected, bool isSubscribed, string statusText)
+        {
+            IsConnected = isConnected;
+            IsSubscribed = isSubscribed;
+            StatusText = statusText;
+        }
+    }
+
+    private sealed class AgentStatusSelectionState(Guid? selectedAgentId, HashSet<string> expandedToolDetails)
+    {
+        public Guid? SelectedAgentId { get; private set; } = selectedAgentId;
+
+        public HashSet<string> ExpandedToolDetails { get; } = expandedToolDetails;
+
+        public void SelectAgent(Guid agentId)
+        {
+            SelectedAgentId = agentId;
+        }
+
+        public void ApplySnapshot(ProjectAgentStatusSnapshotDto? snapshot)
+        {
+            if (snapshot is null)
+            {
+                SelectedAgentId = null;
+                return;
+            }
+
+            bool selectedAgentStillExists =
+                SelectedAgentId is not null &&
+                snapshot.AgentGroups.SelectMany(group => group.Agents).Any(agent => agent.AgentId == SelectedAgentId.Value);
+
+            if (selectedAgentStillExists)
+                return;
+
+            SelectedAgentId = snapshot.AgentGroups
+                .SelectMany(group => group.Agents)
+                .Select(agent => (Guid?)agent.AgentId)
+                .FirstOrDefault();
+        }
+
+        public void ToggleToolDetails(string key)
+        {
+            if (!ExpandedToolDetails.Add(key))
+            {
+                ExpandedToolDetails.Remove(key);
+            }
+        }
     }
 }
 
@@ -92,8 +250,18 @@
     <div class="d-flex align-items-start justify-content-between gap-3">
         <div>
             <h1 class="h2 mb-0 fw-bold text-dark-emphasis">Agent Status</h1>
+            <div class="small text-body-secondary mt-1">@_pageState.SnapshotLoadStatusText</div>
         </div>
     </div>
+
+    @if (_pageState.IsSnapshotLoading)
+    {
+        <div class="alert alert-info mt-3 mb-0" role="status">Loading agent snapshot...</div>
+    }
+    else if (_pageState.SnapshotLoadErrorMessage is not null)
+    {
+        <div class="alert alert-warning mt-3 mb-0" role="alert">@_pageState.SnapshotLoadErrorMessage</div>
+    }
 
     <div class="agent-status-console">
         <aside class="agent-roster-pane">
@@ -102,19 +270,24 @@
             </div>
 
             <div class="agent-group-list">
-                @foreach (var group in _agentGroups)
+                @foreach (var group in Snapshot.Groups)
                 {
                     <section class="agent-group-card">
+                        <div class="agent-group-name">@group.DisplayName</div>
                         <div class="agent-node-list">
                             @foreach (var agent in group.Agents)
                             {
-                                <div class="agent-roster-node">
+                                var isSelected = agent.AgentId == Selection.SelectedAgentId;
+
+                                <button type="button"
+                                        class="agent-roster-node @(isSelected ? "selected" : null)"
+                                        @onclick="() => SelectAgent(agent.AgentId)">
                                     <div class="agent-roster-main">
-                                        <div class="agent-roster-name">@agent.Name</div>
-                                        <div class="agent-roster-rule">@agent.CreatedAt</div>
+                                        <div class="agent-roster-name">@agent.DisplayName</div>
+                                        <div class="agent-roster-rule">@FormatCreatedAt(agent.CreatedAtUtc)</div>
                                     </div>
-                                    <span class="agent-status-dot @StatusCss(agent.Status)" title="@agent.Status"></span>
-                                </div>
+                                    <span class="agent-status-dot @StatusCss(agent.Status)" title="@FormatStatus(agent.Status)"></span>
+                                </button>
                             }
                         </div>
                     </section>
@@ -126,18 +299,22 @@
             <div class="agent-history-toolbar">
                 <div>
                     <div class="agent-history-title">History</div>
+                    @if (SelectedAgent is not null)
+                    {
+                        <div class="small text-body-secondary">@SelectedAgent.DisplayName</div>
+                    }
                 </div>
             </div>
 
             <div class="agent-chat-log">
-                @for (var index = 0; index < _history.Count; index++)
+                @for (var index = 0; index < SelectedHistory.Count; index++)
                 {
-                    var entry = _history[index];
-                    var isInput = entry.Kind == "Input";
-                    var isTool = entry.Kind == "Tool";
-                    var isCompaction = entry.Kind == "Compaction";
-                    var toolKey = $"tool-{index}";
-                    var isExpanded = _expandedToolDetails.Contains(toolKey);
+                    var entry = SelectedHistory[index];
+                    var isInput = entry.EntryKind == ProjectAgentTimelineEntryKind.Input;
+                    var isTool = entry.EntryKind == ProjectAgentTimelineEntryKind.Tool;
+                    var isCompaction = entry.EntryKind == ProjectAgentTimelineEntryKind.Compaction;
+                    var toolKey = entry.ToolCallId ?? entry.TimelineEntryId.ToString("N");
+                    var isExpanded = Selection.ExpandedToolDetails.Contains(toolKey);
 
                     @if (isCompaction)
                     {
@@ -170,9 +347,9 @@
                                 {
                                     <div class="tool-call-item">
                                         <div class="tool-call-label">Arguments</div>
-                                        <pre>@entry.Arguments</pre>
+                                        <pre>@entry.ToolArguments</pre>
                                         <div class="tool-call-label">Result</div>
-                                        <pre>@entry.Result</pre>
+                                        <pre>@entry.ToolResult</pre>
                                     </div>
                                 }
                             }

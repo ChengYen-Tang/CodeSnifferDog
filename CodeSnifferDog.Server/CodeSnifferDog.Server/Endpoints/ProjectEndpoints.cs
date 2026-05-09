@@ -1,5 +1,7 @@
 using CodeSnifferDog.Server.Services.ProjectIntake;
+using CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
 using CodeSnifferDog.Server.Services.ProjectReports;
+using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using CodeSnifferDog.Server.Shared.Reports;
 using System.IO.Compression;
@@ -25,6 +27,9 @@ public static class ProjectEndpoints
 
         group.MapGet("/{projectId:guid}/reports", GetProjectReportsAsync)
             .WithName("GetProjectReports");
+
+        group.MapGet("/{projectId:guid}/agent-status", GetProjectAgentStatusSnapshotAsync)
+            .WithName("GetProjectAgentStatusSnapshot");
 
         group.MapGet("/{projectId:guid}/reports/{reportId:guid}/download", DownloadProjectReportAsync)
             .WithName("DownloadProjectReport");
@@ -86,6 +91,15 @@ public static class ProjectEndpoints
     {
         ProjectReportBundleDto? reports = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
         return reports is null ? Results.NotFound() : Results.Ok(reports);
+    }
+
+    private static async Task<IResult> GetProjectAgentStatusSnapshotAsync(
+        Guid projectId,
+        IProjectAgentStatusSnapshotService projectAgentStatusSnapshotService,
+        CancellationToken cancellationToken)
+    {
+        ProjectAgentStatusSnapshotDto? snapshot = await projectAgentStatusSnapshotService.GetSnapshotAsync(projectId, cancellationToken);
+        return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
     }
 
     private static async Task<IResult> DownloadProjectReportAsync(
