@@ -1,6 +1,8 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Shared.AgentStatus;
+using IProjectAgentStatusLiveUpdateNotifier = CodeSnifferDog.Server.Services.ProjectAgentStatus.IProjectAgentStatusLiveUpdateNotifier;
 using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution;
@@ -9,6 +11,7 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
 {
     private readonly Guid _projectId;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory;
+    private readonly IProjectAgentStatusLiveUpdateNotifier _liveUpdateNotifier;
     private readonly IDisposable _subscription;
     private readonly object _sync = new();
     private Task _processingTail = Task.CompletedTask;
@@ -17,13 +20,16 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
     public ProjectAgentStatusEventSubscriber(
         Guid projectId,
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+        IProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier,
         IObservable<AgentStatusEvent> events)
     {
         ArgumentNullException.ThrowIfNull(dbContextFactory);
+        ArgumentNullException.ThrowIfNull(liveUpdateNotifier);
         ArgumentNullException.ThrowIfNull(events);
 
         _projectId = projectId;
         _dbContextFactory = dbContextFactory;
+        _liveUpdateNotifier = liveUpdateNotifier;
         _subscription = events.Subscribe(Enqueue);
     }
 
@@ -119,19 +125,23 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
         {
             existingGroup.DisplayName = agentEvent.DisplayName;
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await NotifyAsync(CreateGroupUpdate(existingGroup), cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        dbContext.ProjectAgentGroups.Add(new ProjectAgentGroupRecord
+        ProjectAgentGroupRecord group = new()
         {
             Id = Guid.NewGuid(),
             ProjectId = _projectId,
             RuntimeKey = agentEvent.GroupKey,
             DisplayName = agentEvent.DisplayName,
             CreatedAtUtc = agentEvent.OccurredAtUtc,
-        });
+        };
+
+        dbContext.ProjectAgentGroups.Add(group);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(CreateGroupUpdate(group), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task UpsertAgentAsync(AgentCreatedEvent agentEvent, CancellationToken cancellationToken)
@@ -158,10 +168,11 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             existingAgent.DisplayName = agentEvent.DisplayName;
             existingAgent.Status = ParseStatus(agentEvent.InitialStatus);
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await NotifyAsync(CreateAgentUpsertUpdate(existingAgent), cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        dbContext.ProjectAgents.Add(new ProjectAgentRecord
+        ProjectAgentRecord agent = new()
         {
             Id = Guid.NewGuid(),
             ProjectAgentGroupId = group.Id,
@@ -169,9 +180,12 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             DisplayName = agentEvent.DisplayName,
             Status = ParseStatus(agentEvent.InitialStatus),
             CreatedAtUtc = agentEvent.OccurredAtUtc,
-        });
+        };
+
+        dbContext.ProjectAgents.Add(agent);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(CreateAgentUpsertUpdate(agent), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task UpdateAgentStatusAsync(AgentStatusChangedEvent agentEvent, CancellationToken cancellationToken)
@@ -182,6 +196,7 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
 
         agent.Status = ParseStatus(agentEvent.Status);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(CreateAgentStatusChangedUpdate(agent.Id, agent.Status, agentEvent.OccurredAtUtc), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task AppendCompactionEntryAsync(AgentCompactionEvent agentEvent, CancellationToken cancellationToken)
@@ -211,6 +226,7 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
         entry.ToolArguments = agentEvent.Arguments;
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(CreateTimelineEntryUpsertUpdate(entry), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task CompleteToolCallEntryAsync(ToolCallCompletedEvent agentEvent, CancellationToken cancellationToken)
@@ -227,6 +243,7 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
 
         entry.ToolResult = agentEvent.Result;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(CreateTimelineEntryUpsertUpdate(entry), cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<ProjectAgentTimelineEntryRecord> GetOrCreateToolTimelineEntryAsync(
@@ -283,7 +300,7 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             .MaxAsync(entry => (long?)entry.Sequence, cancellationToken)
             .ConfigureAwait(false) ?? 0) + 1;
 
-        dbContext.ProjectAgentTimelineEntries.Add(new ProjectAgentTimelineEntryRecord
+        ProjectAgentTimelineEntryRecord entry = new()
         {
             Id = Guid.NewGuid(),
             ProjectAgentId = agent.Id,
@@ -291,9 +308,12 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             EntryType = entryType,
             Message = message,
             OccurredAtUtc = occurredAtUtc,
-        });
+        };
+
+        dbContext.ProjectAgentTimelineEntries.Add(entry);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(CreateTimelineEntryUpsertUpdate(entry), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<ProjectAgentRecord> GetAgentAsync(
@@ -312,13 +332,103 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
                 cancellationToken)
             .ConfigureAwait(false);
 
-    private static ProjectAgentStatus ParseStatus(string status) =>
+    private static Data.Entities.ProjectAgentStatus ParseStatus(string status) =>
         status.Trim() switch
         {
-            "Waiting" => ProjectAgentStatus.Waiting,
-            "Running" => ProjectAgentStatus.Running,
-            "Completed" => ProjectAgentStatus.Completed,
-            "Degraded" => ProjectAgentStatus.Degraded,
+            "Waiting" => Data.Entities.ProjectAgentStatus.Waiting,
+            "Running" => Data.Entities.ProjectAgentStatus.Running,
+            "Completed" => Data.Entities.ProjectAgentStatus.Completed,
+            "Degraded" => Data.Entities.ProjectAgentStatus.Degraded,
             _ => throw new InvalidOperationException($"Unsupported agent status '{status}'."),
+        };
+
+    private Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken) =>
+        _liveUpdateNotifier.NotifyAsync(update, cancellationToken);
+
+    private ProjectAgentLiveUpdateDto CreateGroupUpdate(ProjectAgentGroupRecord group) =>
+        new()
+        {
+            ProjectId = _projectId,
+            Kind = ProjectAgentLiveUpdateKind.AgentGroupUpserted,
+            OccurredAtUtc = group.CreatedAtUtc,
+            Group = new ProjectAgentGroupLiveDto
+            {
+                GroupId = group.Id,
+                RuntimeKey = group.RuntimeKey,
+                DisplayName = group.DisplayName,
+                CreatedAtUtc = group.CreatedAtUtc,
+            },
+        };
+
+    private ProjectAgentLiveUpdateDto CreateAgentUpsertUpdate(ProjectAgentRecord agent) =>
+        new()
+        {
+            ProjectId = _projectId,
+            Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
+            OccurredAtUtc = agent.CreatedAtUtc,
+            Agent = new ProjectAgentLiveDto
+            {
+                AgentId = agent.Id,
+                GroupId = agent.ProjectAgentGroupId,
+                RuntimeKey = agent.RuntimeKey,
+                DisplayName = agent.DisplayName,
+                Status = MapAgentStatus(agent.Status),
+                CreatedAtUtc = agent.CreatedAtUtc,
+            },
+        };
+
+    private ProjectAgentLiveUpdateDto CreateAgentStatusChangedUpdate(Guid agentId, Data.Entities.ProjectAgentStatus status, DateTimeOffset occurredAtUtc) =>
+        new()
+        {
+            ProjectId = _projectId,
+            Kind = ProjectAgentLiveUpdateKind.AgentStatusChanged,
+            OccurredAtUtc = occurredAtUtc,
+            AgentStatus = new ProjectAgentStatusChangedDto
+            {
+                AgentId = agentId,
+                Status = MapAgentStatus(status),
+                OccurredAtUtc = occurredAtUtc,
+            },
+        };
+
+    private ProjectAgentLiveUpdateDto CreateTimelineEntryUpsertUpdate(ProjectAgentTimelineEntryRecord entry) =>
+        new()
+        {
+            ProjectId = _projectId,
+            Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
+            OccurredAtUtc = entry.OccurredAtUtc,
+            TimelineEntry = new ProjectAgentTimelineEntryDto
+            {
+                TimelineEntryId = entry.Id,
+                AgentId = entry.ProjectAgentId,
+                Sequence = entry.Sequence,
+                EntryKind = MapTimelineEntryKind(entry.EntryType),
+                OccurredAtUtc = entry.OccurredAtUtc,
+                Message = entry.Message,
+                ToolCallId = entry.ToolCallId,
+                ToolName = entry.ToolName,
+                ToolArguments = entry.ToolArguments,
+                ToolResult = entry.ToolResult,
+            },
+        };
+
+    private static ProjectAgentRunStatus MapAgentStatus(Data.Entities.ProjectAgentStatus status) =>
+        status switch
+        {
+            Data.Entities.ProjectAgentStatus.Waiting => ProjectAgentRunStatus.Waiting,
+            Data.Entities.ProjectAgentStatus.Running => ProjectAgentRunStatus.Running,
+            Data.Entities.ProjectAgentStatus.Completed => ProjectAgentRunStatus.Completed,
+            Data.Entities.ProjectAgentStatus.Degraded => ProjectAgentRunStatus.Degraded,
+            _ => throw new InvalidOperationException($"Unsupported persisted agent status '{status}'."),
+        };
+
+    private static ProjectAgentTimelineEntryKind MapTimelineEntryKind(ProjectAgentTimelineEntryType entryType) =>
+        entryType switch
+        {
+            ProjectAgentTimelineEntryType.Input => ProjectAgentTimelineEntryKind.Input,
+            ProjectAgentTimelineEntryType.Output => ProjectAgentTimelineEntryKind.Output,
+            ProjectAgentTimelineEntryType.Tool => ProjectAgentTimelineEntryKind.Tool,
+            ProjectAgentTimelineEntryType.Compaction => ProjectAgentTimelineEntryKind.Compaction,
+            _ => throw new InvalidOperationException($"Unsupported persisted timeline entry type '{entryType}'."),
         };
 }

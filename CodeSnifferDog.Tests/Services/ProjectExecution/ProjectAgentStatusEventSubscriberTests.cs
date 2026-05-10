@@ -2,7 +2,9 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,9 +23,10 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, eventStream.Events);
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -65,9 +68,10 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, eventStream.Events);
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -108,9 +112,10 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, eventStream.Events);
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -151,9 +156,10 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, eventStream.Events);
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -195,9 +201,10 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, eventStream.Events);
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -241,9 +248,10 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, eventStream.Events);
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -268,7 +276,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
             .OrderBy(entry => entry.Sequence)
             .ToListAsync(TestContext.CancellationToken);
 
-        Assert.AreEqual(ProjectAgentStatus.Waiting, agent.Status);
+        Assert.AreEqual(CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus.Waiting, agent.Status);
         Assert.HasCount(2, entries);
         Assert.IsTrue(entries.All(entry => entry.EntryType == ProjectAgentTimelineEntryType.Compaction));
         Assert.AreEqual(1L, entries[0].Sequence);
@@ -279,6 +287,102 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         Assert.IsTrue(entries.All(entry => entry.ToolResult is null));
     }
 
+    [TestMethod]
+    public async Task LiveUpdates_PublishGroupAgentStatusAndTimelineProjectionEvents()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+
+        string groupKey = "group-1";
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishStatusChangedAsync("Running", TestContext.CancellationToken);
+        await agentScope.PublishUserMessageAsync("Inspect Program.cs", TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        Assert.HasCount(4, liveUpdateNotifier.Updates);
+        Assert.IsTrue(liveUpdateNotifier.Updates.All(update => update.ProjectId == projectId));
+
+        ProjectAgentLiveUpdateDto groupUpdate = liveUpdateNotifier.Updates[0];
+        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentGroupUpserted, groupUpdate.Kind);
+        Assert.IsNotNull(groupUpdate.Group);
+        ProjectAgentGroupLiveDto group = groupUpdate.Group;
+        Assert.AreEqual("Review Task 1", group.DisplayName);
+
+        ProjectAgentLiveUpdateDto agentUpdate = liveUpdateNotifier.Updates[1];
+        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentUpserted, agentUpdate.Kind);
+        Assert.IsNotNull(agentUpdate.Agent);
+        ProjectAgentLiveDto agent = agentUpdate.Agent;
+        Assert.AreEqual("Rule Review", agent.DisplayName);
+        Assert.AreEqual(ProjectAgentRunStatus.Waiting, agent.Status);
+
+        ProjectAgentLiveUpdateDto statusUpdate = liveUpdateNotifier.Updates[2];
+        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentStatusChanged, statusUpdate.Kind);
+        Assert.IsNotNull(statusUpdate.AgentStatus);
+        ProjectAgentStatusChangedDto agentStatus = statusUpdate.AgentStatus;
+        Assert.AreEqual(ProjectAgentRunStatus.Running, agentStatus.Status);
+        Assert.AreEqual(agent.AgentId, agentStatus.AgentId);
+
+        ProjectAgentLiveUpdateDto timelineUpdate = liveUpdateNotifier.Updates[3];
+        Assert.AreEqual(ProjectAgentLiveUpdateKind.TimelineEntryUpserted, timelineUpdate.Kind);
+        Assert.IsNotNull(timelineUpdate.TimelineEntry);
+        ProjectAgentTimelineEntryDto timelineEntry = timelineUpdate.TimelineEntry;
+        Assert.AreEqual(ProjectAgentTimelineEntryKind.Input, timelineEntry.EntryKind);
+        Assert.AreEqual("Inspect Program.cs", timelineEntry.Message);
+        Assert.AreEqual(agent.AgentId, timelineEntry.AgentId);
+    }
+
+    [TestMethod]
+    public async Task ToolProjectionLiveUpdates_UseSameTimelineEntryIdAcrossUpserts()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+
+        string groupKey = "group-1";
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
+        await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        List<ProjectAgentLiveUpdateDto> timelineUpdates = liveUpdateNotifier.Updates
+            .Where(update => update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
+            .ToList();
+
+        Assert.HasCount(2, timelineUpdates);
+        Assert.IsNotNull(timelineUpdates[0].TimelineEntry);
+        Assert.IsNotNull(timelineUpdates[1].TimelineEntry);
+        ProjectAgentTimelineEntryDto firstTimelineEntry = timelineUpdates[0].TimelineEntry!;
+        ProjectAgentTimelineEntryDto secondTimelineEntry = timelineUpdates[1].TimelineEntry!;
+        Assert.AreEqual(firstTimelineEntry.TimelineEntryId, secondTimelineEntry.TimelineEntryId);
+        Assert.AreEqual("call-1", firstTimelineEntry.ToolCallId);
+        Assert.AreEqual("Created issue RRI-1", firstTimelineEntry.ToolResult);
+        Assert.IsNull(firstTimelineEntry.ToolName);
+        Assert.AreEqual("CreateRuleReviewIssue", secondTimelineEntry.ToolName);
+        Assert.AreEqual("{ \"Severity\": \"High\" }", secondTimelineEntry.ToolArguments);
+        Assert.AreEqual("Created issue RRI-1", secondTimelineEntry.ToolResult);
+    }
+
     private static ServiceProvider CreateServices()
     {
         InMemoryDatabaseRoot databaseRoot = new();
@@ -287,5 +391,16 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
         return services.BuildServiceProvider();
+    }
+
+    private sealed class CollectingProjectAgentStatusLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
+    {
+        public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
+
+        public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default)
+        {
+            Updates.Add(update);
+            return Task.CompletedTask;
+        }
     }
 }

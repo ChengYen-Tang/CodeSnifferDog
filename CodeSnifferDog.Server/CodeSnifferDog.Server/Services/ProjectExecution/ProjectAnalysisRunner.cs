@@ -20,6 +20,7 @@ using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Modules.Tools.Scan;
 using CodeSnifferDog.Server.Data;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Workflows.ProjectPlan;
 using CodeSnifferDog.Workflows.Report;
@@ -38,6 +39,7 @@ public sealed class ProjectAnalysisRunner(
     IReviewRuleMarkdownProvider ruleMarkdownProvider,
     IProjectReportService projectReportService,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier,
     IOptions<ProjectExecutionOptions> options,
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider,
@@ -47,6 +49,7 @@ public sealed class ProjectAnalysisRunner(
     private readonly IReviewRuleMarkdownProvider _ruleMarkdownProvider = ruleMarkdownProvider;
     private readonly IProjectReportService _projectReportService = projectReportService;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IProjectAgentStatusLiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
@@ -78,7 +81,7 @@ public sealed class ProjectAnalysisRunner(
         InMemoryRuleReportIssueStore ruleReportIssueStore = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber eventSubscriber =
-            new(context.ProjectId, _dbContextFactory, eventStream.Events);
+            new(context.ProjectId, _dbContextFactory, _projectAgentStatusLiveUpdateNotifier, eventStream.Events);
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory(chatClient, ruleReportIssueStore, eventStream);
         IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports;
 

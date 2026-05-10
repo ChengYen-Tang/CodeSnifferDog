@@ -3,6 +3,7 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Endpoints;
 using CodeSnifferDog.Server.Hubs;
 using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
 using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.ProjectReports;
@@ -31,10 +32,13 @@ builder.Services.AddSingleton<IProjectChatClientProvider, ProjectChatClientProvi
 builder.Services.AddSingleton<IReviewRuleMarkdownProvider, FileSystemReviewRuleMarkdownProvider>();
 builder.Services.AddScoped<IProjectAnalysisRunner, ProjectAnalysisRunner>();
 builder.Services.AddScoped<IProjectAgentStatusSnapshotService, ProjectAgentStatusSnapshotService>();
+builder.Services.AddScoped<IProjectAgentStatusLiveBackfillService, ProjectAgentStatusLiveBackfillService>();
+builder.Services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, SignalRProjectAgentStatusLiveSubscriptionClient>();
 builder.Services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
 builder.Services.AddScoped<IProjectReportService, ProjectReportService>();
 builder.Services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();
 builder.Services.AddSingleton<IProjectUpdatesNotifier, SignalRProjectUpdatesNotifier>();
+builder.Services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, SignalRProjectAgentStatusLiveUpdateNotifier>();
 builder.Services.AddHostedService<ProjectExecutionHostedService>();
 builder.Services.AddScoped(sp =>
 {

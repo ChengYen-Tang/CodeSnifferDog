@@ -1,11 +1,14 @@
 @page "/agent-status"
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using System.Net
 @using System.Net.Http.Json
+@using CodeSnifferDog.Server.Services.ProjectAgentStatus
 @using CodeSnifferDog.Server.Shared.AgentStatus
 @using CodeSnifferDog.Server.Shared.Projects
 @inject HttpClient HttpClient
+@inject IProjectAgentStatusLiveSubscriptionClient LiveSubscriptionClient
 
 <PageTitle>Agent Status</PageTitle>
 
@@ -46,6 +49,9 @@
     {
         if (ProjectId is null)
         {
+            await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+            _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Idle");
+            _pageState.SetLiveConnectionError(null);
             _pageState.SetSnapshot(null);
             _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "No project selected.");
             _loadedProjectId = null;
@@ -63,6 +69,9 @@
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
+                await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+                _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
+                _pageState.SetLiveConnectionError(null);
                 _pageState.SetSnapshot(null);
                 _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "Project snapshot was not found.");
                 return;
@@ -76,6 +85,9 @@
 
             if (snapshot is null)
             {
+                await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+                _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
+                _pageState.SetLiveConnectionError(null);
                 _pageState.SetSnapshot(null);
                 _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "Project snapshot response was empty.");
                 return;
@@ -83,10 +95,25 @@
 
             _pageState.SetSnapshot(snapshot);
             _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: null);
+            try
+            {
+                await SubscribeToLiveUpdatesAsync(snapshot).ConfigureAwait(false);
+                _pageState.SetLiveConnectionError(null);
+            }
+            catch (Exception exception)
+            {
+                await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+                _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Live unavailable");
+                _pageState.SetLiveConnectionError($"Failed to connect live updates: {exception.Message}");
+            }
+
             _loadedProjectId = ProjectId;
         }
         catch (Exception exception)
         {
+            await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+            _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Connection failed");
+            _pageState.SetLiveConnectionError(null);
             _pageState.SetSnapshot(null);
             _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: $"Failed to load snapshot: {exception.Message}");
         }
@@ -100,6 +127,52 @@
     private void ToggleToolDetails(string key)
     {
         Selection.ToggleToolDetails(key);
+    }
+
+    internal void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+
+        if (ProjectId is null || update.ProjectId != ProjectId.Value)
+            return;
+
+        _pageState.ApplyLiveUpdate(update);
+    }
+
+    private async Task SubscribeToLiveUpdatesAsync(ProjectAgentStatusSnapshotDto snapshot)
+    {
+        ProjectAgentLiveSubscriptionRequestDto request = new()
+        {
+            ProjectId = snapshot.ProjectId,
+            SnapshotGeneratedAtUtc = snapshot.SnapshotGeneratedAtUtc,
+            AgentCursors = snapshot.AgentGroups
+                .SelectMany(group => group.Agents)
+                .Select(agent => new ProjectAgentLiveCursorDto
+                {
+                    AgentId = agent.AgentId,
+                    LatestSequence = agent.TimelineEntries.Count == 0 ? 0 : agent.TimelineEntries.Max(entry => entry.Sequence),
+                })
+                .ToList(),
+        };
+
+        _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Connecting");
+        StateHasChanged();
+
+        await LiveSubscriptionClient.SubscribeAsync(
+            request,
+            update =>
+            {
+                ApplyLiveUpdate(update);
+                return InvokeAsync(StateHasChanged);
+            }).ConfigureAwait(false);
+
+        _pageState.SetLiveConnection(isConnected: true, isSubscribed: true, statusText: "Live");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await LiveSubscriptionClient.DisposeAsync().ConfigureAwait(false);
     }
 
     private static string StatusCss(ProjectAgentRunStatus status) => status switch
@@ -137,6 +210,8 @@
 
         public string? SnapshotLoadErrorMessage { get; private set; }
 
+        public string? LiveConnectionErrorMessage { get; private set; }
+
         public string SnapshotLoadStatusText =>
             SnapshotLoadErrorMessage is not null
                 ? "Snapshot unavailable"
@@ -163,10 +238,23 @@
             LiveConnection.Update(isConnected, isSubscribed, statusText);
         }
 
+        public void SetLiveConnectionError(string? errorMessage)
+        {
+            LiveConnectionErrorMessage = errorMessage;
+        }
+
         public void SetSnapshotLoadState(bool isLoading, string? errorMessage)
         {
             IsSnapshotLoading = isLoading;
             SnapshotLoadErrorMessage = errorMessage;
+        }
+
+        public void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
+        {
+            if (!Snapshot.ApplyLiveUpdate(update))
+                return;
+
+            Selection.ApplySnapshot(Snapshot.Snapshot);
         }
     }
 
@@ -181,11 +269,219 @@
             Snapshot = snapshot;
         }
 
+        public bool ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
+        {
+            if (Snapshot is null)
+                return false;
+
+            return update.Kind switch
+            {
+                ProjectAgentLiveUpdateKind.AgentGroupUpserted => UpsertGroup(update.Group),
+                ProjectAgentLiveUpdateKind.AgentUpserted => UpsertAgent(update.Agent),
+                ProjectAgentLiveUpdateKind.AgentStatusChanged => UpdateAgentStatus(update.AgentStatus),
+                ProjectAgentLiveUpdateKind.TimelineEntryUpserted => UpsertTimelineEntry(update.TimelineEntry),
+                _ => false,
+            };
+        }
+
         public ProjectAgentSnapshotDto? FindAgent(Guid agentId) =>
             Groups.SelectMany(group => group.Agents).FirstOrDefault(agent => agent.AgentId == agentId);
 
         public IReadOnlyList<ProjectAgentTimelineEntryDto> GetHistory(Guid agentId) =>
             FindAgent(agentId)?.TimelineEntries ?? [];
+
+        private bool UpsertGroup(ProjectAgentGroupLiveDto? group)
+        {
+            if (group is null || Snapshot is null)
+                return false;
+
+            List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+            int existingIndex = groups.FindIndex(candidate => candidate.GroupId == group.GroupId);
+            ProjectAgentGroupSnapshotDto nextGroup = existingIndex >= 0
+                ? new ProjectAgentGroupSnapshotDto
+                {
+                    GroupId = group.GroupId,
+                    RuntimeKey = group.RuntimeKey,
+                    DisplayName = group.DisplayName,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                    Agents = groups[existingIndex].Agents,
+                }
+                : new ProjectAgentGroupSnapshotDto
+                {
+                    GroupId = group.GroupId,
+                    RuntimeKey = group.RuntimeKey,
+                    DisplayName = group.DisplayName,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                    Agents = [],
+                };
+
+            if (existingIndex >= 0)
+                groups[existingIndex] = nextGroup;
+            else
+                groups.Add(nextGroup);
+
+            ReplaceSnapshotGroups(groups);
+            return true;
+        }
+
+        private bool UpsertAgent(ProjectAgentLiveDto? agent)
+        {
+            if (agent is null || Snapshot is null)
+                return false;
+
+            List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+            int groupIndex = groups.FindIndex(group => group.GroupId == agent.GroupId);
+            if (groupIndex < 0)
+                return false;
+
+            ProjectAgentGroupSnapshotDto group = groups[groupIndex];
+            List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
+            int existingIndex = agents.FindIndex(candidate => candidate.AgentId == agent.AgentId);
+            IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+                existingIndex >= 0 ? agents[existingIndex].TimelineEntries : [];
+
+            ProjectAgentSnapshotDto nextAgent = new()
+            {
+                AgentId = agent.AgentId,
+                GroupId = agent.GroupId,
+                RuntimeKey = agent.RuntimeKey,
+                DisplayName = agent.DisplayName,
+                Status = agent.Status,
+                CreatedAtUtc = agent.CreatedAtUtc,
+                TimelineEntries = timelineEntries,
+            };
+
+            if (existingIndex >= 0)
+                agents[existingIndex] = nextAgent;
+            else
+                agents.Add(nextAgent);
+
+            groups[groupIndex] = new ProjectAgentGroupSnapshotDto
+            {
+                GroupId = group.GroupId,
+                RuntimeKey = group.RuntimeKey,
+                DisplayName = group.DisplayName,
+                CreatedAtUtc = group.CreatedAtUtc,
+                Agents = agents
+                    .OrderBy(candidate => candidate.CreatedAtUtc)
+                    .ThenBy(candidate => candidate.DisplayName, StringComparer.Ordinal)
+                    .ToList(),
+            };
+
+            ReplaceSnapshotGroups(groups);
+            return true;
+        }
+
+        private bool UpdateAgentStatus(ProjectAgentStatusChangedDto? agentStatus)
+        {
+            if (agentStatus is null || Snapshot is null)
+                return false;
+
+            List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+            for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
+            {
+                ProjectAgentGroupSnapshotDto group = groups[groupIndex];
+                List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
+                int agentIndex = agents.FindIndex(candidate => candidate.AgentId == agentStatus.AgentId);
+                if (agentIndex < 0)
+                    continue;
+
+                ProjectAgentSnapshotDto existingAgent = agents[agentIndex];
+                agents[agentIndex] = new ProjectAgentSnapshotDto
+                {
+                    AgentId = existingAgent.AgentId,
+                    GroupId = existingAgent.GroupId,
+                    RuntimeKey = existingAgent.RuntimeKey,
+                    DisplayName = existingAgent.DisplayName,
+                    Status = agentStatus.Status,
+                    CreatedAtUtc = existingAgent.CreatedAtUtc,
+                    TimelineEntries = existingAgent.TimelineEntries,
+                };
+
+                groups[groupIndex] = new ProjectAgentGroupSnapshotDto
+                {
+                    GroupId = group.GroupId,
+                    RuntimeKey = group.RuntimeKey,
+                    DisplayName = group.DisplayName,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                    Agents = agents,
+                };
+
+                ReplaceSnapshotGroups(groups);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool UpsertTimelineEntry(ProjectAgentTimelineEntryDto? timelineEntry)
+        {
+            if (timelineEntry is null || Snapshot is null)
+                return false;
+
+            List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+            for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
+            {
+                ProjectAgentGroupSnapshotDto group = groups[groupIndex];
+                List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
+                int agentIndex = agents.FindIndex(candidate => candidate.AgentId == timelineEntry.AgentId);
+                if (agentIndex < 0)
+                    continue;
+
+                ProjectAgentSnapshotDto agent = agents[agentIndex];
+                List<ProjectAgentTimelineEntryDto> timelineEntries = agent.TimelineEntries.ToList();
+                int existingIndex = timelineEntries.FindIndex(candidate => candidate.TimelineEntryId == timelineEntry.TimelineEntryId);
+                if (existingIndex >= 0)
+                    timelineEntries[existingIndex] = timelineEntry;
+                else
+                    timelineEntries.Add(timelineEntry);
+
+                agents[agentIndex] = new ProjectAgentSnapshotDto
+                {
+                    AgentId = agent.AgentId,
+                    GroupId = agent.GroupId,
+                    RuntimeKey = agent.RuntimeKey,
+                    DisplayName = agent.DisplayName,
+                    Status = agent.Status,
+                    CreatedAtUtc = agent.CreatedAtUtc,
+                    TimelineEntries = timelineEntries
+                        .OrderBy(candidate => candidate.Sequence)
+                        .ThenBy(candidate => candidate.OccurredAtUtc)
+                        .ToList(),
+                };
+
+                groups[groupIndex] = new ProjectAgentGroupSnapshotDto
+                {
+                    GroupId = group.GroupId,
+                    RuntimeKey = group.RuntimeKey,
+                    DisplayName = group.DisplayName,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                    Agents = agents,
+                };
+
+                ReplaceSnapshotGroups(groups);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ReplaceSnapshotGroups(IReadOnlyList<ProjectAgentGroupSnapshotDto> groups)
+        {
+            if (Snapshot is null)
+                return;
+
+            Snapshot = new ProjectAgentStatusSnapshotDto
+            {
+                ProjectId = Snapshot.ProjectId,
+                ProjectStatus = Snapshot.ProjectStatus,
+                SnapshotGeneratedAtUtc = Snapshot.SnapshotGeneratedAtUtc,
+                AgentGroups = groups
+                    .OrderBy(group => group.CreatedAtUtc)
+                    .ThenBy(group => group.DisplayName, StringComparer.Ordinal)
+                    .ToList(),
+            };
+        }
     }
 
     private sealed class AgentStatusLiveConnectionState(bool isConnected, bool isSubscribed, string statusText)
@@ -261,6 +557,11 @@
     else if (_pageState.SnapshotLoadErrorMessage is not null)
     {
         <div class="alert alert-warning mt-3 mb-0" role="alert">@_pageState.SnapshotLoadErrorMessage</div>
+    }
+
+    @if (_pageState.LiveConnectionErrorMessage is not null)
+    {
+        <div class="alert alert-warning mt-3 mb-0" role="alert">@_pageState.LiveConnectionErrorMessage</div>
     }
 
     <div class="agent-status-console">

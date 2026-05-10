@@ -19,6 +19,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.7" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.5.0" />
     <PackageReference Include="OpenAI" Version="2.10.0" />
     <ProjectReference Include="..\..\CodeSnifferDog\CodeSnifferDog.csproj" />
