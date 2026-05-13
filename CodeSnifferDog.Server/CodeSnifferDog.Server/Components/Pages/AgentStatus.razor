@@ -19,6 +19,8 @@
     private readonly AgentStatusPageState _pageState = AgentStatusPageState.CreateEmpty();
     private bool _hasHandledParameters;
     private Guid? _loadedProjectId;
+    private int _reconnectReloadInProgress;
+    private bool _disposed;
 
     private AgentStatusSnapshotState Snapshot => _pageState.Snapshot;
 
@@ -164,7 +166,9 @@
             {
                 ApplyLiveUpdate(update);
                 return InvokeAsync(StateHasChanged);
-            }).ConfigureAwait(false);
+            },
+            HandleReconnectingAsync,
+            HandleReconnectRequiredAsync).ConfigureAwait(false);
 
         _pageState.SetLiveConnection(isConnected: true, isSubscribed: true, statusText: "Live");
         await InvokeAsync(StateHasChanged);
@@ -172,7 +176,45 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         await LiveSubscriptionClient.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private async Task HandleReconnectRequiredAsync()
+    {
+        if (_disposed || ProjectId is null)
+            return;
+
+        if (Interlocked.Exchange(ref _reconnectReloadInProgress, 1) == 1)
+            return;
+
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Reconnecting");
+                _pageState.SetLiveConnectionError("Live connection interrupted. Reloading snapshot...");
+                StateHasChanged();
+                await LoadSnapshotAsync();
+            });
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _reconnectReloadInProgress, 0);
+        }
+    }
+
+    private Task HandleReconnectingAsync()
+    {
+        if (_disposed || ProjectId is null)
+            return Task.CompletedTask;
+
+        return InvokeAsync(() =>
+        {
+            _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Reconnecting");
+            _pageState.SetLiveConnectionError("Live connection interrupted. Reconnecting...");
+            StateHasChanged();
+        });
     }
 
     private static string StatusCss(ProjectAgentRunStatus status) => status switch

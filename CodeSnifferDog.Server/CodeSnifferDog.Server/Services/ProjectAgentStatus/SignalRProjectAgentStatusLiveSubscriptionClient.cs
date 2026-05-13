@@ -10,16 +10,24 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
     private HubConnection? _connection;
     private Guid? _subscribedProjectId;
     private Func<ProjectAgentLiveUpdateDto, Task>? _onUpdate;
+    private Func<Task>? _onReconnecting;
+    private Func<Task>? _onReconnectRequired;
 
     public async Task SubscribeAsync(
         ProjectAgentLiveSubscriptionRequestDto request,
         Func<ProjectAgentLiveUpdateDto, Task> onUpdate,
+        Func<Task> onReconnecting,
+        Func<Task> onReconnectRequired,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(onUpdate);
+        ArgumentNullException.ThrowIfNull(onReconnecting);
+        ArgumentNullException.ThrowIfNull(onReconnectRequired);
 
         _onUpdate = onUpdate;
+        _onReconnecting = onReconnecting;
+        _onReconnectRequired = onReconnectRequired;
         await EnsureConnectionAsync(cancellationToken).ConfigureAwait(false);
 
         if (_subscribedProjectId is Guid subscribedProjectId)
@@ -55,6 +63,7 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
         {
             _connection = new HubConnectionBuilder()
                 .WithUrl(new Uri(_httpClient.BaseAddress!, ProjectUpdatesContract.HubPath))
+                .WithAutomaticReconnect()
                 .Build();
 
             _connection.On<ProjectAgentLiveUpdateDto>(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update =>
@@ -62,6 +71,10 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
                 Func<ProjectAgentLiveUpdateDto, Task>? handler = _onUpdate;
                 return handler is null ? Task.CompletedTask : handler(update);
             });
+
+            _connection.Reconnecting += _ => NotifyReconnectingAsync();
+            _connection.Reconnected += _ => NotifyReconnectRequiredAsync();
+            _connection.Closed += _ => NotifyReconnectRequiredAsync();
         }
 
         if (_connection.State == HubConnectionState.Connected)
@@ -80,5 +93,19 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
 
         _subscribedProjectId = null;
         _onUpdate = null;
+        _onReconnecting = null;
+        _onReconnectRequired = null;
+    }
+
+    private Task NotifyReconnectingAsync()
+    {
+        Func<Task>? handler = _onReconnecting;
+        return handler is null ? Task.CompletedTask : handler();
+    }
+
+    private Task NotifyReconnectRequiredAsync()
+    {
+        Func<Task>? handler = _onReconnectRequired;
+        return handler is null ? Task.CompletedTask : handler();
     }
 }

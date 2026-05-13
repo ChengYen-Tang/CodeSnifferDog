@@ -889,6 +889,158 @@ public sealed class AgentStatusTests
         });
     }
 
+    [TestMethod]
+    public void ReconnectRequired_ReloadsSnapshotAndResubscribesLive()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000206");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000206");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000207");
+
+        ProjectAgentStatusSnapshotDto firstSnapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 15, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 15, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000208"),
+                                    agentId,
+                                    1,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "History v1")
+                            ])
+                    ])
+            ]);
+
+        ProjectAgentStatusSnapshotDto secondSnapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 15, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Completed,
+                            new DateTimeOffset(2026, 5, 10, 15, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000208"),
+                                    agentId,
+                                    1,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "History v1"),
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000209"),
+                                    agentId,
+                                    2,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "History v2")
+                            ])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([firstSnapshot, secondSnapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = context.RenderComponent<AgentStatus>();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "History v1");
+            Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+        });
+
+        liveSubscriptionClient.TriggerReconnectRequired();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.HasCount(2, liveSubscriptionClient.SubscribeCalls);
+            StringAssert.Contains(cut.Markup, "History v2");
+            Assert.AreEqual("Completed", cut.Find(".agent-status-dot").GetAttribute("title"));
+        });
+    }
+
+    [TestMethod]
+    public void Reconnecting_ImmediatelyShowsReconnectingStateBeforeReload()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000207");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000207");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000208");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 16, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 16, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000210"),
+                                    agentId,
+                                    1,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "History v1")
+                            ])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = context.RenderComponent<AgentStatus>();
+        cut.WaitForAssertion(() => Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls));
+
+        liveSubscriptionClient.TriggerReconnecting();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Live connection interrupted. Reconnecting...");
+            StringAssert.Contains(cut.Markup, "Agent A");
+            StringAssert.Contains(cut.Markup, "History v1");
+        });
+    }
+
     private static ProjectAgentStatusSnapshotDto CreateSnapshot(
         Guid projectId,
         IReadOnlyList<ProjectAgentGroupSnapshotDto> groups) => new()
@@ -1032,6 +1184,8 @@ public sealed class AgentStatusTests
     private sealed class FakeProjectAgentStatusLiveSubscriptionClient : IProjectAgentStatusLiveSubscriptionClient
     {
         private Func<ProjectAgentLiveUpdateDto, Task>? _onUpdate;
+        private Func<Task>? _onReconnecting;
+        private Func<Task>? _onReconnectRequired;
 
         public List<ProjectAgentLiveSubscriptionRequestDto> SubscribeCalls { get; } = [];
 
@@ -1044,6 +1198,8 @@ public sealed class AgentStatusTests
         public Task SubscribeAsync(
             ProjectAgentLiveSubscriptionRequestDto request,
             Func<ProjectAgentLiveUpdateDto, Task> onUpdate,
+            Func<Task> onReconnecting,
+            Func<Task> onReconnectRequired,
             CancellationToken cancellationToken = default)
         {
             if (SubscribeException is not null)
@@ -1051,6 +1207,8 @@ public sealed class AgentStatusTests
 
             SubscribeCalls.Add(request);
             _onUpdate = onUpdate;
+            _onReconnecting = onReconnecting;
+            _onReconnectRequired = onReconnectRequired;
             return Task.CompletedTask;
         }
 
@@ -1064,6 +1222,18 @@ public sealed class AgentStatusTests
         {
             Assert.IsNotNull(_onUpdate);
             _onUpdate(update).GetAwaiter().GetResult();
+        }
+
+        public void TriggerReconnectRequired()
+        {
+            Assert.IsNotNull(_onReconnectRequired);
+            _onReconnectRequired().GetAwaiter().GetResult();
+        }
+
+        public void TriggerReconnecting()
+        {
+            Assert.IsNotNull(_onReconnecting);
+            _onReconnecting().GetAwaiter().GetResult();
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
