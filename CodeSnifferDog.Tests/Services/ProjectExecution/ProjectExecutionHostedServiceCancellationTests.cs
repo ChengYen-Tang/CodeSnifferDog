@@ -1,8 +1,11 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectExecution;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.ProjectStorage;
+using CodeSnifferDog.Server.Shared.AgentStatus;
+using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,7 +25,8 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         Guid projectId = Guid.NewGuid();
         TestProjectChangePublisher projectChangePublisher = new();
-        using ServiceProvider services = CreateServices(projectChangePublisher, new CancelAwareAnalysisRunner());
+        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new CancelAwareAnalysisRunner());
         await SeedReviewingProjectAsync(services, projectId);
         EnsureExtractedProjectDirectory(projectId);
 
@@ -41,6 +45,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         Assert.AreEqual(ProjectProcessingStatus.Canceled, project.Status);
         Assert.IsNotNull(project.FinishedAtUtc);
         Assert.AreEqual(1, projectChangePublisher.PublishCallCount);
+        Assert.AreEqual(ProjectStatus.Canceled, liveUpdateNotifier.Updates.Last().ProjectStatus!.Status);
         Assert.IsFalse(Directory.Exists(GetStoragePaths().ResolveExtractedProjectPath(projectId)));
     }
 
@@ -49,7 +54,8 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         Guid projectId = Guid.NewGuid();
         TestProjectChangePublisher projectChangePublisher = new();
-        using ServiceProvider services = CreateServices(projectChangePublisher, new CancelAwareAnalysisRunner());
+        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new CancelAwareAnalysisRunner());
         await SeedReviewingProjectAsync(services, projectId);
         EnsureExtractedProjectDirectory(projectId);
 
@@ -68,13 +74,61 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         Assert.AreEqual(ProjectProcessingStatus.Reviewing, project.Status);
         Assert.IsNull(project.FinishedAtUtc);
         Assert.AreEqual(0, projectChangePublisher.PublishCallCount);
+        Assert.IsEmpty(liveUpdateNotifier.Updates);
         Assert.IsTrue(Directory.Exists(GetStoragePaths().ResolveExtractedProjectPath(projectId)));
+    }
+
+    [TestMethod]
+    public async Task RunClaimedProjectAsync_Success_PublishesCompletedStatusUpdate()
+    {
+        Guid projectId = Guid.NewGuid();
+        TestProjectChangePublisher projectChangePublisher = new();
+        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new SuccessfulAnalysisRunner());
+        await SeedReviewingProjectAsync(services, projectId);
+        EnsureExtractedProjectDirectory(projectId);
+
+        using CancellationTokenSource hostStoppingTokenSource = new();
+        using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
+
+        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+
+        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+
+        Assert.IsTrue(liveUpdateNotifier.Updates.Any(update =>
+            update.Kind == ProjectAgentLiveUpdateKind.ProjectStatusChanged &&
+            update.ProjectId == projectId &&
+            update.ProjectStatus?.Status == ProjectStatus.Completed));
+    }
+
+    [TestMethod]
+    public async Task RunClaimedProjectAsync_Failure_PublishesFailedStatusUpdate()
+    {
+        Guid projectId = Guid.NewGuid();
+        TestProjectChangePublisher projectChangePublisher = new();
+        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new FailingAnalysisRunner());
+        await SeedReviewingProjectAsync(services, projectId);
+        EnsureExtractedProjectDirectory(projectId);
+
+        using CancellationTokenSource hostStoppingTokenSource = new();
+        using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
+
+        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+
+        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+
+        Assert.IsTrue(liveUpdateNotifier.Updates.Any(update =>
+            update.Kind == ProjectAgentLiveUpdateKind.ProjectStatusChanged &&
+            update.ProjectId == projectId &&
+            update.ProjectStatus?.Status == ProjectStatus.Failed));
     }
 
     private static ProjectExecutionHostedService CreateHostedService(ServiceProvider services) =>
         new(
             services.GetRequiredService<IServiceScopeFactory>(),
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
+            services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
             services.GetRequiredService<IProjectExecutionLeaseRegistry>(),
             services.GetRequiredService<IProjectExecutionQueueLock>(),
             Options.Create(new ProjectExecutionOptions()),
@@ -82,6 +136,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
     private static ServiceProvider CreateServices(
         TestProjectChangePublisher projectChangePublisher,
+        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier,
         IProjectAnalysisRunner analysisRunner)
     {
         InMemoryDatabaseRoot databaseRoot = new();
@@ -92,6 +147,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         services.AddSingleton<ProjectTemporaryStoragePaths>(_ => GetStoragePaths());
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
         services.AddScoped<IProjectAnalysisRunner>(_ => analysisRunner);
+        services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier>(liveUpdateNotifier);
         services.AddSingleton<IProjectExecutionLeaseRegistry, ProjectExecutionLeaseRegistry>();
         services.AddSingleton<IProjectExecutionQueueLock, ImmediateProjectExecutionQueueLock>();
         return services.BuildServiceProvider();
@@ -164,6 +220,22 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         }
     }
 
+    private sealed class SuccessfulAnalysisRunner : IProjectAnalysisRunner
+    {
+        public bool IsReady => true;
+
+        public Task RunAsync(ProjectAnalysisContext context, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class FailingAnalysisRunner : IProjectAnalysisRunner
+    {
+        public bool IsReady => true;
+
+        public Task RunAsync(ProjectAnalysisContext context, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Analysis failed.");
+    }
+
     private sealed class TestProjectChangePublisher : IProjectChangePublisher
     {
         public int PublishCallCount { get; private set; }
@@ -179,6 +251,17 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         public Task<IDisposable> AcquireAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IDisposable>(new NoopDisposable());
+    }
+
+    private sealed class TestProjectAgentStatusLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
+    {
+        public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
+
+        public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default)
+        {
+            Updates.Add(update);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class NoopDisposable : IDisposable

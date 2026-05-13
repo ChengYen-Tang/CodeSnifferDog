@@ -885,7 +885,279 @@ public sealed class AgentStatusTests
             StringAssert.Contains(cut.Markup, "Agent A");
             StringAssert.Contains(cut.Markup, "Existing history");
             StringAssert.Contains(cut.Markup, "Failed to connect live updates: SignalR handshake failed");
+            StringAssert.Contains(cut.Markup, "Live disconnected");
             Assert.DoesNotContain(cut.Markup, "Failed to load snapshot:");
+        });
+    }
+
+    [TestMethod]
+    public void ShowsCompletedCompletionState_WhenSnapshotIsCompleted()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000208");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000208");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000209");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 17, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Completed,
+                            new DateTimeOffset(2026, 5, 10, 17, 1, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ],
+            projectStatus: ProjectStatus.Completed);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = context.RenderComponent<AgentStatus>();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Analysis completed");
+            StringAssert.Contains(cut.Markup, "Project execution finished successfully.");
+        });
+    }
+
+    [TestMethod]
+    public void ShowsFailedCompletionState_WhenSnapshotIsFailed()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000209");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000209");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000210");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 18, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Degraded,
+                            new DateTimeOffset(2026, 5, 10, 18, 1, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ],
+            projectStatus: ProjectStatus.Failed);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = context.RenderComponent<AgentStatus>();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Analysis failed");
+            StringAssert.Contains(cut.Markup, "Project execution ended with a failure.");
+        });
+    }
+
+    [TestMethod]
+    public void LiveProjectStatusUpdate_TransitionsFromRunningToCompleted()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000210");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000210");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000211");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 19, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 19, 1, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = context.RenderComponent<AgentStatus>();
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
+
+        liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
+        {
+            ProjectId = projectId,
+            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 19, 5, 0, TimeSpan.Zero),
+            ProjectStatus = new ProjectExecutionStatusChangedDto
+            {
+                Status = ProjectStatus.Completed,
+            },
+        });
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Analysis completed");
+            StringAssert.Contains(cut.Markup, "Project execution finished successfully.");
+        });
+    }
+
+    [TestMethod]
+    public void LiveProjectStatusUpdate_TransitionsFromRunningToFailed()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000211");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000211");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000212");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 20, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 20, 1, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = context.RenderComponent<AgentStatus>();
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
+
+        liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
+        {
+            ProjectId = projectId,
+            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 20, 5, 0, TimeSpan.Zero),
+            ProjectStatus = new ProjectExecutionStatusChangedDto
+            {
+                Status = ProjectStatus.Failed,
+            },
+        });
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Analysis failed");
+            StringAssert.Contains(cut.Markup, "Project execution ended with a failure.");
+        });
+    }
+
+    [TestMethod]
+    public void LiveProjectStatusUpdate_TransitionsFromRunningToCanceled()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000212");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000212");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000213");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 21, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 21, 1, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = context.RenderComponent<AgentStatus>();
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
+
+        liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
+        {
+            ProjectId = projectId,
+            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 21, 5, 0, TimeSpan.Zero),
+            ProjectStatus = new ProjectExecutionStatusChangedDto
+            {
+                Status = ProjectStatus.Canceled,
+            },
+        });
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Analysis canceled");
+            StringAssert.Contains(cut.Markup, "Project execution was canceled.");
         });
     }
 
@@ -1043,10 +1315,11 @@ public sealed class AgentStatusTests
 
     private static ProjectAgentStatusSnapshotDto CreateSnapshot(
         Guid projectId,
-        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups) => new()
+        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups,
+        ProjectStatus projectStatus = ProjectStatus.Reviewing) => new()
         {
             ProjectId = projectId,
-            ProjectStatus = ProjectStatus.Reviewing,
+            ProjectStatus = projectStatus,
             SnapshotGeneratedAtUtc = new DateTimeOffset(2026, 5, 10, 10, 30, 0, TimeSpan.Zero),
             AgentGroups = groups,
         };

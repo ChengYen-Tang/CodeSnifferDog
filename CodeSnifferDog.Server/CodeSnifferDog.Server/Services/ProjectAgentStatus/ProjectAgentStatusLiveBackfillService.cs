@@ -1,6 +1,7 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Shared.AgentStatus;
+using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
@@ -17,6 +18,16 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
         ArgumentNullException.ThrowIfNull(request);
 
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectProcessingStatus? projectStatus = await dbContext.Projects
+            .AsNoTracking()
+            .Where(project => project.Id == request.ProjectId)
+            .Select(project => (ProjectProcessingStatus?)project.Status)
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (projectStatus is null)
+            return [];
 
         List<ProjectAgentGroupRecord> groups = await dbContext.ProjectAgentGroups
             .AsNoTracking()
@@ -49,6 +60,17 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
             .ConfigureAwait(false);
 
         List<ProjectAgentLiveUpdateDto> updates = [];
+        updates.Add(new ProjectAgentLiveUpdateDto
+        {
+            ProjectId = request.ProjectId,
+            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            ProjectStatus = new ProjectExecutionStatusChangedDto
+            {
+                Status = MapProjectStatus(projectStatus.Value),
+            },
+        });
+
         updates.AddRange(groups.Select(group => new ProjectAgentLiveUpdateDto
         {
             ProjectId = request.ProjectId,
@@ -103,6 +125,16 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
 
         return updates;
     }
+
+    private static ProjectStatus MapProjectStatus(ProjectProcessingStatus status) => status switch
+    {
+        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
+        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
+        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
+        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
+        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
+        _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
+    };
 
     private static ProjectAgentRunStatus MapAgentStatus(Data.Entities.ProjectAgentStatus status) => status switch
     {

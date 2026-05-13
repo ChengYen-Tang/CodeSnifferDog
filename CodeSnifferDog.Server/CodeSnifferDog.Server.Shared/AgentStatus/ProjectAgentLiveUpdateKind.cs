@@ -6,4 +6,5 @@ public enum ProjectAgentLiveUpdateKind
     AgentUpserted = 2,
     AgentStatusChanged = 3,
     TimelineEntryUpserted = 4,
+    ProjectStatusChanged = 5,
 }

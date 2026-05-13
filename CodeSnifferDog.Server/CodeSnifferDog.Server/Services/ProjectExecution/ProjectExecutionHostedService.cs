@@ -1,7 +1,10 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.ProjectStorage;
+using CodeSnifferDog.Server.Shared.AgentStatus;
+using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.IO.Compression;
@@ -11,6 +14,7 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution;
 public sealed class ProjectExecutionHostedService(
     IServiceScopeFactory serviceScopeFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier,
     IProjectExecutionLeaseRegistry leaseRegistry,
     IProjectExecutionQueueLock queueLock,
     IOptions<ProjectExecutionOptions> options,
@@ -18,6 +22,7 @@ public sealed class ProjectExecutionHostedService(
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IProjectAgentStatusLiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
     private readonly IProjectExecutionLeaseRegistry _leaseRegistry = leaseRegistry;
     private readonly IProjectExecutionQueueLock _queueLock = queueLock;
     private readonly ProjectExecutionOptions _options = options.Value;
@@ -100,6 +105,7 @@ public sealed class ProjectExecutionHostedService(
 
         try
         {
+            await PublishProjectStatusUpdateAsync(claimData.ProjectId, ProjectProcessingStatus.Reviewing, CancellationToken.None);
             await projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
 
             return new ProjectExecutionClaim
@@ -269,8 +275,38 @@ public sealed class ProjectExecutionHostedService(
         project.FailureReason = failureReason;
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await PublishProjectStatusUpdateAsync(projectId, status, CancellationToken.None);
         await projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
     }
+
+    private Task PublishProjectStatusUpdateAsync(
+        Guid projectId,
+        ProjectProcessingStatus status,
+        CancellationToken cancellationToken)
+    {
+        return _projectAgentStatusLiveUpdateNotifier.NotifyAsync(
+            new ProjectAgentLiveUpdateDto
+            {
+                ProjectId = projectId,
+                Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+                ProjectStatus = new ProjectExecutionStatusChangedDto
+                {
+                    Status = MapProjectStatus(status),
+                },
+            },
+            cancellationToken);
+    }
+
+    private static ProjectStatus MapProjectStatus(ProjectProcessingStatus status) => status switch
+    {
+        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
+        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
+        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
+        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
+        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
+        _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
+    };
 
     private async Task FailInterruptedProjectsAsync(CancellationToken cancellationToken)
     {

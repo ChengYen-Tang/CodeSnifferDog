@@ -28,6 +28,8 @@
 
     private AgentStatusSelectionState Selection => _pageState.Selection;
 
+    private AgentStatusCompletionState Completion => _pageState.Completion;
+
     private ProjectAgentSnapshotDto? SelectedAgent =>
         Selection.SelectedAgentId is null
             ? null
@@ -263,6 +265,9 @@
                         ? "Snapshot loaded"
                         : "Idle";
 
+        public AgentStatusCompletionState Completion =>
+            AgentStatusCompletionState.From(Snapshot.Snapshot?.ProjectStatus, LiveConnection);
+
         public static AgentStatusPageState CreateEmpty() =>
             new(
                 new AgentStatusSnapshotState(null),
@@ -318,6 +323,7 @@
 
             return update.Kind switch
             {
+                ProjectAgentLiveUpdateKind.ProjectStatusChanged => UpdateProjectStatus(update.ProjectStatus),
                 ProjectAgentLiveUpdateKind.AgentGroupUpserted => UpsertGroup(update.Group),
                 ProjectAgentLiveUpdateKind.AgentUpserted => UpsertAgent(update.Agent),
                 ProjectAgentLiveUpdateKind.AgentStatusChanged => UpdateAgentStatus(update.AgentStatus),
@@ -508,6 +514,22 @@
             return false;
         }
 
+        private bool UpdateProjectStatus(ProjectExecutionStatusChangedDto? projectStatus)
+        {
+            if (projectStatus is null || Snapshot is null)
+                return false;
+
+            Snapshot = new ProjectAgentStatusSnapshotDto
+            {
+                ProjectId = Snapshot.ProjectId,
+                ProjectStatus = projectStatus.Status,
+                SnapshotGeneratedAtUtc = Snapshot.SnapshotGeneratedAtUtc,
+                AgentGroups = Snapshot.AgentGroups,
+            };
+
+            return true;
+        }
+
         private void ReplaceSnapshotGroups(IReadOnlyList<ProjectAgentGroupSnapshotDto> groups)
         {
             if (Snapshot is null)
@@ -539,6 +561,31 @@
             IsConnected = isConnected;
             IsSubscribed = isSubscribed;
             StatusText = statusText;
+        }
+    }
+
+    private sealed class AgentStatusCompletionState(string badgeText, string badgeCss, string detailText)
+    {
+        public string BadgeText { get; } = badgeText;
+
+        public string BadgeCss { get; } = badgeCss;
+
+        public string DetailText { get; } = detailText;
+
+        public static AgentStatusCompletionState From(ProjectStatus? projectStatus, AgentStatusLiveConnectionState liveConnection)
+        {
+            return projectStatus switch
+            {
+                ProjectStatus.Completed => new("Analysis completed", "text-bg-success", "Project execution finished successfully."),
+                ProjectStatus.Failed => new("Analysis failed", "text-bg-danger", "Project execution ended with a failure."),
+                ProjectStatus.Canceled => new("Analysis canceled", "text-bg-secondary", "Project execution was canceled."),
+                ProjectStatus.Reviewing when liveConnection.IsConnected && liveConnection.IsSubscribed =>
+                    new("Analysis running", "text-bg-primary", "Live updates are connected."),
+                ProjectStatus.Reviewing =>
+                    new("Live disconnected", "text-bg-warning", "Analysis is still running, but live updates are currently unavailable."),
+                ProjectStatus.Queued => new("Analysis queued", "text-bg-secondary", "Project is waiting for execution."),
+                _ => new("Status unavailable", "text-bg-secondary", "Project execution state is not available yet."),
+            };
         }
     }
 
@@ -589,6 +636,10 @@
         <div>
             <h1 class="h2 mb-0 fw-bold text-dark-emphasis">Agent Status</h1>
             <div class="small text-body-secondary mt-1">@_pageState.SnapshotLoadStatusText</div>
+            <div class="mt-2 d-flex align-items-center gap-2">
+                <span class="badge @Completion.BadgeCss agent-completion-badge">@Completion.BadgeText</span>
+                <span class="small text-body-secondary agent-completion-detail">@Completion.DetailText</span>
+            </div>
         </div>
     </div>
 

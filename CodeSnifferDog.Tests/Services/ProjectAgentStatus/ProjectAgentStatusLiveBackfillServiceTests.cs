@@ -2,6 +2,7 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Shared.AgentStatus;
+using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,6 +54,9 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
         List<ProjectAgentLiveUpdateDto> groupUpdates = updates
             .Where(update => update.Kind == ProjectAgentLiveUpdateKind.AgentGroupUpserted)
             .ToList();
+        List<ProjectAgentLiveUpdateDto> projectStatusUpdates = updates
+            .Where(update => update.Kind == ProjectAgentLiveUpdateKind.ProjectStatusChanged)
+            .ToList();
         List<ProjectAgentLiveUpdateDto> agentUpdates = updates
             .Where(update => update.Kind == ProjectAgentLiveUpdateKind.AgentUpserted)
             .ToList();
@@ -60,10 +64,12 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
             .Where(update => update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
             .ToList();
 
+        Assert.HasCount(1, projectStatusUpdates);
         Assert.HasCount(1, groupUpdates);
         Assert.HasCount(2, agentUpdates);
         Assert.HasCount(2, timelineUpdates);
 
+        Assert.AreEqual(ProjectStatus.Reviewing, projectStatusUpdates[0].ProjectStatus!.Status);
         Assert.AreEqual("Review Group", groupUpdates[0].Group!.DisplayName);
         Assert.AreEqual("Agent A", agentUpdates[0].Agent!.DisplayName);
         Assert.AreEqual("Agent B", agentUpdates[1].Agent!.DisplayName);
