@@ -1,6 +1,6 @@
 using CodeSnifferDog.Server.Shared.AgentStatus;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 
 public interface IProjectAgentStatusLiveSubscriptionClient : IAsyncDisposable
 {

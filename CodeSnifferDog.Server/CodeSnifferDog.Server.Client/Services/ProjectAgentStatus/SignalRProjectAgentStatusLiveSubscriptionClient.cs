@@ -1,8 +1,8 @@
-using CodeSnifferDog.Server.Shared.Projects;
 using CodeSnifferDog.Server.Shared.AgentStatus;
+using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.AspNetCore.SignalR.Client;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 
 public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient httpClient) : IProjectAgentStatusLiveSubscriptionClient
 {

@@ -1,4 +1,5 @@
 using CodeSnifferDog.Server.Components;
+using CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Endpoints;
 using CodeSnifferDog.Server.Hubs;
@@ -33,7 +34,7 @@ builder.Services.AddSingleton<IReviewRuleMarkdownProvider, FileSystemReviewRuleM
 builder.Services.AddScoped<IProjectAnalysisRunner, ProjectAnalysisRunner>();
 builder.Services.AddScoped<IProjectAgentStatusSnapshotService, ProjectAgentStatusSnapshotService>();
 builder.Services.AddScoped<IProjectAgentStatusLiveBackfillService, ProjectAgentStatusLiveBackfillService>();
-builder.Services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, SignalRProjectAgentStatusLiveSubscriptionClient>();
+builder.Services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, NoOpProjectAgentStatusLiveSubscriptionClient>();
 builder.Services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
 builder.Services.AddScoped<IProjectReportService, ProjectReportService>();
 builder.Services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();
