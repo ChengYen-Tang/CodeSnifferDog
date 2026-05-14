@@ -14,5 +14,7 @@ public sealed class ProjectAgentSnapshotDto
 
     public required DateTimeOffset CreatedAtUtc { get; init; }
 
+    public required bool HasLoadedHistory { get; init; }
+
     public required IReadOnlyList<ProjectAgentTimelineEntryDto> TimelineEntries { get; init; }
 }

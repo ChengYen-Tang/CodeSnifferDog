@@ -46,19 +46,6 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        Dictionary<Guid, long> cursorByAgentId = request.AgentCursors.ToDictionary(
-            cursor => cursor.AgentId,
-            cursor => cursor.LatestSequence);
-
-        List<Guid> agentIds = agents.Select(agent => agent.Id).ToList();
-        List<ProjectAgentTimelineEntryRecord> timelineEntries = await dbContext.ProjectAgentTimelineEntries
-            .AsNoTracking()
-            .Where(entry => agentIds.Contains(entry.ProjectAgentId))
-            .OrderBy(entry => entry.ProjectAgentId)
-            .ThenBy(entry => entry.Sequence)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
         List<ProjectAgentLiveUpdateDto> updates = [];
         updates.Add(new ProjectAgentLiveUpdateDto
         {
@@ -101,9 +88,16 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
             },
         }));
 
-        updates.AddRange(timelineEntries
-            .Where(entry => entry.Sequence > cursorByAgentId.GetValueOrDefault(entry.ProjectAgentId, 0))
-            .Select(entry => new ProjectAgentLiveUpdateDto
+        if (request.AgentId is Guid agentId)
+        {
+            List<ProjectAgentTimelineEntryRecord> timelineEntries = await dbContext.ProjectAgentTimelineEntries
+                .AsNoTracking()
+                .Where(entry => entry.ProjectAgentId == agentId && entry.Sequence > request.LatestSequence)
+                .OrderBy(entry => entry.Sequence)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            updates.AddRange(timelineEntries.Select(entry => new ProjectAgentLiveUpdateDto
             {
                 ProjectId = request.ProjectId,
                 Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
@@ -122,6 +116,7 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
                     ToolResult = entry.ToolResult,
                 },
             }));
+        }
 
         return updates;
     }

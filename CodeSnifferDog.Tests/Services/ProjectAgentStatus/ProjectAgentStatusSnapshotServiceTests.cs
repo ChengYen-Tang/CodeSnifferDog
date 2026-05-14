@@ -53,6 +53,8 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
         Assert.AreEqual("Beta Agent", firstGroup.Agents[1].DisplayName);
         Assert.AreEqual(ProjectAgentRunStatus.Completed, firstGroup.Agents[0].Status);
         Assert.AreEqual(ProjectAgentRunStatus.Running, firstGroup.Agents[1].Status);
+        Assert.IsTrue(firstGroup.Agents[0].HasLoadedHistory);
+        Assert.IsFalse(firstGroup.Agents[1].HasLoadedHistory);
 
         IReadOnlyList<ProjectAgentTimelineEntryDto> timeline = firstGroup.Agents[0].TimelineEntries;
         Assert.HasCount(3, timeline);
@@ -67,6 +69,37 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
         Assert.AreEqual(3L, timeline[2].Sequence);
         Assert.AreEqual(ProjectAgentTimelineEntryKind.Compaction, timeline[2].EntryKind);
         Assert.AreEqual("Context automatically compacted", timeline[2].Message);
+        Assert.IsEmpty(firstGroup.Agents[1].TimelineEntries);
+    }
+
+    [TestMethod]
+    public async Task GetAgentHistoryAsync_ReturnsFullTimelineForRequestedAgent()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        IProjectAgentStatusSnapshotService service = services.GetRequiredService<IProjectAgentStatusSnapshotService>();
+
+        await SeedProjectAsync(dbContextFactory, projectId, TestContext.CancellationToken);
+
+        Guid alphaAgentId;
+        await using (CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
+        {
+            alphaAgentId = await dbContext.ProjectAgents
+                .Where(agent => agent.ProjectAgentGroup.DisplayName == "Alpha Group" && agent.DisplayName == "Alpha Agent")
+                .Select(agent => agent.Id)
+                .SingleAsync(TestContext.CancellationToken);
+        }
+
+        ProjectAgentHistorySnapshotDto? history = await service.GetAgentHistoryAsync(projectId, alphaAgentId, TestContext.CancellationToken);
+
+        Assert.IsNotNull(history);
+        Assert.AreEqual(projectId, history.ProjectId);
+        Assert.AreEqual(alphaAgentId, history.AgentId);
+        Assert.HasCount(3, history.TimelineEntries);
+        Assert.AreEqual(1L, history.TimelineEntries[0].Sequence);
+        Assert.AreEqual(3L, history.TimelineEntries[2].Sequence);
     }
 
     private static async Task SeedProjectAsync(

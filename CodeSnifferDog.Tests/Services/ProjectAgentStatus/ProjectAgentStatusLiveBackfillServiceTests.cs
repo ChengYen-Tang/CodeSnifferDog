@@ -35,19 +35,8 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
             {
                 ProjectId = projectId,
                 SnapshotGeneratedAtUtc = new DateTimeOffset(2026, 5, 10, 14, 0, 0, TimeSpan.Zero),
-                AgentCursors =
-                [
-                    new ProjectAgentLiveCursorDto
-                    {
-                        AgentId = agentAId,
-                        LatestSequence = 1,
-                    },
-                    new ProjectAgentLiveCursorDto
-                    {
-                        AgentId = agentBId,
-                        LatestSequence = 0,
-                    },
-                ],
+                AgentId = agentAId,
+                LatestSequence = 1,
             },
             TestContext.CancellationToken);
 
@@ -67,7 +56,7 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
         Assert.HasCount(1, projectStatusUpdates);
         Assert.HasCount(1, groupUpdates);
         Assert.HasCount(2, agentUpdates);
-        Assert.HasCount(2, timelineUpdates);
+        Assert.HasCount(1, timelineUpdates);
 
         Assert.AreEqual(ProjectStatus.Reviewing, projectStatusUpdates[0].ProjectStatus!.Status);
         Assert.AreEqual("Review Group", groupUpdates[0].Group!.DisplayName);
@@ -79,13 +68,10 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
             update.TimelineEntry!.AgentId == agentAId &&
             update.TimelineEntry.Sequence == 2 &&
             update.TimelineEntry.Message == "Agent A second entry"));
-        Assert.IsTrue(timelineUpdates.Any(update =>
-            update.TimelineEntry!.AgentId == agentBId &&
-            update.TimelineEntry.Sequence == 1 &&
-            update.TimelineEntry.ToolCallId == "tool-call-1"));
         Assert.IsFalse(timelineUpdates.Any(update =>
             update.TimelineEntry!.AgentId == agentAId &&
             update.TimelineEntry.Sequence == 1));
+        Assert.IsFalse(timelineUpdates.Any(update => update.TimelineEntry!.AgentId == agentBId));
     }
 
     private static async Task SeedProjectAsync(

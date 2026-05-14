@@ -11,7 +11,10 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
 
-    public async Task<ProjectAgentStatusSnapshotDto?> GetSnapshotAsync(Guid projectId, CancellationToken cancellationToken = default)
+    public async Task<ProjectAgentStatusSnapshotDto?> GetSnapshotAsync(
+        Guid projectId,
+        Guid? selectedAgentId = null,
+        CancellationToken cancellationToken = default)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
@@ -57,35 +60,24 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        List<Guid> agentIds = agents.Select(agent => agent.AgentId).ToList();
+        Guid? effectiveSelectedAgentId = ResolveSelectedAgentId(agents, selectedAgentId);
+        List<TimelineEntrySnapshotRow> timelineEntries =
+            effectiveSelectedAgentId is Guid selectedHistoryAgentId
+                ? await LoadTimelineEntriesAsync(dbContext, selectedHistoryAgentId, cancellationToken).ConfigureAwait(false)
+                : [];
 
-        List<TimelineEntrySnapshotRow> timelineEntries = await dbContext.ProjectAgentTimelineEntries
-            .AsNoTracking()
-            .Where(entry => agentIds.Contains(entry.ProjectAgentId))
-            .OrderBy(entry => entry.ProjectAgentId)
-            .ThenBy(entry => entry.Sequence)
-            .Select(entry => new TimelineEntrySnapshotRow(
-                entry.Id,
-                entry.ProjectAgentId,
-                entry.Sequence,
-                entry.EntryType,
-                entry.OccurredAtUtc,
-                entry.Message,
-                entry.ToolCallId,
-                entry.ToolName,
-                entry.ToolArguments,
-                entry.ToolResult))
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        IReadOnlyList<ProjectAgentTimelineEntryDto> selectedTimelineEntries = timelineEntries
+            .OrderBy(entry => entry.Sequence)
+            .Select(MapTimelineEntry)
+            .ToList();
 
-        Dictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId = timelineEntries
-            .GroupBy(entry => entry.AgentId)
-            .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<ProjectAgentTimelineEntryDto>)group
-                    .OrderBy(entry => entry.Sequence)
-                    .Select(MapTimelineEntry)
-                    .ToList());
+        Dictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId =
+            effectiveSelectedAgentId is Guid selectedAgentWithHistory
+                ? new Dictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>>
+                {
+                    [selectedAgentWithHistory] = selectedTimelineEntries,
+                }
+                : [];
 
         Dictionary<Guid, IReadOnlyList<ProjectAgentSnapshotDto>> agentsByGroupId = agents
             .GroupBy(agent => agent.GroupId)
@@ -94,7 +86,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
                 group => (IReadOnlyList<ProjectAgentSnapshotDto>)group
                     .OrderBy(agent => agent.CreatedAtUtc)
                     .ThenBy(agent => agent.DisplayName, StringComparer.Ordinal)
-                    .Select(agent => MapAgent(agent, timelineByAgentId))
+                    .Select(agent => MapAgent(agent, timelineByAgentId, effectiveSelectedAgentId))
                     .ToList());
 
         return new ProjectAgentStatusSnapshotDto
@@ -107,6 +99,44 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
                 .ThenBy(group => group.DisplayName, StringComparer.Ordinal)
                 .Select(group => MapGroup(group, agentsByGroupId))
                 .ToList(),
+        };
+    }
+
+    public async Task<ProjectAgentHistorySnapshotDto?> GetAgentHistoryAsync(
+        Guid projectId,
+        Guid agentId,
+        CancellationToken cancellationToken = default)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        bool agentExists = await dbContext.ProjectAgents
+            .AsNoTracking()
+            .Where(agent => agent.Id == agentId)
+            .Join(
+                dbContext.ProjectAgentGroups.AsNoTracking(),
+                agent => agent.ProjectAgentGroupId,
+                group => group.Id,
+                (agent, group) => new { agent.Id, group.ProjectId })
+            .AnyAsync(item => item.Id == agentId && item.ProjectId == projectId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!agentExists)
+            return null;
+
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries = (await LoadTimelineEntriesAsync(
+                dbContext,
+                agentId,
+                cancellationToken)
+            .ConfigureAwait(false))
+            .OrderBy(entry => entry.Sequence)
+            .Select(MapTimelineEntry)
+            .ToList();
+
+        return new ProjectAgentHistorySnapshotDto
+        {
+            ProjectId = projectId,
+            AgentId = agentId,
+            TimelineEntries = timelineEntries,
         };
     }
 
@@ -125,7 +155,8 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
 
     private static ProjectAgentSnapshotDto MapAgent(
         AgentSnapshotRow agent,
-        IReadOnlyDictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId) => new()
+        IReadOnlyDictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId,
+        Guid? selectedAgentId) => new()
     {
         AgentId = agent.AgentId,
         GroupId = agent.GroupId,
@@ -133,10 +164,46 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
         DisplayName = agent.DisplayName,
         Status = MapAgentStatus(agent.Status),
         CreatedAtUtc = agent.CreatedAtUtc,
+        HasLoadedHistory = selectedAgentId == agent.AgentId,
         TimelineEntries = timelineByAgentId.TryGetValue(agent.AgentId, out IReadOnlyList<ProjectAgentTimelineEntryDto>? timeline)
             ? timeline
             : [],
     };
+
+    private static Guid? ResolveSelectedAgentId(
+        IReadOnlyList<AgentSnapshotRow> agents,
+        Guid? selectedAgentId)
+    {
+        if (selectedAgentId is Guid requestedAgentId && agents.Any(agent => agent.AgentId == requestedAgentId))
+            return requestedAgentId;
+
+        return agents
+            .OrderBy(agent => agent.CreatedAtUtc)
+            .ThenBy(agent => agent.DisplayName, StringComparer.Ordinal)
+            .Select(agent => (Guid?)agent.AgentId)
+            .FirstOrDefault();
+    }
+
+    private static Task<List<TimelineEntrySnapshotRow>> LoadTimelineEntriesAsync(
+        CodeSnifferDogServerDbContext dbContext,
+        Guid agentId,
+        CancellationToken cancellationToken) =>
+        dbContext.ProjectAgentTimelineEntries
+            .AsNoTracking()
+            .Where(entry => entry.ProjectAgentId == agentId)
+            .OrderBy(entry => entry.Sequence)
+            .Select(entry => new TimelineEntrySnapshotRow(
+                entry.Id,
+                entry.ProjectAgentId,
+                entry.Sequence,
+                entry.EntryType,
+                entry.OccurredAtUtc,
+                entry.Message,
+                entry.ToolCallId,
+                entry.ToolName,
+                entry.ToolArguments,
+                entry.ToolResult))
+            .ToListAsync(cancellationToken);
 
     private static ProjectAgentTimelineEntryDto MapTimelineEntry(TimelineEntrySnapshotRow entry) => new()
     {

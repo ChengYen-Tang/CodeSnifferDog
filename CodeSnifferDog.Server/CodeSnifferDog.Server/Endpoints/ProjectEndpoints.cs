@@ -34,6 +34,9 @@ public static class ProjectEndpoints
         group.MapGet("/{projectId:guid}/agent-status", GetProjectAgentStatusSnapshotAsync)
             .WithName("GetProjectAgentStatusSnapshot");
 
+        group.MapGet("/{projectId:guid}/agent-status/agents/{agentId:guid}/history", GetProjectAgentHistoryAsync)
+            .WithName("GetProjectAgentHistory");
+
         group.MapGet("/{projectId:guid}/reports/{reportId:guid}/download", DownloadProjectReportAsync)
             .WithName("DownloadProjectReport");
 
@@ -108,11 +111,28 @@ public static class ProjectEndpoints
 
     private static async Task<IResult> GetProjectAgentStatusSnapshotAsync(
         Guid projectId,
+        Guid? selectedAgentId,
         IProjectAgentStatusSnapshotService projectAgentStatusSnapshotService,
         CancellationToken cancellationToken)
     {
-        ProjectAgentStatusSnapshotDto? snapshot = await projectAgentStatusSnapshotService.GetSnapshotAsync(projectId, cancellationToken);
+        ProjectAgentStatusSnapshotDto? snapshot = await projectAgentStatusSnapshotService.GetSnapshotAsync(
+            projectId,
+            selectedAgentId,
+            cancellationToken);
         return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
+    }
+
+    private static async Task<IResult> GetProjectAgentHistoryAsync(
+        Guid projectId,
+        Guid agentId,
+        IProjectAgentStatusSnapshotService projectAgentStatusSnapshotService,
+        CancellationToken cancellationToken)
+    {
+        ProjectAgentHistorySnapshotDto? history = await projectAgentStatusSnapshotService.GetAgentHistoryAsync(
+            projectId,
+            agentId,
+            cancellationToken);
+        return history is null ? Results.NotFound() : Results.Ok(history);
     }
 
     private static async Task<IResult> DownloadProjectReportAsync(

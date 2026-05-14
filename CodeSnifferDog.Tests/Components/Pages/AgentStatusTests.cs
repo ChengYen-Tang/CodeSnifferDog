@@ -419,6 +419,91 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
+    public void SelectingAgentWithoutPreloadedHistoryFetchesHistoryOnDemand()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000301");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000301");
+        Guid selectedAgentId = Guid.Parse("72000000-0000-0000-0000-000000000301");
+        Guid unloadedAgentId = Guid.Parse("72000000-0000-0000-0000-000000000302");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 10, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            selectedAgentId,
+                            groupId,
+                            "agent-a",
+                            "Selected Agent",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000301"),
+                                    selectedAgentId,
+                                    1,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "Selected history")
+                            ]),
+                        CreateAgent(
+                            unloadedAgentId,
+                            groupId,
+                            "agent-b",
+                            "Lazy Agent",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
+            [snapshot],
+            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            {
+                [unloadedAgentId] = new()
+                {
+                    ProjectId = projectId,
+                    AgentId = unloadedAgentId,
+                    TimelineEntries =
+                    [
+                        CreateTimelineEntry(
+                            Guid.Parse("73000000-0000-0000-0000-000000000302"),
+                            unloadedAgentId,
+                            1,
+                            ProjectAgentTimelineEntryKind.Output,
+                            message: "Lazy history")
+                    ],
+                }
+            }))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Selected history"));
+
+        cut.FindAll(".agent-roster-node")[1].Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Lazy Agent");
+            StringAssert.Contains(cut.Markup, "Lazy history");
+            Assert.DoesNotContain(cut.Markup, "Selected history");
+        });
+    }
+
+    [TestMethod]
     public void LiveReducer_AddsGroupAndAgentAndSelectsFirstAvailableAgent()
     {
         using Bunit.TestContext context = new();
@@ -734,7 +819,7 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
-    public void SnapshotLoad_SubscribesToLiveUpdatesWithPerAgentCursors()
+    public void SnapshotLoad_SubscribesToLiveUpdatesWithSelectedAgentCursor()
     {
         using Bunit.TestContext context = new();
         FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
@@ -806,15 +891,9 @@ public sealed class AgentStatusTests
             Assert.IsNotNull(liveSubscriptionClient.LastRequest);
             Assert.AreEqual(projectId, liveSubscriptionClient.LastRequest.ProjectId);
             Assert.AreEqual(snapshotGeneratedAtUtc, liveSubscriptionClient.LastRequest.SnapshotGeneratedAtUtc);
-            Assert.HasCount(2, liveSubscriptionClient.LastRequest.AgentCursors);
+            Assert.AreEqual(agentAId, liveSubscriptionClient.LastRequest.AgentId);
+            Assert.AreEqual(3L, liveSubscriptionClient.LastRequest.LatestSequence);
         });
-
-        Dictionary<Guid, long> cursors = liveSubscriptionClient.LastRequest!.AgentCursors.ToDictionary(
-            cursor => cursor.AgentId,
-            cursor => cursor.LatestSequence);
-
-        Assert.AreEqual(3L, cursors[agentAId]);
-        Assert.AreEqual(0L, cursors[agentBId]);
 
         liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
         {
@@ -830,6 +909,381 @@ public sealed class AgentStatusTests
         });
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Backfill A4"));
+    }
+
+    [TestMethod]
+    public void SelectingAnotherAgent_ReSubscribesLiveUpdatesForSelectedAgentOnly()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000214");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000214");
+        Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000214");
+        Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000215");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 13, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentAId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000214"),
+                                    agentAId,
+                                    2,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "A2")
+                            ]),
+                        CreateAgent(
+                            agentBId,
+                            groupId,
+                            "agent-b",
+                            "Agent B",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
+            [snapshot],
+            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            {
+                [agentBId] = new()
+                {
+                    ProjectId = projectId,
+                    AgentId = agentBId,
+                    TimelineEntries =
+                    [
+                        CreateTimelineEntry(
+                            Guid.Parse("73000000-0000-0000-0000-000000000215"),
+                            agentBId,
+                            5,
+                            ProjectAgentTimelineEntryKind.Output,
+                            message: "B5")
+                    ],
+                }
+            }))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+            Assert.AreEqual(agentAId, liveSubscriptionClient.LastRequest?.AgentId);
+            Assert.AreEqual(2L, liveSubscriptionClient.LastRequest?.LatestSequence);
+        });
+
+        cut.FindAll(".agent-roster-node")[1].Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.AreEqual(agentBId, liveSubscriptionClient.LastRequest?.AgentId);
+            Assert.AreEqual(5L, liveSubscriptionClient.LastRequest?.LatestSequence);
+            StringAssert.Contains(cut.Markup, "B5");
+        });
+    }
+
+    [TestMethod]
+    public void SelectingAnotherAgent_WhenHistoryLoadFails_UnsubscribesOldLiveTailAndShowsError()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000218");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000218");
+        Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000218");
+        Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000219");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 13, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentAId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000218"),
+                                    agentAId,
+                                    2,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "A2")
+                            ]),
+                        CreateAgent(
+                            agentBId,
+                            groupId,
+                            "agent-b",
+                            "Agent B",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+            Assert.AreEqual(agentAId, liveSubscriptionClient.LastRequest?.AgentId);
+            StringAssert.Contains(cut.Markup, "A2");
+        });
+
+        cut.FindAll(".agent-roster-node")[1].Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.AreEqual(1, liveSubscriptionClient.UnsubscribeCallCount);
+            Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+            StringAssert.Contains(cut.FindAll(".agent-roster-node.selected").Single().TextContent, "Agent B");
+            StringAssert.Contains(cut.Markup, "Failed to load agent history: No history response was configured for agent");
+            Assert.DoesNotContain(cut.Markup, "A2");
+        });
+    }
+
+    [TestMethod]
+    public void SelectingAnotherAgent_ClearsExpandedToolDetailsForPreviousAgent()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000220");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000220");
+        Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000220");
+        Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000221");
+
+        ProjectAgentTimelineEntryDto agentAToolEntry = CreateTimelineEntry(
+            Guid.Parse("73000000-0000-0000-0000-000000000220"),
+            agentAId,
+            1,
+            ProjectAgentTimelineEntryKind.Tool,
+            toolCallId: "tool-a",
+            toolName: "ToolA",
+            toolArguments: "arg-a",
+            toolResult: "result-a");
+
+        ProjectAgentTimelineEntryDto agentBToolEntry = CreateTimelineEntry(
+            Guid.Parse("73000000-0000-0000-0000-000000000221"),
+            agentBId,
+            1,
+            ProjectAgentTimelineEntryKind.Tool,
+            toolCallId: "tool-b",
+            toolName: "ToolB",
+            toolArguments: "arg-b",
+            toolResult: "result-b");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 13, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentAId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
+                            [agentAToolEntry]),
+                        CreateAgent(
+                            agentBId,
+                            groupId,
+                            "agent-b",
+                            "Agent B",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
+            [snapshot],
+            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            {
+                [agentAId] = new()
+                {
+                    ProjectId = projectId,
+                    AgentId = agentAId,
+                    TimelineEntries = [agentAToolEntry],
+                },
+                [agentBId] = new()
+                {
+                    ProjectId = projectId,
+                    AgentId = agentBId,
+                    TimelineEntries = [agentBToolEntry],
+                }
+            }))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "ToolA"));
+
+        cut.Find(".tool-call-summary").Click();
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "arg-a"));
+
+        cut.FindAll(".agent-roster-node")[1].Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "ToolB");
+            Assert.DoesNotContain(cut.Markup, "arg-a");
+        });
+
+        cut.FindAll(".agent-roster-node")[0].Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "ToolA");
+            Assert.DoesNotContain(cut.Markup, "arg-a");
+            Assert.DoesNotContain(cut.Markup, "result-a");
+        });
+    }
+
+    [TestMethod]
+    public void RefreshingPage_RebuildsSelectedAgentStateAndResubscribesFromFreshSnapshot()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000216");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000216");
+        Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000216");
+        Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000217");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 13, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentAId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000216"),
+                                    agentAId,
+                                    2,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "A2")
+                            ]),
+                        CreateAgent(
+                            agentBId,
+                            groupId,
+                            "agent-b",
+                            "Agent B",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
+            [snapshot, snapshot],
+            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            {
+                [agentBId] = new()
+                {
+                    ProjectId = projectId,
+                    AgentId = agentBId,
+                    TimelineEntries =
+                    [
+                        CreateTimelineEntry(
+                            Guid.Parse("73000000-0000-0000-0000-000000000217"),
+                            agentBId,
+                            5,
+                            ProjectAgentTimelineEntryKind.Output,
+                            message: "B5")
+                    ],
+                }
+            }))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> firstRender = RenderAgentStatus(context);
+
+        firstRender.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(firstRender.Markup, "A2");
+            Assert.AreEqual(agentAId, liveSubscriptionClient.LastRequest?.AgentId);
+            Assert.AreEqual(2L, liveSubscriptionClient.LastRequest?.LatestSequence);
+        });
+
+        firstRender.FindAll(".agent-roster-node")[1].Click();
+
+        firstRender.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(firstRender.Markup, "B5");
+            Assert.AreEqual(agentBId, liveSubscriptionClient.LastRequest?.AgentId);
+            Assert.AreEqual(5L, liveSubscriptionClient.LastRequest?.LatestSequence);
+        });
+
+        firstRender.Dispose();
+
+        IRenderedComponent<AgentStatus> refreshedRender = RenderAgentStatus(context);
+
+        refreshedRender.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(refreshedRender.Markup, "A2");
+            Assert.DoesNotContain(refreshedRender.Markup, "B5");
+            Assert.AreEqual(agentAId, liveSubscriptionClient.LastRequest?.AgentId);
+            Assert.AreEqual(2L, liveSubscriptionClient.LastRequest?.LatestSequence);
+            Assert.HasCount(3, liveSubscriptionClient.SubscribeCalls);
+        });
     }
 
     [TestMethod]
@@ -1353,6 +1807,7 @@ public sealed class AgentStatusTests
             DisplayName = displayName,
             Status = status,
             CreatedAtUtc = createdAtUtc,
+            HasLoadedHistory = timeline.Count > 0,
             TimelineEntries = timeline,
         };
 
@@ -1381,9 +1836,11 @@ public sealed class AgentStatusTests
 
     private sealed class SnapshotMessageHandler(
         IReadOnlyList<ProjectAgentStatusSnapshotDto> snapshots,
+        IReadOnlyDictionary<Guid, ProjectAgentHistorySnapshotDto>? histories = null,
         HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         private readonly Queue<ProjectAgentStatusSnapshotDto> _snapshots = new(snapshots);
+        private readonly IReadOnlyDictionary<Guid, ProjectAgentHistorySnapshotDto> _histories = histories ?? new Dictionary<Guid, ProjectAgentHistorySnapshotDto>();
         private readonly HttpStatusCode _statusCode = statusCode;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -1391,6 +1848,20 @@ public sealed class AgentStatusTests
             if (_statusCode != HttpStatusCode.OK)
             {
                 return Task.FromResult(new HttpResponseMessage(_statusCode));
+            }
+
+            string absolutePath = request.RequestUri?.AbsolutePath ?? string.Empty;
+            if (absolutePath.Contains("/history", StringComparison.Ordinal))
+            {
+                string[] segments = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                Guid agentId = Guid.Parse(segments[^2]);
+                if (!_histories.TryGetValue(agentId, out ProjectAgentHistorySnapshotDto? history))
+                    throw new InvalidOperationException($"No history response was configured for agent '{agentId}'.");
+
+                return Task.FromResult(new HttpResponseMessage(_statusCode)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(history)),
+                });
             }
 
             if (_snapshots.Count == 0)

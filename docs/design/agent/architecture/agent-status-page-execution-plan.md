@@ -348,6 +348,127 @@
 - 第一版不處理全文搜尋 timeline。
 - 第一版不處理虛擬滾動最佳化。
 
+## 記憶體控制方案
+
+### 問題定義
+
+- 目前 `AgentStatus` 的主要風險不是單次 render，而是 client browser 端持有過多 agent timeline 歷史。
+- 若 snapshot 持續包含所有 agent 的完整 timeline，且 live push 持續把所有 agent 的 timeline event 都送到同一個 viewer，則：
+  - 晚進場使用者會一次載入過大資料
+  - 長時間觀看時 browser memory 會持續上升
+  - 多 agent 並行分析時，大量與目前畫面無關的 timeline event 仍會被送到 client
+
+### 解法原則
+
+- 左側 roster 與右側 selected agent history 必須切開責任。
+- project-level snapshot 與 live push 只負責常駐 summary。
+- selected agent 的 timeline 改成按需載入、按需訂閱。
+- 前端不保留多個 agent 的 history cache，第一版只保留目前 selected agent。
+
+### Snapshot 調整
+
+- `project-level snapshot` 第一版改為只提供：
+  - project execution status
+  - agent groups
+  - agent summaries
+  - 預設 selected agent 的 timeline
+- snapshot 不再預設包含所有 agent 的完整 timeline。
+- 預設 selected agent 規則沿用既有 page state 選取規則。
+
+### Agent History 載入
+
+- 右側 history pane 改成 selected agent detail model。
+- 使用者進頁時：
+  1. 先取 project snapshot
+  2. 依 snapshot 決定 selected agent
+  3. 只顯示該 agent 的 timeline
+- 使用者切換 agent 時：
+  1. 清掉目前 history pane 的 timeline data
+  2. 向 server 取新 selected agent 的 history
+  3. history 載入完成後再 render 右側 timeline
+
+### Frontend Cache 原則
+
+- 第一版只保留當前 selected agent 的 history cache。
+- 切換到另一個 agent 後，前一個 agent 的 timeline data 直接釋放。
+- 左側 roster summary 常駐保留，不受此規則影響。
+- `_expandedToolDetails` 仍屬 local UI state，但其 key 集合應只跟目前 selected agent 相關。
+
+### Live Push 分層
+
+- live push 改成兩層 channel：
+
+#### 1. Project Summary Channel
+
+- subscription key 以 `projectId` 為主。
+- 只推：
+  - `ProjectStatusChanged`
+  - `AgentGroupUpserted`
+  - `AgentUpserted`
+  - `AgentStatusChanged`
+
+#### 2. Selected Agent Timeline Channel
+
+- subscription key 以 `projectId + agentId` 為主。
+- 只推目前正在看的那個 agent 的 timeline live updates：
+  - `TimelineEntryUpserted`
+
+### SignalR Group 設計
+
+- project summary group：
+  - `project:{projectId}`
+- agent timeline group：
+  - `project:{projectId}:agent:{agentId}`
+
+- 前端進頁後：
+  1. 先加入 `project:{projectId}`
+  2. 決定 selected agent
+  3. 再加入 `project:{projectId}:agent:{selectedAgentId}`
+
+- 切換 agent 時：
+  1. 離開舊的 agent timeline group
+  2. 加入新的 agent timeline group
+  3. 重新取得新 agent 的 history
+  4. 之後只接收新 agent 的 timeline live updates
+
+### Live Backfill Contract 調整
+
+- 目前 per-agent cursor 集合模型不再適合作為 history live tail 的主模型。
+- selected agent timeline channel 第一版改成只帶單一 agent cursor：
+  - `ProjectId`
+  - `AgentId`
+  - `LatestSequence`
+
+- project summary channel 不需要 timeline cursor。
+- reconnect / refresh 時：
+  - project summary 重新訂閱即可
+  - selected agent timeline 再帶單一 `LatestSequence` 做 backfill
+
+### 實作順序
+
+#### Step 1
+
+- 調整 snapshot DTO，移除「所有 agent 全量 timeline」的預設載入方式。
+
+#### Step 2
+
+- 建立 selected agent history read API。
+
+#### Step 3
+
+- 調整 client page state：
+  - roster summary state
+  - selected agent history state
+  - selected agent live connection state
+
+#### Step 4
+
+- 調整 SignalR contract 與 group join / leave 流程。
+
+#### Step 5
+
+- 補切換 agent、refresh、reconnect 的測試。
+
 ## 資料模型原則
 
 ### Group / Agent Tree

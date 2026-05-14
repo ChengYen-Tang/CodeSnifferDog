@@ -13,8 +13,12 @@ public sealed class SignalRProjectAgentStatusLiveUpdateNotifier(IHubContext<Proj
     {
         ArgumentNullException.ThrowIfNull(update);
 
-        return _hubContext.Clients
-            .Group(ProjectUpdatesContract.GetProjectChannelName(update.ProjectId))
-            .SendAsync(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update, cancellationToken);
+        return update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted && update.TimelineEntry is not null
+            ? _hubContext.Clients
+                .Group(ProjectUpdatesContract.GetProjectAgentChannelName(update.ProjectId, update.TimelineEntry.AgentId))
+                .SendAsync(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update, cancellationToken)
+            : _hubContext.Clients
+                .Group(ProjectUpdatesContract.GetProjectChannelName(update.ProjectId))
+                .SendAsync(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update, cancellationToken);
     }
 }

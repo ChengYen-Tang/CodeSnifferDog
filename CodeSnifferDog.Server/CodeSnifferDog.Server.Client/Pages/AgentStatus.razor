@@ -20,6 +20,7 @@
     private bool _hasHandledParameters;
     private Guid? _loadedProjectId;
     private int _reconnectReloadInProgress;
+    private int _historyLoadVersion;
     private bool _disposed;
 
     private AgentStatusSnapshotState Snapshot => _pageState.Snapshot;
@@ -27,6 +28,10 @@
     private AgentStatusLiveConnectionState LiveConnection => _pageState.LiveConnection;
 
     private AgentStatusSelectionState Selection => _pageState.Selection;
+
+    private AgentStatusHistoryState History => _pageState.History;
+
+    private AgentStatusSelectedAgentLiveConnectionState SelectedAgentLiveConnection => _pageState.SelectedAgentLiveConnection;
 
     private AgentStatusCompletionState Completion => _pageState.Completion;
 
@@ -36,9 +41,9 @@
             : Snapshot.FindAgent(Selection.SelectedAgentId.Value);
 
     private IReadOnlyList<ProjectAgentTimelineEntryDto> SelectedHistory =>
-        Selection.SelectedAgentId is null
+        Selection.SelectedAgentId is null || History.AgentId != Selection.SelectedAgentId
             ? []
-            : Snapshot.GetHistory(Selection.SelectedAgentId.Value);
+            : History.TimelineEntries;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -55,6 +60,7 @@
         {
             await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
             _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Idle");
+            _pageState.SetSelectedAgentLiveConnection(agentId: null, isConnected: false, isSubscribed: false, statusText: "Idle");
             _pageState.SetLiveConnectionError(null);
             _pageState.SetSnapshot(null);
             _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "No project selected.");
@@ -67,14 +73,19 @@
 
         try
         {
+            string snapshotUrl = Selection.SelectedAgentId is Guid selectedAgentId
+                ? $"/api/projects/{ProjectId.Value}/agent-status?selectedAgentId={selectedAgentId}"
+                : $"/api/projects/{ProjectId.Value}/agent-status";
+
             HttpResponseMessage response = await HttpClient.GetAsync(
-                $"/api/projects/{ProjectId.Value}/agent-status",
+                snapshotUrl,
                 HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
                 await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
+                _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
                 _pageState.SetLiveConnectionError(null);
                 _pageState.SetSnapshot(null);
                 _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "Project snapshot was not found.");
@@ -91,6 +102,7 @@
             {
                 await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
+                _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
                 _pageState.SetLiveConnectionError(null);
                 _pageState.SetSnapshot(null);
                 _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "Project snapshot response was empty.");
@@ -103,6 +115,7 @@
             if (!CanStartLiveSubscriptionOnThisRender())
             {
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Live pending");
+                _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Live pending");
                 _pageState.SetLiveConnectionError(null);
                 _loadedProjectId = ProjectId;
                 return;
@@ -117,6 +130,7 @@
             {
                 await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Live unavailable");
+                _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Live unavailable");
                 _pageState.SetLiveConnectionError($"Failed to connect live updates: {exception.Message}");
             }
 
@@ -126,15 +140,36 @@
         {
             await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
             _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Connection failed");
+            _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Connection failed");
             _pageState.SetLiveConnectionError(null);
             _pageState.SetSnapshot(null);
             _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: $"Failed to load snapshot: {exception.Message}");
         }
     }
 
-    private void SelectAgent(Guid agentId)
+    private async Task SelectAgentAsync(Guid agentId)
     {
-        Selection.SelectAgent(agentId);
+        if (Selection.SelectedAgentId == agentId)
+            return;
+
+        _pageState.SelectAgent(agentId);
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+            _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Switching");
+            _pageState.SetSelectedAgentLiveConnection(agentId, isConnected: false, isSubscribed: false, statusText: "Switching");
+            _pageState.SetLiveConnectionError(null);
+            await EnsureSelectedAgentHistoryAsync(agentId).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Switching");
+            _pageState.SetSelectedAgentLiveConnection(agentId, isConnected: false, isSubscribed: false, statusText: "Switching");
+            History.SetError(agentId, $"Failed to switch agent live updates: {exception.Message}");
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private void ToggleToolDetails(string key)
@@ -154,21 +189,17 @@
 
     private async Task SubscribeToLiveUpdatesAsync(ProjectAgentStatusSnapshotDto snapshot)
     {
+        Guid? selectedAgentId = Selection.SelectedAgentId;
         ProjectAgentLiveSubscriptionRequestDto request = new()
         {
             ProjectId = snapshot.ProjectId,
             SnapshotGeneratedAtUtc = snapshot.SnapshotGeneratedAtUtc,
-            AgentCursors = snapshot.AgentGroups
-                .SelectMany(group => group.Agents)
-                .Select(agent => new ProjectAgentLiveCursorDto
-                {
-                    AgentId = agent.AgentId,
-                    LatestSequence = agent.TimelineEntries.Count == 0 ? 0 : agent.TimelineEntries.Max(entry => entry.Sequence),
-                })
-                .ToList(),
+            AgentId = selectedAgentId,
+            LatestSequence = selectedAgentId == History.AgentId ? History.GetLatestSequence() : 0,
         };
 
         _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Connecting");
+        _pageState.SetSelectedAgentLiveConnection(selectedAgentId, isConnected: false, isSubscribed: false, statusText: "Connecting");
         StateHasChanged();
 
         await LiveSubscriptionClient.SubscribeAsync(
@@ -182,6 +213,7 @@
             HandleReconnectRequiredAsync).ConfigureAwait(false);
 
         _pageState.SetLiveConnection(isConnected: true, isSubscribed: true, statusText: "Live");
+        _pageState.SetSelectedAgentLiveConnection(selectedAgentId, isConnected: true, isSubscribed: true, statusText: "Live");
         await InvokeAsync(StateHasChanged);
     }
 
@@ -204,6 +236,7 @@
             await InvokeAsync(async () =>
             {
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Reconnecting");
+                _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Reconnecting");
                 _pageState.SetLiveConnectionError("Live connection interrupted. Reloading snapshot...");
                 StateHasChanged();
                 await LoadSnapshotAsync();
@@ -223,10 +256,76 @@
         return InvokeAsync(() =>
         {
             _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Reconnecting");
+            _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Reconnecting");
             _pageState.SetLiveConnectionError("Live connection interrupted. Reconnecting...");
             StateHasChanged();
         });
     }
+
+    private Task EnsureSelectedAgentHistoryAsync(Guid agentId)
+    {
+        ProjectAgentSnapshotDto? agent = Snapshot.FindAgent(agentId);
+        if (agent is null)
+            return Task.CompletedTask;
+
+        if (agent.HasLoadedHistory)
+        {
+            History.ClearError();
+            return InvokeAsync(async () =>
+            {
+                await SubscribeToLiveUpdatesAsync(Snapshot.Snapshot!).ConfigureAwait(false);
+                StateHasChanged();
+            });
+        }
+
+        return LoadAgentHistoryAsync(agentId);
+    }
+
+    private async Task LoadAgentHistoryAsync(Guid agentId)
+    {
+        if (ProjectId is null)
+            return;
+
+        int requestVersion = Interlocked.Increment(ref _historyLoadVersion);
+        History.StartLoading(agentId);
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            ProjectAgentHistorySnapshotDto? history = await HttpClient.GetFromJsonAsync<ProjectAgentHistorySnapshotDto>(
+                $"/api/projects/{ProjectId.Value}/agent-status/agents/{agentId}/history").ConfigureAwait(false);
+
+            if (!IsCurrentHistoryRequest(requestVersion, agentId))
+                return;
+
+            if (history is null)
+            {
+                History.SetError(agentId, "Agent history response was empty.");
+                return;
+            }
+
+            _pageState.SetAgentHistory(history.AgentId, history.TimelineEntries);
+            await SubscribeToLiveUpdatesAsync(Snapshot.Snapshot!).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            if (!IsCurrentHistoryRequest(requestVersion, agentId))
+                return;
+
+            History.SetError(agentId, $"Failed to load agent history: {exception.Message}");
+        }
+        finally
+        {
+            if (IsCurrentHistoryRequest(requestVersion, agentId))
+            {
+                History.FinishLoading(agentId);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private bool IsCurrentHistoryRequest(int requestVersion, Guid agentId) =>
+        requestVersion == _historyLoadVersion && Selection.SelectedAgentId == agentId;
 
     private bool CanStartLiveSubscriptionOnThisRender()
     {
@@ -264,13 +363,19 @@
     private sealed class AgentStatusPageState(
         AgentStatusSnapshotState snapshot,
         AgentStatusLiveConnectionState liveConnection,
-        AgentStatusSelectionState selection)
+        AgentStatusSelectionState selection,
+        AgentStatusHistoryState history,
+        AgentStatusSelectedAgentLiveConnectionState selectedAgentLiveConnection)
     {
         public AgentStatusSnapshotState Snapshot { get; } = snapshot;
 
         public AgentStatusLiveConnectionState LiveConnection { get; } = liveConnection;
 
         public AgentStatusSelectionState Selection { get; } = selection;
+
+        public AgentStatusHistoryState History { get; } = history;
+
+        public AgentStatusSelectedAgentLiveConnectionState SelectedAgentLiveConnection { get; } = selectedAgentLiveConnection;
 
         public bool IsSnapshotLoading { get; private set; }
 
@@ -291,20 +396,29 @@
             AgentStatusCompletionState.From(Snapshot.Snapshot?.ProjectStatus, LiveConnection);
 
         public static AgentStatusPageState CreateEmpty() =>
-            new(
+                new(
                 new AgentStatusSnapshotState(null),
                 new AgentStatusLiveConnectionState(isConnected: false, isSubscribed: false, statusText: "Idle"),
-                new AgentStatusSelectionState(selectedAgentId: null, expandedToolDetails: []));
+                new AgentStatusSelectionState(selectedAgentId: null, expandedToolDetails: []),
+                new AgentStatusHistoryState(agentId: null, timelineEntries: [], isLoading: false),
+                new AgentStatusSelectedAgentLiveConnectionState(agentId: null, isConnected: false, isSubscribed: false, statusText: "Idle"));
 
         public void SetSnapshot(ProjectAgentStatusSnapshotDto? snapshot)
         {
             Snapshot.Replace(snapshot);
             Selection.ApplySnapshot(snapshot);
+            History.ApplySnapshot(snapshot, Selection.SelectedAgentId);
+            Snapshot.ReleaseHistoryExcept(Selection.SelectedAgentId);
         }
 
         public void SetLiveConnection(bool isConnected, bool isSubscribed, string statusText)
         {
             LiveConnection.Update(isConnected, isSubscribed, statusText);
+        }
+
+        public void SetSelectedAgentLiveConnection(Guid? agentId, bool isConnected, bool isSubscribed, string statusText)
+        {
+            SelectedAgentLiveConnection.Update(agentId, isConnected, isSubscribed, statusText);
         }
 
         public void SetLiveConnectionError(string? errorMessage)
@@ -320,10 +434,36 @@
 
         public void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
         {
+            if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
+            {
+                if (update.TimelineEntry?.AgentId == Selection.SelectedAgentId)
+                {
+                    if (!Snapshot.UpsertTimelineEntry(update.TimelineEntry))
+                        return;
+
+                    History.ApplySelectedAgentSnapshot(Snapshot.GetHistory(update.TimelineEntry.AgentId), update.TimelineEntry.AgentId);
+                }
+
+                return;
+            }
+
             if (!Snapshot.ApplyLiveUpdate(update))
                 return;
 
             Selection.ApplySnapshot(Snapshot.Snapshot);
+        }
+
+        public void SetAgentHistory(Guid agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
+        {
+            Snapshot.ReplaceAgentHistory(agentId, timelineEntries);
+            History.ApplySelectedAgentSnapshot(timelineEntries, agentId);
+        }
+
+        public void SelectAgent(Guid agentId)
+        {
+            Selection.SelectAgent(agentId);
+            Snapshot.ReleaseHistoryExcept(agentId);
+            SelectedAgentLiveConnection.Update(agentId, isConnected: false, isSubscribed: false, statusText: "Switching");
         }
     }
 
@@ -349,7 +489,6 @@
                 ProjectAgentLiveUpdateKind.AgentGroupUpserted => UpsertGroup(update.Group),
                 ProjectAgentLiveUpdateKind.AgentUpserted => UpsertAgent(update.Agent),
                 ProjectAgentLiveUpdateKind.AgentStatusChanged => UpdateAgentStatus(update.AgentStatus),
-                ProjectAgentLiveUpdateKind.TimelineEntryUpserted => UpsertTimelineEntry(update.TimelineEntry),
                 _ => false,
             };
         }
@@ -359,6 +498,37 @@
 
         public IReadOnlyList<ProjectAgentTimelineEntryDto> GetHistory(Guid agentId) =>
             FindAgent(agentId)?.TimelineEntries ?? [];
+
+        public void ReleaseHistoryExcept(Guid? agentIdToKeep)
+        {
+            if (Snapshot is null)
+                return;
+
+            List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups
+                .Select(group => new ProjectAgentGroupSnapshotDto
+                {
+                    GroupId = group.GroupId,
+                    RuntimeKey = group.RuntimeKey,
+                    DisplayName = group.DisplayName,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                    Agents = group.Agents
+                        .Select(agent => new ProjectAgentSnapshotDto
+                        {
+                            AgentId = agent.AgentId,
+                            GroupId = agent.GroupId,
+                            RuntimeKey = agent.RuntimeKey,
+                            DisplayName = agent.DisplayName,
+                            Status = agent.Status,
+                            CreatedAtUtc = agent.CreatedAtUtc,
+                            HasLoadedHistory = agent.AgentId == agentIdToKeep && agent.HasLoadedHistory,
+                            TimelineEntries = agent.AgentId == agentIdToKeep ? agent.TimelineEntries : [],
+                        })
+                        .ToList(),
+                })
+                .ToList();
+
+            ReplaceSnapshotGroups(groups);
+        }
 
         private bool UpsertGroup(ProjectAgentGroupLiveDto? group)
         {
@@ -418,6 +588,7 @@
                 DisplayName = agent.DisplayName,
                 Status = agent.Status,
                 CreatedAtUtc = agent.CreatedAtUtc,
+                HasLoadedHistory = existingIndex >= 0 && agents[existingIndex].HasLoadedHistory,
                 TimelineEntries = timelineEntries,
             };
 
@@ -465,6 +636,7 @@
                     DisplayName = existingAgent.DisplayName,
                     Status = agentStatus.Status,
                     CreatedAtUtc = existingAgent.CreatedAtUtc,
+                    HasLoadedHistory = existingAgent.HasLoadedHistory,
                     TimelineEntries = existingAgent.TimelineEntries,
                 };
 
@@ -484,7 +656,7 @@
             return false;
         }
 
-        private bool UpsertTimelineEntry(ProjectAgentTimelineEntryDto? timelineEntry)
+        public bool UpsertTimelineEntry(ProjectAgentTimelineEntryDto? timelineEntry)
         {
             if (timelineEntry is null || Snapshot is null)
                 return false;
@@ -514,6 +686,7 @@
                     DisplayName = agent.DisplayName,
                     Status = agent.Status,
                     CreatedAtUtc = agent.CreatedAtUtc,
+                    HasLoadedHistory = true,
                     TimelineEntries = timelineEntries
                         .OrderBy(candidate => candidate.Sequence)
                         .ThenBy(candidate => candidate.OccurredAtUtc)
@@ -534,6 +707,50 @@
             }
 
             return false;
+        }
+
+        public void ReplaceAgentHistory(Guid agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
+        {
+            if (Snapshot is null)
+                return;
+
+            List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+            for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
+            {
+                ProjectAgentGroupSnapshotDto group = groups[groupIndex];
+                List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
+                int agentIndex = agents.FindIndex(candidate => candidate.AgentId == agentId);
+                if (agentIndex < 0)
+                    continue;
+
+                ProjectAgentSnapshotDto existingAgent = agents[agentIndex];
+                agents[agentIndex] = new ProjectAgentSnapshotDto
+                {
+                    AgentId = existingAgent.AgentId,
+                    GroupId = existingAgent.GroupId,
+                    RuntimeKey = existingAgent.RuntimeKey,
+                    DisplayName = existingAgent.DisplayName,
+                    Status = existingAgent.Status,
+                    CreatedAtUtc = existingAgent.CreatedAtUtc,
+                    HasLoadedHistory = true,
+                    TimelineEntries = timelineEntries
+                        .OrderBy(candidate => candidate.Sequence)
+                        .ThenBy(candidate => candidate.OccurredAtUtc)
+                        .ToList(),
+                };
+
+                groups[groupIndex] = new ProjectAgentGroupSnapshotDto
+                {
+                    GroupId = group.GroupId,
+                    RuntimeKey = group.RuntimeKey,
+                    DisplayName = group.DisplayName,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                    Agents = agents,
+                };
+
+                ReplaceSnapshotGroups(groups);
+                return;
+            }
         }
 
         private bool UpdateProjectStatus(ProjectExecutionStatusChangedDto? projectStatus)
@@ -570,6 +787,72 @@
         }
     }
 
+    private sealed class AgentStatusHistoryState(Guid? agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries, bool isLoading)
+    {
+        public Guid? AgentId { get; private set; } = agentId;
+
+        public IReadOnlyList<ProjectAgentTimelineEntryDto> TimelineEntries { get; private set; } = timelineEntries;
+
+        public bool IsLoading { get; private set; } = isLoading;
+
+        public string? ErrorMessage { get; private set; }
+
+        public void ApplySnapshot(ProjectAgentStatusSnapshotDto? snapshot, Guid? selectedAgentId)
+        {
+            if (snapshot is null || selectedAgentId is null)
+            {
+                AgentId = null;
+                TimelineEntries = [];
+                IsLoading = false;
+                ErrorMessage = null;
+                return;
+            }
+
+            ApplySelectedAgentSnapshot(
+                snapshot.AgentGroups
+                    .SelectMany(group => group.Agents)
+                    .FirstOrDefault(agent => agent.AgentId == selectedAgentId)?.TimelineEntries ?? [],
+                selectedAgentId.Value);
+        }
+
+        public void ApplySelectedAgentSnapshot(IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries, Guid agentId)
+        {
+            AgentId = agentId;
+            TimelineEntries = timelineEntries;
+            IsLoading = false;
+            ErrorMessage = null;
+        }
+
+        public void StartLoading(Guid agentId)
+        {
+            AgentId = agentId;
+            TimelineEntries = [];
+            IsLoading = true;
+            ErrorMessage = null;
+        }
+
+        public void FinishLoading(Guid agentId)
+        {
+            if (AgentId == agentId)
+                IsLoading = false;
+        }
+
+        public void SetError(Guid agentId, string errorMessage)
+        {
+            AgentId = agentId;
+            TimelineEntries = [];
+            IsLoading = false;
+            ErrorMessage = errorMessage;
+        }
+
+        public void ClearError()
+        {
+            ErrorMessage = null;
+        }
+
+        public long GetLatestSequence() => TimelineEntries.Count == 0 ? 0 : TimelineEntries.Max(entry => entry.Sequence);
+    }
+
     private sealed class AgentStatusLiveConnectionState(bool isConnected, bool isSubscribed, string statusText)
     {
         public bool IsConnected { get; private set; } = isConnected;
@@ -580,6 +863,25 @@
 
         public void Update(bool isConnected, bool isSubscribed, string statusText)
         {
+            IsConnected = isConnected;
+            IsSubscribed = isSubscribed;
+            StatusText = statusText;
+        }
+    }
+
+    private sealed class AgentStatusSelectedAgentLiveConnectionState(Guid? agentId, bool isConnected, bool isSubscribed, string statusText)
+    {
+        public Guid? AgentId { get; private set; } = agentId;
+
+        public bool IsConnected { get; private set; } = isConnected;
+
+        public bool IsSubscribed { get; private set; } = isSubscribed;
+
+        public string StatusText { get; private set; } = statusText;
+
+        public void Update(Guid? agentId, bool isConnected, bool isSubscribed, string statusText)
+        {
+            AgentId = agentId;
             IsConnected = isConnected;
             IsSubscribed = isSubscribed;
             StatusText = statusText;
@@ -622,6 +924,7 @@
         public void SelectAgent(Guid agentId)
         {
             SelectedAgentId = agentId;
+            ExpandedToolDetails.Clear();
         }
 
         public void ApplySnapshot(ProjectAgentStatusSnapshotDto? snapshot)
@@ -629,6 +932,7 @@
             if (snapshot is null)
             {
                 SelectedAgentId = null;
+                ExpandedToolDetails.Clear();
                 return;
             }
 
@@ -643,6 +947,7 @@
                 .SelectMany(group => group.Agents)
                 .Select(agent => (Guid?)agent.AgentId)
                 .FirstOrDefault();
+            ExpandedToolDetails.Clear();
         }
 
         public void ToggleToolDetails(string key)
@@ -699,7 +1004,7 @@
 
                                 <button type="button"
                                         class="agent-roster-node @(isSelected ? "selected" : null)"
-                                        @onclick="() => SelectAgent(agent.AgentId)">
+                                        @onclick="() => SelectAgentAsync(agent.AgentId)">
                                     <div class="agent-roster-main">
                                         <div class="agent-roster-name">@agent.DisplayName</div>
                                         <div class="agent-roster-rule">@FormatCreatedAt(agent.CreatedAtUtc)</div>
@@ -725,58 +1030,69 @@
             </div>
 
             <div class="agent-chat-log">
-                @for (var index = 0; index < SelectedHistory.Count; index++)
+                @if (History.IsLoading && Selection.SelectedAgentId == History.AgentId)
                 {
-                    var entry = SelectedHistory[index];
-                    var isInput = entry.EntryKind == ProjectAgentTimelineEntryKind.Input;
-                    var isTool = entry.EntryKind == ProjectAgentTimelineEntryKind.Tool;
-                    var isCompaction = entry.EntryKind == ProjectAgentTimelineEntryKind.Compaction;
-                    var toolKey = entry.ToolCallId ?? entry.TimelineEntryId.ToString("N");
-                    var isExpanded = Selection.ExpandedToolDetails.Contains(toolKey);
-
-                    @if (isCompaction)
+                    <div class="alert alert-info mb-0" role="status">Loading agent history...</div>
+                }
+                else if (History.ErrorMessage is not null && Selection.SelectedAgentId == History.AgentId)
+                {
+                    <div class="alert alert-warning mb-0" role="alert">@History.ErrorMessage</div>
+                }
+                else
+                {
+                    @for (var index = 0; index < SelectedHistory.Count; index++)
                     {
-                        <div class="agent-compaction-notice">
-                            <span class="agent-compaction-rule"></span>
-                            <span class="agent-compaction-label">
-                                <svg class="agent-compaction-icon" viewBox="0 0 16 16" aria-hidden="true">
-                                    <path d="M4 1.75h5.1L12.25 4.9v9.35H4V1.75Z" />
-                                    <path d="M9 1.9V5h3.1" />
-                                    <path d="M5.75 8h4.5M5.75 10.25h4.5M5.75 12.5h3" />
-                                </svg>
-                                @entry.Message
-                            </span>
-                            <span class="agent-compaction-rule"></span>
-                        </div>
-                        continue;
-                    }
+                        var entry = SelectedHistory[index];
+                        var isInput = entry.EntryKind == ProjectAgentTimelineEntryKind.Input;
+                        var isTool = entry.EntryKind == ProjectAgentTimelineEntryKind.Tool;
+                        var isCompaction = entry.EntryKind == ProjectAgentTimelineEntryKind.Compaction;
+                        var toolKey = entry.ToolCallId ?? entry.TimelineEntryId.ToString("N");
+                        var isExpanded = Selection.ExpandedToolDetails.Contains(toolKey);
 
-                    <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)">
-                        <div class="agent-message-bubble">
-                            @if (isTool)
-                            {
-                                <button type="button" class="tool-call-summary" @onclick="() => ToggleToolDetails(toolKey)">
-                                    <span class="tool-call-chip">Tool</span>
-                                    <span class="tool-call-summary-name">@entry.ToolName</span>
-                                    <span>@(isExpanded ? "v" : ">")</span>
-                                </button>
+                        @if (isCompaction)
+                        {
+                            <div class="agent-compaction-notice">
+                                <span class="agent-compaction-rule"></span>
+                                <span class="agent-compaction-label">
+                                    <svg class="agent-compaction-icon" viewBox="0 0 16 16" aria-hidden="true">
+                                        <path d="M4 1.75h5.1L12.25 4.9v9.35H4V1.75Z" />
+                                        <path d="M9 1.9V5h3.1" />
+                                        <path d="M5.75 8h4.5M5.75 10.25h4.5M5.75 12.5h3" />
+                                    </svg>
+                                    @entry.Message
+                                </span>
+                                <span class="agent-compaction-rule"></span>
+                            </div>
+                            continue;
+                        }
 
-                                @if (isExpanded)
+                        <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)">
+                            <div class="agent-message-bubble">
+                                @if (isTool)
                                 {
-                                    <div class="tool-call-item">
-                                        <div class="tool-call-label">Arguments</div>
-                                        <pre>@entry.ToolArguments</pre>
-                                        <div class="tool-call-label">Result</div>
-                                        <pre>@entry.ToolResult</pre>
-                                    </div>
+                                    <button type="button" class="tool-call-summary" @onclick="() => ToggleToolDetails(toolKey)">
+                                        <span class="tool-call-chip">Tool</span>
+                                        <span class="tool-call-summary-name">@entry.ToolName</span>
+                                        <span>@(isExpanded ? "v" : ">")</span>
+                                    </button>
+
+                                    @if (isExpanded)
+                                    {
+                                        <div class="tool-call-item">
+                                            <div class="tool-call-label">Arguments</div>
+                                            <pre>@entry.ToolArguments</pre>
+                                            <div class="tool-call-label">Result</div>
+                                            <pre>@entry.ToolResult</pre>
+                                        </div>
+                                    }
                                 }
-                            }
-                            else
-                            {
-                                <div class="agent-message-text">@entry.Message</div>
-                            }
-                        </div>
-                    </article>
+                                else
+                                {
+                                    <div class="agent-message-text">@entry.Message</div>
+                                }
+                            </div>
+                        </article>
+                    }
                 }
             </div>
         </section>

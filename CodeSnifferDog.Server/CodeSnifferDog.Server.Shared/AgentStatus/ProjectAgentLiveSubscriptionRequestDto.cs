@@ -6,5 +6,7 @@ public sealed class ProjectAgentLiveSubscriptionRequestDto
 
     public required DateTimeOffset SnapshotGeneratedAtUtc { get; init; }
 
-    public required IReadOnlyList<ProjectAgentLiveCursorDto> AgentCursors { get; init; }
+    public Guid? AgentId { get; init; }
+
+    public long LatestSequence { get; init; }
 }

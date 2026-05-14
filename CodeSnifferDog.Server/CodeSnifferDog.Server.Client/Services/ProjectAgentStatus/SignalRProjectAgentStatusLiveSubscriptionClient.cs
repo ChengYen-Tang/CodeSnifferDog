@@ -9,6 +9,7 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
     private readonly HttpClient _httpClient = httpClient;
     private HubConnection? _connection;
     private Guid? _subscribedProjectId;
+    private Guid? _subscribedAgentId;
     private Func<ProjectAgentLiveUpdateDto, Task>? _onUpdate;
     private Func<Task>? _onReconnecting;
     private Func<Task>? _onReconnectRequired;
@@ -35,6 +36,7 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
             if (subscribedProjectId == request.ProjectId)
             {
                 await _connection!.InvokeAsync(ProjectUpdatesContract.SubscribeToProjectMethodName, request, cancellationToken).ConfigureAwait(false);
+                _subscribedAgentId = request.AgentId;
                 return;
             }
 
@@ -43,6 +45,7 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
 
         await _connection!.InvokeAsync(ProjectUpdatesContract.SubscribeToProjectMethodName, request, cancellationToken).ConfigureAwait(false);
         _subscribedProjectId = request.ProjectId;
+        _subscribedAgentId = request.AgentId;
     }
 
     public async Task UnsubscribeAsync(CancellationToken cancellationToken = default)
@@ -50,11 +53,13 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
         if (_connection is null || _subscribedProjectId is null || _connection.State != HubConnectionState.Connected)
         {
             _subscribedProjectId = null;
+            _subscribedAgentId = null;
             return;
         }
 
         await _connection.InvokeAsync(ProjectUpdatesContract.UnsubscribeFromProjectMethodName, _subscribedProjectId.Value, cancellationToken).ConfigureAwait(false);
         _subscribedProjectId = null;
+        _subscribedAgentId = null;
     }
 
     private async Task EnsureConnectionAsync(CancellationToken cancellationToken)
@@ -88,10 +93,11 @@ public sealed class SignalRProjectAgentStatusLiveSubscriptionClient(HttpClient h
         if (_connection is not null)
         {
             await _connection.DisposeAsync().ConfigureAwait(false);
-            _connection = null;
-        }
+        _connection = null;
+    }
 
         _subscribedProjectId = null;
+        _subscribedAgentId = null;
         _onUpdate = null;
         _onReconnecting = null;
         _onReconnectRequired = null;
