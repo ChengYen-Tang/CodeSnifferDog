@@ -75,7 +75,31 @@ public sealed class ProjectReportService(IDbContextFactory<CodeSnifferDogServerD
         };
     }
 
-    public async Task<ProjectRuleReportDto?> GetProjectReportAsync(
+    public async Task<ProjectReportListDto?> GetProjectReportListAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectRecord? project = await dbContext.Projects
+            .AsNoTracking()
+            .Include(project => project.RuleReports.OrderBy(report => report.RuleName))
+            .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
+
+        if (project is null)
+            return null;
+
+        return new ProjectReportListDto
+        {
+            OriginalFileName = project.OriginalFileName,
+            Reports = project.RuleReports
+                .OrderBy(report => report.RuleName, StringComparer.OrdinalIgnoreCase)
+                .Select(MapReportListItem)
+                .ToList(),
+        };
+    }
+
+    public async Task<ProjectReportContentDto?> GetProjectReportAsync(
         Guid projectId,
         Guid reportId,
         CancellationToken cancellationToken = default)
@@ -88,10 +112,23 @@ public sealed class ProjectReportService(IDbContextFactory<CodeSnifferDogServerD
                 item => item.ProjectId == projectId && item.Id == reportId,
                 cancellationToken);
 
-        return report is null ? null : MapReport(report);
+        return report is null ? null : MapReportContent(report);
     }
 
     private static ProjectRuleReportDto MapReport(ProjectRuleReportRecord report) => new()
+    {
+        ReportId = report.Id,
+        RuleName = report.RuleName,
+        MarkdownContent = report.MarkdownContent,
+    };
+
+    private static ProjectReportListItemDto MapReportListItem(ProjectRuleReportRecord report) => new()
+    {
+        ReportId = report.Id,
+        RuleName = report.RuleName,
+    };
+
+    private static ProjectReportContentDto MapReportContent(ProjectRuleReportRecord report) => new()
     {
         ReportId = report.Id,
         RuleName = report.RuleName,

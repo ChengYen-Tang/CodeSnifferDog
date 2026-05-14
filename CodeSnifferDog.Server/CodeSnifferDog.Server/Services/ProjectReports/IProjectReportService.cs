@@ -9,9 +9,13 @@ public interface IProjectReportService
         IReadOnlyList<ProjectRuleReportDraft> reports,
         CancellationToken cancellationToken = default);
 
+    Task<ProjectReportListDto?> GetProjectReportListAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default);
+
     Task<ProjectReportBundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default);
 
-    Task<ProjectRuleReportDto?> GetProjectReportAsync(
+    Task<ProjectReportContentDto?> GetProjectReportAsync(
         Guid projectId,
         Guid reportId,
         CancellationToken cancellationToken = default);

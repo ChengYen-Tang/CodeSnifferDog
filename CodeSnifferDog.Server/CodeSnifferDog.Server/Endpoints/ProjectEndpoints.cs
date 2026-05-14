@@ -28,6 +28,9 @@ public static class ProjectEndpoints
         group.MapGet("/{projectId:guid}/reports", GetProjectReportsAsync)
             .WithName("GetProjectReports");
 
+        group.MapGet("/{projectId:guid}/reports/{reportId:guid}", GetProjectReportAsync)
+            .WithName("GetProjectReport");
+
         group.MapGet("/{projectId:guid}/agent-status", GetProjectAgentStatusSnapshotAsync)
             .WithName("GetProjectAgentStatusSnapshot");
 
@@ -89,8 +92,18 @@ public static class ProjectEndpoints
         IProjectReportService projectReportService,
         CancellationToken cancellationToken)
     {
-        ProjectReportBundleDto? reports = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
+        ProjectReportListDto? reports = await projectReportService.GetProjectReportListAsync(projectId, cancellationToken);
         return reports is null ? Results.NotFound() : Results.Ok(reports);
+    }
+
+    private static async Task<IResult> GetProjectReportAsync(
+        Guid projectId,
+        Guid reportId,
+        IProjectReportService projectReportService,
+        CancellationToken cancellationToken)
+    {
+        ProjectReportContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
+        return report is null ? Results.NotFound() : Results.Ok(report);
     }
 
     private static async Task<IResult> GetProjectAgentStatusSnapshotAsync(
@@ -108,7 +121,7 @@ public static class ProjectEndpoints
         IProjectReportService projectReportService,
         CancellationToken cancellationToken)
     {
-        ProjectRuleReportDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
+        ProjectReportContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
         if (report is null)
             return Results.NotFound();
 

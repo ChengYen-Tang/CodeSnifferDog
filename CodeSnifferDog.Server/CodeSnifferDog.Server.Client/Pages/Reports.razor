@@ -1,9 +1,11 @@
 @page "/reports/{ProjectId:guid}"
 @rendermode InteractiveAuto
+@implements IDisposable
 @using System.Net.Http.Json
 @using CodeSnifferDog.Server.Shared.Reports
 @using Markdig
 @inject HttpClient Http
+@inject PersistentComponentState PersistentComponentState
 
 <PageTitle>Reports</PageTitle>
 
@@ -15,37 +17,161 @@
         .UseAdvancedExtensions()
         .Build();
 
-    private ProjectReportBundleDto? _bundle;
-    private ProjectRuleReportDto? _selectedReport;
-    private bool _isLoading = true;
-    private string? _errorMessage;
+    private PersistingComponentStateSubscription? _persistingSubscription;
+    private ProjectReportListDto? _reportList;
+    private ProjectReportContentDto? _selectedReportContent;
+    private Guid? _selectedReportId;
+    private Guid? _loadedProjectId;
+    private int _contentRequestVersion;
+    private bool _isListLoading = true;
+    private bool _isContentLoading;
+    private string? _listErrorMessage;
+    private string? _contentErrorMessage;
+
+    protected override void OnInitialized()
+    {
+        _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistComponentState);
+    }
 
     protected override async Task OnParametersSetAsync()
     {
-        _isLoading = true;
-        _errorMessage = null;
+        if (_loadedProjectId == ProjectId)
+            return;
+
+        _loadedProjectId = ProjectId;
+
+        if (TryRestoreComponentState())
+            return;
+
+        await LoadReportListAsync();
+    }
+
+    private ProjectReportListItemDto? SelectedReportListItem =>
+        _selectedReportId is null || _reportList is null
+            ? null
+            : _reportList.Reports.FirstOrDefault(report => report.ReportId == _selectedReportId.Value);
+
+    private async Task LoadReportListAsync()
+    {
+        _isListLoading = true;
+        _listErrorMessage = null;
+        _contentErrorMessage = null;
 
         try
         {
-            _bundle = await Http.GetFromJsonAsync<ProjectReportBundleDto>($"/api/projects/{ProjectId}/reports");
-            _selectedReport = _bundle?.Reports.FirstOrDefault();
+            _reportList = await Http.GetFromJsonAsync<ProjectReportListDto>($"/api/projects/{ProjectId}/reports");
+            _selectedReportContent = null;
+            _selectedReportId = null;
+
+            ProjectReportListItemDto? firstReport = _reportList?.Reports.FirstOrDefault();
+            if (firstReport is not null)
+                await LoadReportContentAsync(firstReport.ReportId);
         }
         catch (Exception exception)
         {
-            _bundle = null;
-            _selectedReport = null;
-            _errorMessage = $"Failed to load reports: {exception.Message}";
+            _reportList = null;
+            _selectedReportContent = null;
+            _selectedReportId = null;
+            _listErrorMessage = $"Failed to load reports: {exception.Message}";
         }
         finally
         {
-            _isLoading = false;
+            _isListLoading = false;
         }
     }
 
-    private void SelectReport(ProjectRuleReportDto report) => _selectedReport = report;
+    private Task SelectReportAsync(ProjectReportListItemDto report)
+    {
+        if (_selectedReportId == report.ReportId
+            && _selectedReportContent?.ReportId == report.ReportId
+            && !_isContentLoading
+            && string.IsNullOrWhiteSpace(_contentErrorMessage))
+            return Task.CompletedTask;
+
+        return LoadReportContentAsync(report.ReportId);
+    }
+
+    private async Task LoadReportContentAsync(Guid reportId)
+    {
+        int requestVersion = Interlocked.Increment(ref _contentRequestVersion);
+        _selectedReportId = reportId;
+        _selectedReportContent = null;
+        _contentErrorMessage = null;
+        _isContentLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            ProjectReportContentDto? reportContent = await Http.GetFromJsonAsync<ProjectReportContentDto>(
+                $"/api/projects/{ProjectId}/reports/{reportId}");
+
+            if (!IsCurrentContentRequest(requestVersion, reportId))
+                return;
+
+            _selectedReportContent = reportContent;
+            if (_selectedReportContent is null)
+                _contentErrorMessage = "Report content response was empty.";
+        }
+        catch (Exception exception)
+        {
+            if (!IsCurrentContentRequest(requestVersion, reportId))
+                return;
+
+            _contentErrorMessage = $"Failed to load report content: {exception.Message}";
+        }
+        finally
+        {
+            if (IsCurrentContentRequest(requestVersion, reportId))
+                _isContentLoading = false;
+        }
+    }
 
     private MarkupString RenderMarkdown(string markdown) =>
         new(Markdown.ToHtml(markdown, _markdownPipeline));
+
+    private bool TryRestoreComponentState()
+    {
+        string reportListKey = CreateReportListStateKey();
+        string selectedReportContentKey = CreateSelectedReportContentStateKey();
+
+        if (!PersistentComponentState.TryTakeFromJson<ProjectReportListDto>(reportListKey, out ProjectReportListDto? reportList))
+            return false;
+
+        if (!PersistentComponentState.TryTakeFromJson<ProjectReportContentDto>(selectedReportContentKey, out ProjectReportContentDto? selectedReportContent))
+            return false;
+
+        _reportList = reportList;
+        _selectedReportContent = selectedReportContent;
+        _selectedReportId = selectedReportContent.ReportId;
+        _isListLoading = false;
+        _isContentLoading = false;
+        _listErrorMessage = null;
+        _contentErrorMessage = null;
+        return true;
+    }
+
+    private Task PersistComponentState()
+    {
+        if (_reportList is not null)
+            PersistentComponentState.PersistAsJson(CreateReportListStateKey(), _reportList);
+
+        if (_selectedReportContent is not null)
+            PersistentComponentState.PersistAsJson(CreateSelectedReportContentStateKey(), _selectedReportContent);
+
+        return Task.CompletedTask;
+    }
+
+    private string CreateReportListStateKey() => $"reports:list:{ProjectId}";
+
+    private string CreateSelectedReportContentStateKey() => $"reports:selected-content:{ProjectId}";
+
+    private bool IsCurrentContentRequest(int requestVersion, Guid reportId) =>
+        requestVersion == _contentRequestVersion && _selectedReportId == reportId;
+
+    public void Dispose()
+    {
+        _persistingSubscription?.Dispose();
+    }
 }
 
 <div class="dashboard-page reports-page">
@@ -60,10 +186,10 @@
                     <div class="reports-sidebar-header">
                         <div class="d-flex align-items-start justify-content-between gap-2">
                             <div>
-                                <h2 class="h5 mb-1 text-dark-emphasis">@(_bundle?.OriginalFileName ?? "Reports")</h2>
-                                <p class="text-secondary mb-0">@((_bundle?.Reports.Count ?? 0).ToString()) markdown reports available</p>
+                                <h2 class="h5 mb-1 text-dark-emphasis">@(_reportList?.OriginalFileName ?? "Reports")</h2>
+                                <p class="text-secondary mb-0">@((_reportList?.Reports.Count ?? 0).ToString()) markdown reports available</p>
                             </div>
-                            @if (_bundle is not null && _bundle.Reports.Count > 0)
+                            @if (_reportList is not null && _reportList.Reports.Count > 0)
                             {
                                 <a class="project-action-button"
                                    href="@($"/api/projects/{ProjectId}/reports/download")"
@@ -75,26 +201,26 @@
                     </div>
 
                     <div class="reports-file-list">
-                        @if (_isLoading)
+                        @if (_isListLoading)
                         {
                             <div class="text-secondary">Loading reports...</div>
                         }
-                        else if (!string.IsNullOrWhiteSpace(_errorMessage))
+                        else if (!string.IsNullOrWhiteSpace(_listErrorMessage))
                         {
-                            <div class="text-danger">@_errorMessage</div>
+                            <div class="text-danger">@_listErrorMessage</div>
                         }
-                        else if (_bundle is null || _bundle.Reports.Count == 0)
+                        else if (_reportList is null || _reportList.Reports.Count == 0)
                         {
                             <div class="text-secondary">No reports available for this project.</div>
                         }
                         else
                         {
-                            @foreach (ProjectRuleReportDto report in _bundle.Reports)
+                            @foreach (ProjectReportListItemDto report in _reportList.Reports)
                             {
-                                <div class="report-file-item @(ReferenceEquals(report, _selectedReport) ? "active" : null)">
+                                <div class="report-file-item @(_selectedReportId == report.ReportId ? "active" : null)">
                                     <button type="button"
                                             class="report-file-select"
-                                            @onclick="() => SelectReport(report)">
+                                            @onclick="() => SelectReportAsync(report)">
                                         <span class="report-file-icon">MD</span>
                                         <span class="report-file-body">
                                             <span class="report-file-name">@($"{report.RuleName}.md")</span>
@@ -115,22 +241,45 @@
             </div>
 
             <div class="col-12 col-xl-9 col-xxl-10 reports-preview-column h-100">
-                @if (_selectedReport is not null)
+                @if (_isContentLoading && SelectedReportListItem is not null)
                 {
                     <div class="reports-preview-shell">
                         <div class="reports-preview-toolbar">
                             <div>
-                                <div class="reports-preview-file">@($"{_selectedReport.RuleName}.md")</div>
-                                <div class="reports-preview-meta">@_selectedReport.RuleName</div>
+                                <div class="reports-preview-file">@($"{SelectedReportListItem.RuleName}.md")</div>
+                                <div class="reports-preview-meta">@SelectedReportListItem.RuleName</div>
                             </div>
                         </div>
 
                         <div class="reports-preview-body report-reader markdown-body">
-                            @RenderMarkdown(_selectedReport.MarkdownContent)
+                            Loading report...
                         </div>
                     </div>
                 }
-                else if (!_isLoading && string.IsNullOrWhiteSpace(_errorMessage))
+                else if (!string.IsNullOrWhiteSpace(_contentErrorMessage))
+                {
+                    <div class="reports-preview-shell">
+                        <div class="reports-preview-body report-reader markdown-body text-danger">
+                            @_contentErrorMessage
+                        </div>
+                    </div>
+                }
+                else if (_selectedReportContent is not null)
+                {
+                    <div class="reports-preview-shell">
+                        <div class="reports-preview-toolbar">
+                            <div>
+                                <div class="reports-preview-file">@($"{_selectedReportContent.RuleName}.md")</div>
+                                <div class="reports-preview-meta">@_selectedReportContent.RuleName</div>
+                            </div>
+                        </div>
+
+                        <div class="reports-preview-body report-reader markdown-body">
+                            @RenderMarkdown(_selectedReportContent.MarkdownContent)
+                        </div>
+                    </div>
+                }
+                else if (!_isListLoading && string.IsNullOrWhiteSpace(_listErrorMessage))
                 {
                     <div class="reports-preview-shell">
                         <div class="reports-preview-body report-reader markdown-body">
