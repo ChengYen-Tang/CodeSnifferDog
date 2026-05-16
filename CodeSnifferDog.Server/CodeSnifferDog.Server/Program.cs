@@ -13,6 +13,7 @@ using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.AspNetCore.Components;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,8 +25,16 @@ builder.Services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(option
     options.UseSqlServer(builder.Configuration.GetConnectionString("CodeSnifferDogServer")));
 builder.Services.Configure<ProjectExecutionOptions>(
     builder.Configuration.GetSection(ProjectExecutionOptions.SectionName));
-builder.Services.Configure<InferenceProviderOptions>(
-    builder.Configuration.GetSection(InferenceProviderOptions.SectionName));
+builder.Services.AddOptions<InferenceProviderOptions>()
+    .Bind(builder.Configuration.GetSection(InferenceProviderOptions.SectionName))
+    .PostConfigure(options =>
+    {
+        options.OpenAICompatible.ExtraBody = OpenAICompatibleInferenceProviderOptions.ParseExtraBody(
+            builder.Configuration
+                .GetSection(InferenceProviderOptions.SectionName)
+                .GetSection(nameof(InferenceProviderOptions.OpenAICompatible))
+                .GetSection(nameof(OpenAICompatibleInferenceProviderOptions.ExtraBody)));
+    });
 builder.Services.AddSingleton<ProjectTemporaryStoragePaths>();
 builder.Services.AddSingleton<IProjectExecutionLeaseRegistry, ProjectExecutionLeaseRegistry>();
 builder.Services.AddSingleton<IProjectExecutionQueueLock, ProjectExecutionQueueLock>();

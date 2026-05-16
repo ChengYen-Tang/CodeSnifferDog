@@ -13,11 +13,12 @@ using System.Text.Json.Nodes;
 namespace CodeSnifferDog.Server.Services.ProjectExecution;
 
 public sealed class ProjectChatClientProvider(
-    IOptions<InferenceProviderOptions> options,
-    IHostEnvironment hostEnvironment) : IProjectChatClientProvider
+    IOptions<InferenceProviderOptions> options) : IProjectChatClientProvider
 {
     private readonly InferenceProviderOptions _options = options.Value;
-    private readonly JsonObject? _extraBody = LoadExtraBodyObject(hostEnvironment.ContentRootPath, hostEnvironment.EnvironmentName);
+    private readonly JsonObject? _extraBody = IsOpenAICompatibleProvider(options.Value.Provider)
+        ? options.Value.OpenAICompatible.ExtraBody
+        : null;
 
     public bool IsReady
     {
@@ -44,21 +45,54 @@ public sealed class ProjectChatClientProvider(
             throw new InvalidOperationException("Inference provider is not configured.");
 
         string provider = _options.Provider.Trim();
-        string modelId = _options.ModelId!.Trim();
-        string apiKey = ResolveApiKey(provider);
 
         if (IsAzureOpenAIProvider(provider))
-            return ConfigureChatClient(new AzureOpenAIClient(new Uri(_options.Endpoint!.Trim()), new AzureKeyCredential(apiKey))
-                .GetChatClient(modelId)
+        {
+            AzureOpenAIInferenceProviderOptions azureOptions = _options.AzureOpenAI;
+            AzureOpenAIClientOptions azureClientOptions = new();
+            ApplyNetworkTimeout(azureClientOptions);
+            return ConfigureChatClient(new AzureOpenAIClient(
+                    new Uri(azureOptions.Endpoint!.Trim()),
+                    new AzureKeyCredential(azureOptions.ApiKey!.Trim()),
+                    azureClientOptions)
+                .GetChatClient(azureOptions.DeploymentName!.Trim())
                 .AsIChatClient());
+        }
 
         OpenAIClientOptions clientOptions = new();
-        if (!string.IsNullOrWhiteSpace(_options.Endpoint))
-            clientOptions.Endpoint = new Uri(_options.Endpoint.Trim());
+        ApplyNetworkTimeout(clientOptions);
+        string modelId;
+        string apiKey;
+
+        if (IsOpenAIProvider(provider))
+        {
+            OpenAIInferenceProviderOptions openAIOptions = _options.OpenAI;
+            modelId = openAIOptions.ModelId!.Trim();
+            apiKey = openAIOptions.ApiKey!.Trim();
+        }
+        else
+        {
+            OpenAICompatibleInferenceProviderOptions compatibleOptions = _options.OpenAICompatible;
+            modelId = compatibleOptions.ModelId!.Trim();
+            apiKey = string.IsNullOrWhiteSpace(compatibleOptions.ApiKey) ? "unused" : compatibleOptions.ApiKey.Trim();
+            clientOptions.Endpoint = new Uri(compatibleOptions.Endpoint!.Trim());
+        }
 
         return ConfigureChatClient(new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions)
             .GetChatClient(modelId)
             .AsIChatClient());
+    }
+
+    private void ApplyNetworkTimeout(OpenAIClientOptions clientOptions)
+    {
+        if (_options.RequestTimeoutSeconds is > 0)
+            clientOptions.NetworkTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds.Value);
+    }
+
+    private void ApplyNetworkTimeout(AzureOpenAIClientOptions clientOptions)
+    {
+        if (_options.RequestTimeoutSeconds is > 0)
+            clientOptions.NetworkTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds.Value);
     }
 
     private IChatClient ConfigureChatClient(IChatClient chatClient) =>
@@ -123,74 +157,28 @@ public sealed class ProjectChatClientProvider(
         }
     }
 
-    internal static JsonObject? LoadExtraBodyObject(string contentRootPath, string environmentName)
-    {
-        JsonObject merged = [];
-
-        MergeExtraBodyFile(Path.Combine(contentRootPath, "appsettings.json"), merged);
-
-        if (!string.IsNullOrWhiteSpace(environmentName))
-            MergeExtraBodyFile(Path.Combine(contentRootPath, $"appsettings.{environmentName}.json"), merged);
-
-        return merged.Count == 0 ? null : merged;
-    }
-
-    private static void MergeExtraBodyFile(string path, JsonObject target)
-    {
-        if (!File.Exists(path))
-            return;
-
-        JsonNode? root = JsonNode.Parse(File.ReadAllText(path));
-        if (root is not JsonObject rootObject)
-            return;
-
-        JsonNode? extraBodyNode = rootObject[InferenceProviderOptions.SectionName]?["extra_body"];
-        if (extraBodyNode is null)
-            return;
-
-        if (extraBodyNode is not JsonObject extraBodyObject)
-            throw new InvalidOperationException($"'{InferenceProviderOptions.SectionName}:extra_body' must be a JSON object.");
-
-        MergeJsonObjects(target, (JsonObject)extraBodyObject.DeepClone());
-    }
-
-    private static void MergeJsonObjects(JsonObject target, JsonObject source)
-    {
-        foreach ((string key, JsonNode? sourceValue) in source)
-        {
-            if (target[key] is JsonObject targetObject && sourceValue is JsonObject sourceObject)
-            {
-                MergeJsonObjects(targetObject, sourceObject);
-                continue;
-            }
-
-            target[key] = sourceValue;
-        }
-    }
-
-    private string ResolveApiKey(string provider)
-    {
-        if (!string.IsNullOrWhiteSpace(_options.ApiKey))
-            return _options.ApiKey.Trim();
-
-        if (IsOpenAICompatibleProvider(provider))
-            return "unused";
-
-        throw new InvalidOperationException("Inference provider API key is not configured.");
-    }
-
     private static bool IsSupportedProvider(string provider) =>
         IsOpenAIProvider(provider) || IsAzureOpenAIProvider(provider) || IsOpenAICompatibleProvider(provider);
 
     private bool HasRequiredConfiguration() =>
         !string.IsNullOrWhiteSpace(_options.Provider) &&
-        !string.IsNullOrWhiteSpace(_options.ModelId) &&
         IsSupportedProvider(_options.Provider) &&
-        (!RequiresApiKey(_options.Provider) || !string.IsNullOrWhiteSpace(_options.ApiKey)) &&
-        (IsOpenAIProvider(_options.Provider) || !string.IsNullOrWhiteSpace(_options.Endpoint));
+        HasRequiredProviderConfiguration(_options.Provider);
 
-    private static bool RequiresApiKey(string provider) =>
-        IsOpenAIProvider(provider) || IsAzureOpenAIProvider(provider);
+    private bool HasRequiredProviderConfiguration(string provider)
+    {
+        if (IsOpenAIProvider(provider))
+            return !string.IsNullOrWhiteSpace(_options.OpenAI.ApiKey)
+                && !string.IsNullOrWhiteSpace(_options.OpenAI.ModelId);
+
+        if (IsAzureOpenAIProvider(provider))
+            return !string.IsNullOrWhiteSpace(_options.AzureOpenAI.Endpoint)
+                && !string.IsNullOrWhiteSpace(_options.AzureOpenAI.ApiKey)
+                && !string.IsNullOrWhiteSpace(_options.AzureOpenAI.DeploymentName);
+
+        return !string.IsNullOrWhiteSpace(_options.OpenAICompatible.Endpoint)
+            && !string.IsNullOrWhiteSpace(_options.OpenAICompatible.ModelId);
+    }
 
     private static bool IsOpenAIProvider(string provider) =>
         string.Equals(provider.Trim(), "openai", StringComparison.OrdinalIgnoreCase);
