@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Text.Json;
 
 namespace CodeSnifferDog.Tests.Components.Pages;
@@ -18,6 +19,7 @@ public sealed class ReportsTests
     public void LoadsReportListThenFetchesOnlySelectedReportContent()
     {
         using Bunit.TestContext context = new();
+        ConfigureServices(context);
         ReportApiMessageHandler handler = new(
             new ProjectReportListDto
             {
@@ -102,6 +104,7 @@ public sealed class ReportsTests
     public void KeepsLatestSelectedReportWhenEarlierRequestFinishesLater()
     {
         using Bunit.TestContext context = new();
+        ConfigureServices(context);
         SequencedReportApiMessageHandler handler = new(
             new ProjectReportListDto
             {
@@ -160,11 +163,8 @@ public sealed class ReportsTests
             StringAssert.Contains(cut.Markup, "Initial alpha");
         });
 
-        IElement firstButton = cut.FindAll(".report-file-select")[0];
-        IElement secondButton = cut.FindAll(".report-file-select")[1];
-
-        secondButton.Click();
-        firstButton.Click();
+        cut.FindAll(".report-file-select")[1].Click();
+        cut.FindAll(".report-file-select")[0].Click();
 
         cut.WaitForAssertion(() =>
         {
@@ -186,6 +186,7 @@ public sealed class ReportsTests
     public void AllowsRetryWhenInitialSelectedReportFailsToLoad()
     {
         using Bunit.TestContext context = new();
+        ConfigureServices(context);
         SequencedReportApiMessageHandler handler = new(
             new ProjectReportListDto
             {
@@ -243,6 +244,27 @@ public sealed class ReportsTests
             },
             handler.Requests.ToArray());
     }
+
+    private static void ConfigureServices(Bunit.TestContext context)
+    {
+        ConstructorInfo constructor = typeof(PersistentComponentState)
+            .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Single();
+        ParameterInfo[] parameters = constructor.GetParameters();
+
+        object persistentComponentState = constructor.Invoke(
+            [
+                new Dictionary<string, byte[]>(),
+                CreateEmptyList(parameters[1].ParameterType),
+                CreateEmptyList(parameters[2].ParameterType),
+            ]);
+
+        context.Services.AddSingleton((PersistentComponentState)persistentComponentState);
+    }
+
+    private static object CreateEmptyList(Type listType) =>
+        Activator.CreateInstance(listType)
+        ?? throw new InvalidOperationException($"Unable to create instance of {listType}.");
 
     private sealed class ReportApiMessageHandler(
         ProjectReportListDto list,
