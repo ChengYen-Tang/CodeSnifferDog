@@ -38,6 +38,7 @@ builder.Services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, NoOpProjec
 builder.Services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
 builder.Services.AddScoped<IProjectReportService, ProjectReportService>();
 builder.Services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();
+builder.Services.AddScoped<IProjectSidebarSnapshotService, ProjectSidebarSnapshotService>();
 builder.Services.AddSingleton<IProjectUpdatesNotifier, SignalRProjectUpdatesNotifier>();
 builder.Services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, SignalRProjectAgentStatusLiveUpdateNotifier>();
 builder.Services.AddHostedService<ProjectExecutionHostedService>();

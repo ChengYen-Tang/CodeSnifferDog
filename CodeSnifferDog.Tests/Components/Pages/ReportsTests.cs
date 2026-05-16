@@ -67,7 +67,7 @@ public sealed class ReportsTests
         {
             StringAssert.Contains(cut.Markup, "rule-a.md");
             StringAssert.Contains(cut.Markup, "Alpha content");
-            StringAssert.DoesNotContain(cut.Markup, "Beta content");
+            Assert.DoesNotContain(cut.Markup, "Beta content");
         });
 
         CollectionAssert.AreEqual(
@@ -85,7 +85,7 @@ public sealed class ReportsTests
         {
             StringAssert.Contains(cut.Markup, "rule-b.md");
             StringAssert.Contains(cut.Markup, "Beta content");
-            StringAssert.DoesNotContain(cut.Markup, "Alpha content");
+            Assert.DoesNotContain(cut.Markup, "Alpha content");
         });
 
         CollectionAssert.AreEqual(
@@ -169,7 +169,7 @@ public sealed class ReportsTests
         cut.WaitForAssertion(() =>
         {
             StringAssert.Contains(cut.Markup, "Reloaded alpha");
-            StringAssert.DoesNotContain(cut.Markup, "Delayed beta");
+            Assert.DoesNotContain(cut.Markup, "Delayed beta");
         });
 
         handler.ReleaseNextDelayedResponse();
@@ -177,7 +177,7 @@ public sealed class ReportsTests
         cut.WaitForAssertion(() =>
         {
             StringAssert.Contains(cut.Markup, "Reloaded alpha");
-            StringAssert.DoesNotContain(cut.Markup, "Delayed beta");
+            Assert.DoesNotContain(cut.Markup, "Delayed beta");
             StringAssert.Contains(cut.Find(".report-file-item.active").TextContent, "rule-a");
         });
     }
@@ -231,7 +231,7 @@ public sealed class ReportsTests
         cut.WaitForAssertion(() =>
         {
             StringAssert.Contains(cut.Markup, "Recovered alpha");
-            StringAssert.DoesNotContain(cut.Markup, "Failed to load report content:");
+            Assert.DoesNotContain(cut.Markup, "Failed to load report content:");
         });
 
         CollectionAssert.AreEqual(

@@ -20,7 +20,10 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
         using ServiceProvider services = CreateServices();
         IProjectAgentStatusSnapshotService service = services.GetRequiredService<IProjectAgentStatusSnapshotService>();
 
-        ProjectAgentStatusSnapshotDto? snapshot = await service.GetSnapshotAsync(Guid.NewGuid(), TestContext.CancellationToken);
+        ProjectAgentStatusSnapshotDto? snapshot = await service.GetSnapshotAsync(
+            Guid.NewGuid(),
+            selectedAgentId: null,
+            TestContext.CancellationToken);
 
         Assert.IsNull(snapshot);
     }
@@ -36,7 +39,10 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
 
         await SeedProjectAsync(dbContextFactory, projectId, TestContext.CancellationToken);
 
-        ProjectAgentStatusSnapshotDto? snapshot = await service.GetSnapshotAsync(projectId, TestContext.CancellationToken);
+        ProjectAgentStatusSnapshotDto? snapshot = await service.GetSnapshotAsync(
+            projectId,
+            selectedAgentId: null,
+            TestContext.CancellationToken);
 
         Assert.IsNotNull(snapshot);
         Assert.AreEqual(projectId, snapshot.ProjectId);
@@ -87,7 +93,7 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
         await using (CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
         {
             alphaAgentId = await dbContext.ProjectAgents
-                .Where(agent => agent.ProjectAgentGroup.DisplayName == "Alpha Group" && agent.DisplayName == "Alpha Agent")
+                .Where(agent => agent.Group!.DisplayName == "Alpha Group" && agent.DisplayName == "Alpha Agent")
                 .Select(agent => agent.Id)
                 .SingleAsync(TestContext.CancellationToken);
         }

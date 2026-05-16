@@ -22,6 +22,9 @@ public static class ProjectEndpoints
         group.MapGet("/", ListProjectsAsync)
             .WithName("ListProjects");
 
+        group.MapGet("/sidebar", GetProjectSidebarSnapshotAsync)
+            .WithName("GetProjectSidebarSnapshot");
+
         group.MapGet("/{projectId:guid}", GetProjectAsync)
             .WithName("GetProject");
 
@@ -79,6 +82,15 @@ public static class ProjectEndpoints
     {
         IReadOnlyList<ProjectListItemDto> projects = await projectIntakeService.ListAsync(cancellationToken);
         return Results.Ok(projects);
+    }
+
+    private static async Task<IResult> GetProjectSidebarSnapshotAsync(
+        Guid? selectedProjectId,
+        Services.Projects.IProjectSidebarSnapshotService projectSidebarSnapshotService,
+        CancellationToken cancellationToken)
+    {
+        ProjectSidebarSnapshotDto snapshot = await projectSidebarSnapshotService.GetSnapshotAsync(selectedProjectId, cancellationToken);
+        return Results.Ok(snapshot);
     }
 
     private static async Task<IResult> GetProjectAsync(

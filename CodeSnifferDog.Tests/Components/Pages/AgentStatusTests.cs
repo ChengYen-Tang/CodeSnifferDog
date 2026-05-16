@@ -210,7 +210,7 @@ public sealed class AgentStatusTests
     {
         using Bunit.TestContext context = new();
         FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
-        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([], HttpStatusCode.NotFound))
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([], statusCode: HttpStatusCode.NotFound))
         {
             BaseAddress = new Uri("http://localhost"),
         });
@@ -268,7 +268,7 @@ public sealed class AgentStatusTests
     {
         using Bunit.TestContext context = new();
         FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
-        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([], HttpStatusCode.InternalServerError))
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([], statusCode: HttpStatusCode.InternalServerError))
         {
             BaseAddress = new Uri("http://localhost"),
         });

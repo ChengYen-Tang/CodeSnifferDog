@@ -1,8 +1,30 @@
 @inherits LayoutComponentBase
 
+@using CodeSnifferDog.Server.Services.Projects
+@using CodeSnifferDog.Server.Shared.Projects
+@inject IProjectSidebarSnapshotService ProjectSidebarSnapshotService
+@inject NavigationManager NavigationManager
+@code {
+    private ProjectSidebarSnapshotDto? _initialSidebarSnapshot;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _initialSidebarSnapshot = await ProjectSidebarSnapshotService.GetSnapshotAsync(
+            ExtractSelectedProjectIdFromUri(),
+            CancellationToken.None);
+    }
+
+    private Guid? ExtractSelectedProjectIdFromUri()
+    {
+        Uri uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        string relativePath = NavigationManager.ToBaseRelativePath(uri.ToString()).Trim('/');
+        return ProjectSidebarRouteSelection.ExtractSelectedProjectId(uri, relativePath);
+    }
+}
+
 <div class="page">
     <aside class="sidebar">
-        <CodeSnifferDog.Server.Client.Layout.NavMenu />
+        <CodeSnifferDog.Server.Client.Layout.NavMenu InitialSnapshot="_initialSidebarSnapshot" />
     </aside>
 
     <main>

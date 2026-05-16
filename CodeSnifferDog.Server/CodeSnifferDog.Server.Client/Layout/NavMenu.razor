@@ -7,27 +7,34 @@
 @implements IDisposable
 
 @code {
-    private string? _selectedProjectId;
-    private List<ProjectGroup> _groups = CreateEmptyGroups();
+    [Parameter]
+    public ProjectSidebarSnapshotDto? InitialSnapshot { get; set; }
+
     private readonly HashSet<string> _actingProjectIds = [];
-    private ProjectSidebarState _state = new()
-    {
-        IsLoading = true,
-    };
+    private ProjectSidebarState _state = ProjectSidebarState.CreateEmpty();
 
     protected override async Task OnInitializedAsync()
     {
         SidebarSyncService.Changed += OnSidebarStateChanged;
         NavigationManager.LocationChanged += OnLocationChanged;
-        await SidebarSyncService.StartAsync();
-        ApplyState(SidebarSyncService.Current);
+
+        if (InitialSnapshot is not null)
+            SidebarSyncService.InitializeSnapshot(InitialSnapshot, ExtractProjectIdFromUri());
+
+        _state = SidebarSyncService.Current;
+
+        if (CanStartInteractiveSync())
+        {
+            await SidebarSyncService.StartAsync(InitialSnapshot, ExtractProjectIdFromUri());
+            _state = SidebarSyncService.Current;
+        }
     }
 
     private void OnSidebarStateChanged()
     {
         _ = InvokeAsync(() =>
         {
-            ApplyState(SidebarSyncService.Current);
+            _state = SidebarSyncService.Current;
             StateHasChanged();
         });
     }
@@ -36,20 +43,19 @@
     {
         _ = InvokeAsync(() =>
         {
-            SyncSelectedProjectFromUri();
+            SidebarSyncService.SyncSelectedProjectFromUri(ExtractProjectIdFromUri());
             StateHasChanged();
         });
     }
 
     private void ToggleGroup(ProjectGroup group)
     {
-        group.IsExpanded = !group.IsExpanded;
-        StateHasChanged();
+        SidebarSyncService.ToggleGroup(group.GroupKey, group.Status);
     }
 
     private void SelectProject(string projectId)
     {
-        _selectedProjectId = projectId;
+        SidebarSyncService.SelectProject(projectId);
     }
 
     private async Task ExecuteActionAsync(ProjectItem item, ProjectAction action)
@@ -76,73 +82,23 @@
         }
     }
 
-    private void ApplyState(ProjectSidebarState state)
-    {
-        _state = state;
-        List<ProjectGroup> groups = CreateEmptyGroups();
-
-        foreach (ProjectListItemDto project in state.Projects)
-        {
-            ProjectGroup? group = groups.SingleOrDefault(projectGroup => projectGroup.Status == project.Status);
-            if (group is null)
-                continue;
-
-            group.Items.Add(new ProjectItem(
-                project.ProjectId.ToString(),
-                project.OriginalFileName,
-                $"uploaded {project.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
-                CreateActions(project.ProjectId, project.Status)));
-        }
-
-        _groups = groups;
-        HashSet<string> projectIds = _groups
-            .SelectMany(group => group.Items)
-            .Select(item => item.ProjectId)
-            .ToHashSet(StringComparer.Ordinal);
-
-        string? selectedProjectIdFromUri = ExtractProjectIdFromUri();
-        if (selectedProjectIdFromUri is not null && projectIds.Contains(selectedProjectIdFromUri))
-        {
-            _selectedProjectId = selectedProjectIdFromUri;
-            return;
-        }
-
-        if (_selectedProjectId is null || !projectIds.Contains(_selectedProjectId))
-            _selectedProjectId = _groups
-            .SelectMany(group => group.Items)
-            .Select(item => item.ProjectId)
-            .FirstOrDefault();
-    }
-
-    private void SyncSelectedProjectFromUri()
-    {
-        string? selectedProjectIdFromUri = ExtractProjectIdFromUri();
-        if (selectedProjectIdFromUri is not null)
-            _selectedProjectId = selectedProjectIdFromUri;
-    }
-
     private string? ExtractProjectIdFromUri()
     {
-        string relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
-        string[] segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 2
-            && string.Equals(segments[0], "reports", StringComparison.OrdinalIgnoreCase)
-            && Guid.TryParse(segments[1], out Guid projectId))
-            return projectId.ToString();
-
-        return null;
+        Uri uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        string relativePath = NavigationManager.ToBaseRelativePath(uri.ToString()).Trim('/');
+        return ProjectSidebarRouteSelection.ExtractSelectedProjectId(uri, relativePath)?.ToString();
     }
 
     private static IReadOnlyList<ProjectAction> CreateActions(Guid projectId, ProjectStatus status) => status switch
     {
         ProjectStatus.Reviewing =>
         [
-            ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
+            ProjectAction.Link("S", "Agent Team / Worker Status", $"/agent-status?projectId={projectId}"),
             ProjectAction.Cancel(),
         ],
         ProjectStatus.Completed =>
         [
-            ProjectAction.Link("S", "Agent Team / Worker Status", "agent-status"),
+            ProjectAction.Link("S", "Agent Team / Worker Status", $"/agent-status?projectId={projectId}"),
             ProjectAction.Link("R", "Report", $"/reports/{projectId}"),
             ProjectAction.Delete(),
         ],
@@ -152,14 +108,37 @@
         ],
     };
 
-    private static List<ProjectGroup> CreateEmptyGroups() =>
-    [
-        new("Reviewing", ProjectStatus.Reviewing, "R", "group-icon-reviewing", true),
-        new("Completed", ProjectStatus.Completed, "C", "group-icon-completed", true),
-        new("Queued", ProjectStatus.Queued, "Q", "group-icon-queued", true),
-        new("Failed", ProjectStatus.Failed, "F", "group-icon-failed", false),
-        new("Canceled", ProjectStatus.Canceled, "C", "group-icon-canceled", false),
-    ];
+    private bool CanStartInteractiveSync()
+    {
+        try
+        {
+            return RendererInfo.IsInteractive;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
+    private static string GetGroupIconText(ProjectStatus status) => status switch
+    {
+        ProjectStatus.Reviewing => "R",
+        ProjectStatus.Completed => "C",
+        ProjectStatus.Queued => "Q",
+        ProjectStatus.Failed => "F",
+        ProjectStatus.Canceled => "C",
+        _ => "?",
+    };
+
+    private static string GetGroupIconCssClass(ProjectStatus status) => status switch
+    {
+        ProjectStatus.Reviewing => "group-icon-reviewing",
+        ProjectStatus.Completed => "group-icon-completed",
+        ProjectStatus.Queued => "group-icon-queued",
+        ProjectStatus.Failed => "group-icon-failed",
+        ProjectStatus.Canceled => "group-icon-canceled",
+        _ => string.Empty,
+    };
 
     private sealed record ProjectAction(string IconText, string Label, ProjectActionKind Kind, string? Href)
     {
@@ -187,19 +166,41 @@
     private sealed record ProjectItem(string ProjectId, string Name, string Meta, IReadOnlyList<ProjectAction> Actions);
 
     private sealed class ProjectGroup(
+        string groupKey,
         string title,
         ProjectStatus status,
         string iconText,
         string iconCssClass,
         bool isExpanded)
     {
+        public string GroupKey { get; } = groupKey;
         public string Title { get; } = title;
         public ProjectStatus Status { get; } = status;
         public string IconText { get; } = iconText;
         public string IconCssClass { get; } = iconCssClass;
         public bool IsExpanded { get; set; } = isExpanded;
-        public List<ProjectItem> Items { get; } = [];
+        public List<ProjectItem> Items { get; init; } = [];
     }
+
+    private IReadOnlyList<ProjectGroup> Groups =>
+        _state.Snapshot.Groups
+            .Select(group => new ProjectGroup(
+                group.GroupKey,
+                group.DisplayName,
+                group.Status,
+                GetGroupIconText(group.Status),
+                GetGroupIconCssClass(group.Status),
+                _state.Ui.IsExpanded(group.GroupKey, group.Status))
+            {
+                Items = group.Projects
+                    .Select(project => new ProjectItem(
+                        project.ProjectId.ToString(),
+                        project.OriginalFileName,
+                        $"uploaded {project.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
+                        CreateActions(project.ProjectId, project.Status)))
+                    .ToList(),
+            })
+            .ToList();
 
     public void Dispose()
     {
@@ -217,20 +218,24 @@
     </div>
 
     <div class="sidebar-groups">
-        @if (_state.IsLoading)
+        @if (_state.Transport.IsLoading)
         {
             <div class="sidebar-status-message">Loading projects...</div>
         }
-        else if (!string.IsNullOrWhiteSpace(_state.ErrorMessage))
+        else if (!string.IsNullOrWhiteSpace(_state.Transport.SnapshotErrorMessage))
         {
-            <div class="sidebar-status-message sidebar-status-error">@_state.ErrorMessage</div>
+            <div class="sidebar-status-message sidebar-status-error">@_state.Transport.SnapshotErrorMessage</div>
         }
-        else if (!string.IsNullOrWhiteSpace(_state.HubErrorMessage))
+        else if (_state.Transport.IsReconnecting)
         {
-            <div class="sidebar-status-message sidebar-status-warning">@_state.HubErrorMessage</div>
+            <div class="sidebar-status-message sidebar-status-warning">Live updates reconnecting...</div>
+        }
+        else if (!string.IsNullOrWhiteSpace(_state.Transport.LiveErrorMessage))
+        {
+            <div class="sidebar-status-message sidebar-status-warning">@_state.Transport.LiveErrorMessage</div>
         }
 
-        @foreach (var group in _groups)
+        @foreach (var group in Groups)
         {
             <section class="status-group" @key="group.Title">
                 <div class="status-summary" role="button" tabindex="0" title="@group.Title" @onclick="() => ToggleGroup(group)">
@@ -249,7 +254,7 @@
                     <div class="project-list">
                         @foreach (var item in group.Items)
                         {
-                            <div class="project-link @(item.ProjectId == _selectedProjectId ? "active" : null)" @key="item.ProjectId">
+                            <div class="project-link @(item.ProjectId == _state.Ui.SelectedProjectId ? "active" : null)" @key="item.ProjectId">
                                 <button type="button" class="project-main" @onclick="() => SelectProject(item.ProjectId)">
                                     <span class="project-name">@item.Name</span>
                                     <span class="project-meta">@item.Meta</span>
