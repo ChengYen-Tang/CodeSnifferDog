@@ -62,6 +62,15 @@ builder.Services.AddScoped(sp =>
 
 var app = builder.Build();
 
+await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
+{
+    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+        scope.ServiceProvider.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+    await using CodeSnifferDogServerDbContext dbContext =
+        await dbContextFactory.CreateDbContextAsync().ConfigureAwait(false);
+    await dbContext.Database.MigrateAsync().ConfigureAwait(false);
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseWebAssemblyDebugging();
