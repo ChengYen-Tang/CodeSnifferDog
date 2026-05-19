@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 
 namespace CodeSnifferDog.Server.Client.Services.Projects;
 
-public sealed class ProjectSidebarSyncService : IAsyncDisposable
+public sealed class ProjectSidebarSyncService : IProjectSidebarController, IAsyncDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly IProjectSidebarRefreshSignalClient _refreshSignalClient;

@@ -1,5 +1,6 @@
 using CodeSnifferDog.Server.Components;
 using CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
+using CodeSnifferDog.Server.Client.Services.Projects;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Endpoints;
 using CodeSnifferDog.Server.Hubs;
@@ -44,6 +45,7 @@ builder.Services.AddScoped<IProjectAnalysisRunner, ProjectAnalysisRunner>();
 builder.Services.AddScoped<IProjectAgentStatusSnapshotService, ProjectAgentStatusSnapshotService>();
 builder.Services.AddScoped<IProjectAgentStatusLiveBackfillService, ProjectAgentStatusLiveBackfillService>();
 builder.Services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, NoOpProjectAgentStatusLiveSubscriptionClient>();
+builder.Services.AddScoped<IProjectSidebarController, ServerPrerenderProjectSidebarController>();
 builder.Services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
 builder.Services.AddScoped<IProjectReportService, ProjectReportService>();
 builder.Services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();
@@ -62,14 +64,7 @@ builder.Services.AddScoped(sp =>
 
 var app = builder.Build();
 
-await using (AsyncServiceScope scope = app.Services.CreateAsyncScope())
-{
-    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
-        scope.ServiceProvider.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
-    await using CodeSnifferDogServerDbContext dbContext =
-        await dbContextFactory.CreateDbContextAsync().ConfigureAwait(false);
-    await dbContext.Database.MigrateAsync().ConfigureAwait(false);
-}
+await CodeSnifferDogServerDatabaseMigrator.MigrateAsync(app.Services).ConfigureAwait(false);
 
 if (app.Environment.IsDevelopment())
 {

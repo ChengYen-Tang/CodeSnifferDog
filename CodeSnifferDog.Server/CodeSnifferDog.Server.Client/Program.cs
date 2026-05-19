@@ -11,6 +11,6 @@ builder.Services.AddScoped(_ => new HttpClient
 builder.Services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, SignalRProjectAgentStatusLiveSubscriptionClient>();
 builder.Services.AddScoped<IProjectSidebarRefreshSignalClient, SignalRProjectSidebarRefreshSignalClient>();
 builder.Services.AddScoped<IProjectSidebarPollingFallback, PeriodicProjectSidebarPollingFallback>();
-builder.Services.AddScoped<ProjectSidebarSyncService>();
+builder.Services.AddScoped<IProjectSidebarController, ProjectSidebarSyncService>();
 
 await builder.Build().RunAsync();
