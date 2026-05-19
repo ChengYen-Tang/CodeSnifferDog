@@ -28,6 +28,7 @@ public sealed class ProjectExecutionHostedService(
     private readonly ProjectExecutionOptions _options = options.Value;
     private readonly ILogger<ProjectExecutionHostedService> _logger = logger;
     private bool _loggedAnalysisRunnerNotReady;
+    private string? _lastAnalysisRunnerNotReadyReason;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,12 +56,17 @@ public sealed class ProjectExecutionHostedService(
                     if (!_loggedAnalysisRunnerNotReady)
                     {
                         _loggedAnalysisRunnerNotReady = true;
-                        _logger.LogInformation("Project executor is waiting for a configured project analysis runner.");
+                        _logger.LogInformation(
+                            "Project executor is waiting for a configured project analysis runner. Reason: {Reason}",
+                            _lastAnalysisRunnerNotReadyReason ?? "Unknown reason.");
                     }
 
                     await Task.Delay(_options.QueuePollingInterval, stoppingToken);
                     continue;
                 }
+
+                _loggedAnalysisRunnerNotReady = false;
+                _lastAnalysisRunnerNotReadyReason = null;
 
                 ProjectExecutionClaim? claim;
                 using (await _queueLock.AcquireAsync(stoppingToken))
@@ -89,7 +95,25 @@ public sealed class ProjectExecutionHostedService(
     private bool IsAnalysisRunnerReady()
     {
         using IServiceScope scope = _serviceScopeFactory.CreateScope();
+        IProjectChatClientProvider chatClientProvider = scope.ServiceProvider.GetRequiredService<IProjectChatClientProvider>();
+        IReviewRuleMarkdownProvider ruleMarkdownProvider = scope.ServiceProvider.GetRequiredService<IReviewRuleMarkdownProvider>();
         IProjectAnalysisRunner analysisRunner = scope.ServiceProvider.GetRequiredService<IProjectAnalysisRunner>();
+
+        if (!chatClientProvider.IsReady)
+        {
+            _lastAnalysisRunnerNotReadyReason =
+                "Inference provider is not ready. Configure Inference:Provider and its required ApiKey/ModelId settings.";
+        }
+        else if (!ruleMarkdownProvider.HasRules)
+        {
+            _lastAnalysisRunnerNotReadyReason =
+                $"No review rule markdown files were found under '{Path.Combine(AppContext.BaseDirectory, "rules")}'.";
+        }
+        else
+        {
+            _lastAnalysisRunnerNotReadyReason = null;
+        }
+
         return analysisRunner.IsReady;
     }
 

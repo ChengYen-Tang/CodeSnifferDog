@@ -181,13 +181,16 @@ public sealed class ProjectChatClientProvider(
     }
 
     private static bool IsOpenAIProvider(string provider) =>
-        string.Equals(provider.Trim(), "openai", StringComparison.OrdinalIgnoreCase);
+        string.Equals(provider.Trim(), "openai", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(provider.Trim(), nameof(InferenceProviderOptions.OpenAI), StringComparison.OrdinalIgnoreCase);
 
     private static bool IsAzureOpenAIProvider(string provider) =>
+        string.Equals(provider.Trim(), nameof(InferenceProviderOptions.AzureOpenAI), StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "azure-openai", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "azure openai", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsOpenAICompatibleProvider(string provider) =>
+        string.Equals(provider.Trim(), nameof(InferenceProviderOptions.OpenAICompatible), StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "openai-compatible", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "vllm", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "sglang", StringComparison.OrdinalIgnoreCase) ||
