@@ -4,6 +4,7 @@ using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using CodeSnifferDog.Server.Shared.Reports;
+using Microsoft.AspNetCore.Mvc;
 using System.IO.Compression;
 using System.Text;
 
@@ -11,12 +12,20 @@ namespace CodeSnifferDog.Server.Endpoints;
 
 public static class ProjectEndpoints
 {
+    private const long UploadRequestBodyLimitBytes = 3L * 1024 * 1024 * 1024;
+
     public static IEndpointRouteBuilder MapProjectEndpoints(this IEndpointRouteBuilder endpoints)
     {
         RouteGroupBuilder group = endpoints.MapGroup("/api/projects");
 
         group.MapPost("/", UploadProjectAsync)
             .DisableAntiforgery()
+            .WithMetadata(
+                new RequestSizeLimitAttribute(UploadRequestBodyLimitBytes),
+                new RequestFormLimitsAttribute
+                {
+                    MultipartBodyLengthLimit = UploadRequestBodyLimitBytes,
+                })
             .WithName("UploadProject");
 
         group.MapGet("/", ListProjectsAsync)

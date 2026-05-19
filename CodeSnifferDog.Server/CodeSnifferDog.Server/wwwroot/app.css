@@ -52,6 +52,12 @@ a {
     transform: translateY(-1px);
 }
 
+.upload-dropzone.drag-active {
+    border-color: #4e73df;
+    box-shadow: 0 0 0 0.25rem rgba(78, 115, 223, 0.16);
+    background: linear-gradient(180deg, #f7faff 0%, #edf3ff 100%);
+}
+
 .upload-title {
     font-size: 1.25rem;
     font-weight: 700;
@@ -62,6 +68,13 @@ a {
     max-width: 30rem;
     color: #7b8193;
     font-size: 0.98rem;
+}
+
+.upload-selection-note {
+    color: #344767;
+    font-size: 0.95rem;
+    font-weight: 700;
+    word-break: break-word;
 }
 
 .timeline-list {
