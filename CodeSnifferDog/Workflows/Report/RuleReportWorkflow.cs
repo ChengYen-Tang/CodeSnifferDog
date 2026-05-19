@@ -1,3 +1,4 @@
+using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
@@ -10,7 +11,6 @@ using CodeSnifferDog.Modules.Tools.Review;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.Report;
 
@@ -335,9 +335,9 @@ public sealed class RuleReportWorkflow(
 
     private string BuildAggregatorInput(IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
         =>
-        $"{_messageTemplates.AggregatorInputPrefix}{Environment.NewLine}{Environment.NewLine}{JsonSerializer.Serialize(currentFlowIssues)}";
+        $"{_messageTemplates.AggregatorInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(currentFlowIssues)}";
 
     private string BuildVerifierInput(RuleReportDiff diff)
         =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{JsonSerializer.Serialize(diff)}";
+        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(diff)}";
 }

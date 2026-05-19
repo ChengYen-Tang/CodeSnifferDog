@@ -1,3 +1,4 @@
+using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
@@ -10,7 +11,6 @@ using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace CodeSnifferDog.Agents.Report;
 
@@ -97,6 +97,6 @@ public sealed class ReportVerifierAgentFactory(
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["CurrentFlowIssuesJson"] = JsonSerializer.Serialize(currentFlowIssues),
+                ["CurrentFlowIssuesJson"] = CodeSnifferDogJson.Serialize(currentFlowIssues),
             });
 }

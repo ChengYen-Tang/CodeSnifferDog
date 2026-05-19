@@ -1,3 +1,4 @@
+using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
@@ -9,7 +10,6 @@ using CodeSnifferDog.Modules.Tools.Review;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.ProjectPlan;
 
@@ -261,11 +261,11 @@ public sealed class ProjectPlanWorkflow(
         ProjectPlanWorkflowMessageTemplates messageTemplates,
         StoredScanProject scanProject)
         =>
-        $"{messageTemplates.PlanInputPrefix}{Environment.NewLine}{Environment.NewLine}{JsonSerializer.Serialize(scanProject)}";
+        $"{messageTemplates.PlanInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(scanProject)}";
 
     private static string BuildVerifierInput(
         ProjectPlanWorkflowMessageTemplates messageTemplates,
         IReadOnlyList<StoredProjectPlanTaskItem> taskItems)
         =>
-        $"{messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{JsonSerializer.Serialize(taskItems)}";
+        $"{messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItems)}";
 }

@@ -1,3 +1,4 @@
+using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
@@ -9,7 +10,6 @@ using CodeSnifferDog.Modules.Tools.RuleReview;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.RuleReview;
 
@@ -343,8 +343,8 @@ public sealed class RuleReviewWorkflow(
         NoIssueConclusion? noIssueConclusion)
     {
         string payload = issues.Count > 0
-            ? JsonSerializer.Serialize(issues)
-            : JsonSerializer.Serialize(noIssueConclusion ?? throw new InvalidOperationException("A review result is required for verification."));
+            ? CodeSnifferDogJson.Serialize(issues)
+            : CodeSnifferDogJson.Serialize(noIssueConclusion ?? throw new InvalidOperationException("A review result is required for verification."));
 
         return $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{payload}";
     }

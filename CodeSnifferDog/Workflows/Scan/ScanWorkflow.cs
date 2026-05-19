@@ -1,3 +1,4 @@
+using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
@@ -8,7 +9,6 @@ using CodeSnifferDog.Modules.Tools.Scan;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using System.Text.Json;
 
 namespace CodeSnifferDog.Workflows.Scan;
 
@@ -244,5 +244,5 @@ public sealed class ScanWorkflow(
 
     private string BuildVerifierInput(IReadOnlyList<StoredScanProject> projects)
         =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{JsonSerializer.Serialize(projects)}";
+        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projects)}";
 }

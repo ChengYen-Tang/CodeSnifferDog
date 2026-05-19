@@ -1,3 +1,4 @@
+using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
@@ -8,7 +9,6 @@ using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace CodeSnifferDog.Agents.ProjectPlan;
 
@@ -76,6 +76,6 @@ public sealed class ProjectVerifierAgentFactory(
             new Dictionary<string, string>
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
-                ["ScanProjectJson"] = JsonSerializer.Serialize(scanProject),
+                ["ScanProjectJson"] = CodeSnifferDogJson.Serialize(scanProject),
             });
 }

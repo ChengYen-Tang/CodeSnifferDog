@@ -9,6 +9,7 @@ using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Text;
 using System.Text.Json.Nodes;
+using CodeSnifferDog.Json;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution;
 
@@ -153,7 +154,7 @@ public sealed class ProjectChatClientProvider(
                 continue;
             }
 
-            patch.Set(jsonPath, BinaryData.FromString(value.ToJsonString()));
+            patch.Set(jsonPath, BinaryData.FromString(CodeSnifferDogJson.ToJsonString(value)));
         }
     }
 

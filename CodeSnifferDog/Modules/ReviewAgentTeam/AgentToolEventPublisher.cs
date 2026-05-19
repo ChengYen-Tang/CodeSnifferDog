@@ -1,6 +1,6 @@
+using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using Microsoft.Extensions.AI;
-using System.Text.Json;
 
 namespace CodeSnifferDog.Modules.ReviewAgentTeam;
 
@@ -41,6 +41,6 @@ internal static class AgentToolEventPublisher
         {
             null => null,
             string text => text,
-            _ => JsonSerializer.Serialize(value),
+            _ => CodeSnifferDogJson.Serialize(value, value.GetType()),
         };
 }
