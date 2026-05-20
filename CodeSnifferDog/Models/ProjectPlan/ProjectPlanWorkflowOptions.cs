@@ -7,4 +7,8 @@ public sealed class ProjectPlanWorkflowOptions
     public int MaxMissingSubmissionAttempts { get; init; } = 3;
 
     public int MaxProjectPlanAgentResets { get; init; } = 3;
+
+    public int MaxConsecutiveRunFailures { get; init; } = Scan.AgentExecutionOptionsDefaults.MaxConsecutiveRunFailures;
+
+    public TimeSpan AgentRunTimeout { get; init; } = Scan.AgentExecutionOptionsDefaults.AgentRunTimeout;
 }

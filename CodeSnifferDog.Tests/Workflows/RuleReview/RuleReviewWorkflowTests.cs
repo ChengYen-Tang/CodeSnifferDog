@@ -126,6 +126,104 @@ public sealed class RuleReviewWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_IgnoresLateWrites_FromTimedOutAttempt()
+    {
+        TaskCompletionSource staleWriteObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int timedOutAttempts = 0;
+        InMemoryRuleReviewIssueStore issueStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        AsyncScriptedChatClient reviewChatClient = new(async (invocation, cancellationToken) =>
+        {
+            if (timedOutAttempts == 0)
+            {
+                timedOutAttempts++;
+                Task backgroundWriteTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(150, CancellationToken.None);
+                        await issueStore.AddAsync(
+                            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", PerformanceRuleFileName),
+                            new RuleReviewIssue
+                            {
+                                IssueType = "Performance",
+                                Severity = "Low",
+                                FileOrFunction = "Stale.cs",
+                                RelevantCodePatternOrExpression = "stale path",
+                                WhyThisIsAProblem = "Late write from timed out attempt.",
+                                Confidence = "Low",
+                                FollowUpFiles = "Stale.cs",
+                                SuggestedFixDirection = "Ignore stale write.",
+                                ReviewStrategy = "Timed out attempt.",
+                                ScopeCoverage = "Stale scope.",
+                                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                            },
+                            CancellationToken.None);
+                    }
+                    finally
+                    {
+                        staleWriteObserved.TrySetResult();
+                    }
+                });
+                _ = backgroundWriteTask;
+
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return CreateFunctionCallResponse(
+                "create-issue",
+                "CreateRuleReviewIssue",
+                CreateIssueArguments(
+                    "Performance",
+                    "High",
+                    "Program.cs",
+                    "Repeated synchronous call",
+                    "This blocks the request path.",
+                    "High",
+                    "Program.cs",
+                    "Use a cached async path.",
+                    "Inspected Program.cs.",
+                    "No cross-scope inspection was required.",
+                    "Reviewed the hot path first."));
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The current review result is acceptable for the next stage.",
+            }));
+        RuleReviewWorkflow workflow = new(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
+                CreateReviewAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reviewChatClient, issueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, verifierChatClient, issueStore, verdictBuffer),
+            issueStore,
+            verdictBuffer,
+            new PromptAssetReader(),
+            new RuleReviewWorkflowOptions
+            {
+                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                MaxConsecutiveRunFailures = 5,
+            });
+
+        Result<RuleReviewWorkflowResult> result = await workflow.RunAsync(
+            @"Z:\GitHub\CodeSnifferDog",
+            PerformanceRuleFileName,
+            "- Detect performance issues.",
+            CreateTaskItem(),
+            TestContext.CancellationToken);
+
+        await staleWriteObserved.Task.WaitAsync(TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(1, timedOutAttempts);
+        Assert.HasCount(1, result.Value.Issues);
+        Assert.AreEqual("Program.cs", result.Value.Issues[0].FileOrFunction);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ContinuesAfterVerifierRejectionLimit_ForIssueResult()
     {
         RuleReviewWorkflow workflow = CreateWorkflow(
@@ -778,6 +876,39 @@ public sealed class RuleReviewWorkflowTests
             int callIndex = Interlocked.Increment(ref _callIndex);
             ChatInvocation invocation = new([.. messages], options, callIndex);
             return Task.FromResult(_responseFactory(invocation));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ChatResponse response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+
+            foreach (ChatResponseUpdate update in response.ToChatResponseUpdates())
+                yield return update;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class AsyncScriptedChatClient(Func<ChatInvocation, CancellationToken, Task<ChatResponse>> responseFactory) : IChatClient
+    {
+        private int _callIndex = -1;
+        private readonly Func<ChatInvocation, CancellationToken, Task<ChatResponse>> _responseFactory = responseFactory;
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            int callIndex = Interlocked.Increment(ref _callIndex);
+            ChatInvocation invocation = new([.. messages], options, callIndex);
+            return _responseFactory(invocation, cancellationToken);
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

@@ -156,6 +156,100 @@ public sealed class ProjectPlanWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_RetriesTimedOutAgentRuns_AndEventuallySucceeds()
+    {
+        int timedOutAttempts = 0;
+        AsyncScriptedChatClient planChatClient = new(async (_, cancellationToken) =>
+        {
+            if (timedOutAttempts < 4)
+            {
+                timedOutAttempts++;
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return CreateFunctionCallResponse(
+                "plan-add-single",
+                "AddProjectPlanTaskItem",
+                new Dictionary<string, object?>
+                {
+                    ["Files"] = new[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["FilePath"] = "CodeSnifferDog/Program.cs",
+                            ["TotalLines"] = 120,
+                        },
+                    },
+                });
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The project plan is acceptable.",
+            }));
+        InMemoryProjectPlanTaskItemStore taskItemStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ProjectPlanWorkflow workflow = new(
+            (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
+            (repositoryRootPath, scanProject, _) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            taskItemStore,
+            verdictBuffer,
+            promptAssetReader,
+            new ProjectPlanWorkflowOptions
+            {
+                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                MaxConsecutiveRunFailures = 5,
+            });
+
+        Result<ProjectPlanWorkflowResult> result =
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(4, timedOutAttempts);
+        Assert.AreEqual(1, result.Value.PlanAttempts);
+        Assert.AreEqual(1, result.Value.VerifierAttempts);
+        Assert.IsNotEmpty(result.Value.TaskItems);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DegradesAgent_AfterFiveConsecutiveTimedOutRuns()
+    {
+        AsyncScriptedChatClient planChatClient = new(async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return CreateAssistantResponse("This response should never be returned.");
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateAssistantResponse("Verifier should not run."));
+        InMemoryProjectPlanTaskItemStore taskItemStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ProjectPlanWorkflow workflow = new(
+            (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
+            (repositoryRootPath, scanProject, _) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            taskItemStore,
+            verdictBuffer,
+            promptAssetReader,
+            new ProjectPlanWorkflowOptions
+            {
+                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                MaxConsecutiveRunFailures = 5,
+            });
+
+        Result<ProjectPlanWorkflowResult> result =
+            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsFailed);
+        Assert.IsTrue(result.Errors.Any(error =>
+            error.Message.Contains("failed after 5 consecutive attempts", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
     public async Task RunAsync_ContinuesAfterVerifierRejectionLimit()
     {
         ProjectPlanWorkflow workflow = CreateWorkflow(
@@ -656,6 +750,39 @@ public sealed class ProjectPlanWorkflowTests
             int callIndex = Interlocked.Increment(ref _callIndex);
             ChatInvocation invocation = new([.. messages], options, callIndex);
             return Task.FromResult(_responseFactory(invocation));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ChatResponse response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+
+            foreach (ChatResponseUpdate update in response.ToChatResponseUpdates())
+                yield return update;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class AsyncScriptedChatClient(Func<ChatInvocation, CancellationToken, Task<ChatResponse>> responseFactory) : IChatClient
+    {
+        private int _callIndex = -1;
+        private readonly Func<ChatInvocation, CancellationToken, Task<ChatResponse>> _responseFactory = responseFactory;
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            int callIndex = Interlocked.Increment(ref _callIndex);
+            ChatInvocation invocation = new([.. messages], options, callIndex);
+            return _responseFactory(invocation, cancellationToken);
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

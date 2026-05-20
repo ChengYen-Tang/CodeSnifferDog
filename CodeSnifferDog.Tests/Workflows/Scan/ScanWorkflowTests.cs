@@ -147,6 +147,177 @@ public sealed class ScanWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_RetriesTimedOutAgentRuns_AndEventuallySucceeds()
+    {
+        int timedOutAttempts = 0;
+        AsyncScriptedChatClient scanChatClient = new(async (invocation, cancellationToken) =>
+        {
+            if (timedOutAttempts < 4)
+            {
+                timedOutAttempts++;
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return CreateFunctionCallResponse(
+                "scan-add-primary",
+                "AddScanProject",
+                new Dictionary<string, object?>
+                {
+                    ["ProjectName"] = "CodeSnifferDog",
+                    ["ProjectPath"] = "CodeSnifferDog/CodeSnifferDog.csproj",
+                    ["ProjectType"] = ".csproj",
+                    ["Reason"] = "Primary application project.",
+                });
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The scan result is acceptable.",
+            }));
+        InMemoryScanProjectStore scanProjectStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ScanWorkflow workflow = new(
+            (repositoryRootPath, _) => CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer),
+            (repositoryRootPath, _) => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
+            scanProjectStore,
+            verdictBuffer,
+            promptAssetReader,
+            new ScanWorkflowOptions
+            {
+                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                MaxConsecutiveRunFailures = 5,
+            });
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(4, timedOutAttempts);
+        Assert.AreEqual(1, result.Value.ScanAttempts);
+        Assert.AreEqual(1, result.Value.VerifierAttempts);
+        Assert.IsNotEmpty(result.Value.Projects);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_DegradesAgent_AfterFiveConsecutiveTimedOutRuns()
+    {
+        RecordingAgentEventBus eventBus = new();
+        AsyncScriptedChatClient scanChatClient = new(async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return CreateAssistantResponse("This response should never be returned.");
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateAssistantResponse("Verifier should not run."));
+        InMemoryScanProjectStore scanProjectStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        PromptAssetReader promptAssetReader = new();
+        ScanWorkflow workflow = new(
+            (repositoryRootPath, _) => CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer),
+            (repositoryRootPath, _) => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
+            scanProjectStore,
+            verdictBuffer,
+            promptAssetReader,
+            new ScanWorkflowOptions
+            {
+                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                MaxConsecutiveRunFailures = 5,
+            },
+            eventBus);
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsFailed);
+        Assert.IsTrue(result.Errors.Any(error =>
+            error.Message.Contains("failed after 5 consecutive attempts", StringComparison.Ordinal)));
+        Assert.IsTrue(eventBus.Events.Any(record =>
+            record.EventType == "status" &&
+            record.AgentKey == AgentStatusCatalog.CreateScanAgentKey() &&
+            record.Payload == AgentStatusCatalog.DegradedStatus));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_IgnoresLateWrites_FromTimedOutAttempt()
+    {
+        TaskCompletionSource staleWriteObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int timedOutAttempts = 0;
+        InMemoryScanProjectStore scanProjectStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        AsyncScriptedChatClient scanChatClient = new(async (invocation, cancellationToken) =>
+        {
+            if (timedOutAttempts == 0)
+            {
+                timedOutAttempts++;
+                Task backgroundWriteTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(150, CancellationToken.None);
+                        await scanProjectStore.AddAsync(
+                            new ScanProject
+                            {
+                                ProjectName = "StaleProject",
+                                ProjectPath = "CodeSnifferDog/StaleProject.csproj",
+                                ProjectType = ".csproj",
+                                Reason = "Late write from timed out attempt.",
+                            },
+                            CancellationToken.None);
+                    }
+                    finally
+                    {
+                        staleWriteObserved.TrySetResult();
+                    }
+                });
+                _ = backgroundWriteTask;
+
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return CreateFunctionCallResponse(
+                "scan-add-primary",
+                "AddScanProject",
+                new Dictionary<string, object?>
+                {
+                    ["ProjectName"] = "CodeSnifferDog",
+                    ["ProjectPath"] = "CodeSnifferDog/CodeSnifferDog.csproj",
+                    ["ProjectType"] = ".csproj",
+                    ["Reason"] = "Primary application project.",
+                });
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The scan result is acceptable.",
+            }));
+        PromptAssetReader promptAssetReader = new();
+        ScanWorkflow workflow = new(
+            (repositoryRootPath, _) => CreateScanAgent(repositoryRootPath, scanChatClient, scanProjectStore, verdictBuffer),
+            (repositoryRootPath, _) => CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProjectStore, verdictBuffer),
+            scanProjectStore,
+            verdictBuffer,
+            promptAssetReader,
+            new ScanWorkflowOptions
+            {
+                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                MaxConsecutiveRunFailures = 5,
+            });
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", TestContext.CancellationToken);
+        await staleWriteObserved.Task.WaitAsync(TestContext.CancellationToken);
+        IReadOnlyList<StoredScanProject> persistedProjects = await scanProjectStore.ListAsync(TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(1, timedOutAttempts);
+        Assert.HasCount(1, persistedProjects);
+        Assert.AreEqual("CodeSnifferDog", persistedProjects[0].ProjectName);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ContinuesAfterVerifierRejectionLimit()
     {
         ScanWorkflow workflow = CreateWorkflow(
@@ -582,6 +753,39 @@ public sealed class ScanWorkflowTests
             int callIndex = Interlocked.Increment(ref _callIndex);
             ChatInvocation invocation = new([.. messages], options, callIndex);
             return Task.FromResult(_responseFactory(invocation));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ChatResponse response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+
+            foreach (ChatResponseUpdate update in response.ToChatResponseUpdates())
+                yield return update;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class AsyncScriptedChatClient(Func<ChatInvocation, CancellationToken, Task<ChatResponse>> responseFactory) : IChatClient
+    {
+        private int _callIndex = -1;
+        private readonly Func<ChatInvocation, CancellationToken, Task<ChatResponse>> _responseFactory = responseFactory;
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            int callIndex = Interlocked.Increment(ref _callIndex);
+            ChatInvocation invocation = new([.. messages], options, callIndex);
+            return _responseFactory(invocation, cancellationToken);
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

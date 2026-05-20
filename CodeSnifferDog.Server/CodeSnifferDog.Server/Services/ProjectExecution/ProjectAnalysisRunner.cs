@@ -69,6 +69,10 @@ public sealed class ProjectAnalysisRunner(
 
         if (_options.ModelContextWindowTokens <= 0)
             throw new InvalidOperationException("ExecutionOptions:ModelContextWindowTokens must be greater than zero.");
+        if (_options.AgentRunTimeoutSeconds <= 0)
+            throw new InvalidOperationException("ExecutionOptions:AgentRunTimeoutSeconds must be greater than zero.");
+        if (_options.MaxConsecutiveAgentRunFailures <= 0)
+            throw new InvalidOperationException("ExecutionOptions:MaxConsecutiveAgentRunFailures must be greater than zero.");
 
         await ClearAgentStatusDataAsync(context.ProjectId, cancellationToken);
 
@@ -220,6 +224,11 @@ public sealed class ProjectAnalysisRunner(
             scanProjectStore,
             verdictBuffer,
             promptAssetReader,
+            new ScanWorkflowOptions
+            {
+                AgentRunTimeout = _options.AgentRunTimeout,
+                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
+            },
             agentEventBus: agentEventBus);
 
         return workflow.RunAsync(repositoryRootPath, cancellationToken);
@@ -259,6 +268,11 @@ public sealed class ProjectAnalysisRunner(
             taskItemStore,
             verdictBuffer,
             promptAssetReader,
+            new ProjectPlanWorkflowOptions
+            {
+                AgentRunTimeout = _options.AgentRunTimeout,
+                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
+            },
             agentEventBus: agentEventBus);
 
         return workflow.RunAsync(repositoryRootPath, scanProject, cancellationToken);
@@ -347,6 +361,11 @@ public sealed class ProjectAnalysisRunner(
             issueStore,
             verdictBuffer,
             promptAssetReader,
+            new RuleReviewWorkflowOptions
+            {
+                AgentRunTimeout = _options.AgentRunTimeout,
+                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
+            },
             agentEventBus: agentEventBus);
 
         return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
@@ -389,6 +408,11 @@ public sealed class ProjectAnalysisRunner(
             reportIssueStore,
             verdictBuffer,
             promptAssetReader,
+            new RuleReportWorkflowOptions
+            {
+                AgentRunTimeout = _options.AgentRunTimeout,
+                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
+            },
             agentEventBus: agentEventBus);
 
         return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken);

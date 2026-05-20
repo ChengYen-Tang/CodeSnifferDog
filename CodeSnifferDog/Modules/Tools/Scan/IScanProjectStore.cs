@@ -2,7 +2,7 @@ using CodeSnifferDog.Models.Scan;
 
 namespace CodeSnifferDog.Modules.Tools.Scan;
 
-public interface IScanProjectStore
+public interface IScanProjectStore : CodeSnifferDog.Workflows.Common.IRetrySafeAgentStore
 {
     ValueTask<StoredScanProject> AddAsync(ScanProject project, CancellationToken cancellationToken);
 

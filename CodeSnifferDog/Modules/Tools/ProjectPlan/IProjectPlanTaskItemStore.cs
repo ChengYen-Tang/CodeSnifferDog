@@ -2,7 +2,7 @@ using CodeSnifferDog.Models.ProjectPlan;
 
 namespace CodeSnifferDog.Modules.Tools.ProjectPlan;
 
-public interface IProjectPlanTaskItemStore
+public interface IProjectPlanTaskItemStore : CodeSnifferDog.Workflows.Common.IRetrySafeAgentStore
 {
     ValueTask<StoredProjectPlanTaskItem> AddAsync(ProjectPlanTaskItem taskItem, CancellationToken cancellationToken);
 

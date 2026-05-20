@@ -7,6 +7,7 @@ using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Modules.Tools.Review;
+using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -79,8 +80,9 @@ public sealed class ProjectPlanWorkflow(
             planAttempts++;
             await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-            (Result runPlanResult, planPublishedMessageCount) = await RunAgentAsync(
+            (Result runPlanResult, planPublishedMessageCount, projectPlanAgent) = await RunAgentAsync(
                 projectPlanAgent,
+                () => _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope),
                 planMessages,
                 plannerAgentScope,
                 planPublishedMessageCount,
@@ -135,8 +137,9 @@ public sealed class ProjectPlanWorkflow(
             ];
             int verifierPublishedMessageCount = 0;
 
-            (Result runVerifierResult, verifierPublishedMessageCount) = await RunAgentAsync(
+            (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await RunAgentAsync(
                 projectVerifierAgent,
+                () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope),
                 verifierMessages,
                 verifierAgentScope,
                 verifierPublishedMessageCount,
@@ -205,48 +208,36 @@ public sealed class ProjectPlanWorkflow(
             ProjectPlanAgentResetCount = projectPlanAgentResetCount,
         };
 
-    private static async Task<(Result Result, int PublishedMessageCount)> RunAgentAsync(
+    private Task<(Result Result, int PublishedMessageCount, AIAgent Agent)> RunAgentAsync(
         AIAgent agent,
+        Func<AIAgent> agentFactory,
         List<ChatMessage> messages,
         IAgentEventScope eventScope,
         int publishedMessageCount,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        AgentRunGuard.RunAsync(
+            agent,
+            agentFactory,
+            PrepareAttempt,
+            RestoreAttempt,
+            messages,
+            eventScope,
+            publishedMessageCount,
+            _options.AgentRunTimeout,
+            _options.MaxConsecutiveRunFailures,
+            cancellationToken);
+
+    private AttemptState PrepareAttempt(Guid attemptId)
     {
-        try
-        {
-            await PublishPendingUserMessagesAsync(messages, eventScope, publishedMessageCount, cancellationToken).ConfigureAwait(false);
-            AgentResponse response = await agent.RunAsync(messages, session: null, options: null, cancellationToken).ConfigureAwait(false);
-
-            foreach (ChatMessage message in response.Messages)
-            {
-                messages.Add(message);
-                await AgentToolEventPublisher.PublishAsync(message, eventScope, cancellationToken).ConfigureAwait(false);
-                if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
-                    await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
-            }
-
-            publishedMessageCount = messages.Count;
-
-            return (Result.Ok(), publishedMessageCount);
-        }
-        catch (Exception ex)
-        {
-            return (Result.Fail(new ExceptionalError($"Agent run failed: {ex}", ex)), publishedMessageCount);
-        }
+        return new AttemptState(
+            _taskItemStore.BeginAttempt(attemptId),
+            _verdictBuffer.BeginAttempt(attemptId));
     }
 
-    private static async ValueTask PublishPendingUserMessagesAsync(
-        List<ChatMessage> messages,
-        IAgentEventScope eventScope,
-        int publishedMessageCount,
-        CancellationToken cancellationToken)
+    private void RestoreAttempt(AttemptState state)
     {
-        for (int index = publishedMessageCount; index < messages.Count; index++)
-        {
-            ChatMessage message = messages[index];
-            if (message.Role == ChatRole.User && !string.IsNullOrWhiteSpace(message.Text))
-                await eventScope.PublishUserMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
-        }
+        state.StoreLease.Restore();
+        state.VerdictLease.Restore();
     }
 
     private static List<ChatMessage> CreatePlanMessages(
@@ -268,4 +259,13 @@ public sealed class ProjectPlanWorkflow(
         IReadOnlyList<StoredProjectPlanTaskItem> taskItems)
         =>
         $"{messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItems)}";
+
+    private sealed class AttemptState(
+        IAgentAttemptLease storeLease,
+        IAgentAttemptLease verdictLease)
+    {
+        public IAgentAttemptLease StoreLease { get; } = storeLease;
+
+        public IAgentAttemptLease VerdictLease { get; } = verdictLease;
+    }
 }

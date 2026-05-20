@@ -4,7 +4,7 @@ using CodeSnifferDog.Models.RuleReview;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
-public interface IRuleReportIssueStore
+public interface IRuleReportIssueStore : CodeSnifferDog.Workflows.Common.IScopedRetrySafeAgentStore<RuleFlowKey>
 {
     ValueTask InitializeWorkingReportAsync(
         RuleReportKey ruleReportKey,

@@ -114,6 +114,106 @@ public sealed class RuleReportWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_IgnoresLateWrites_FromTimedOutAttempt()
+    {
+        TaskCompletionSource staleWriteObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int timedOutAttempts = 0;
+        InMemoryRuleReportIssueStore reportIssueStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        AsyncScriptedChatClient aggregatorChatClient = new(async (invocation, cancellationToken) =>
+        {
+            if (timedOutAttempts == 0)
+            {
+                timedOutAttempts++;
+                Task backgroundWriteTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(150, CancellationToken.None);
+                        await reportIssueStore.AddAsync(
+                            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\GitHub\CodeSnifferDog", "task-item-1", RuleFileName),
+                            new RuleReviewIssue
+                            {
+                                IssueType = "Performance",
+                                Severity = "Low",
+                                FileOrFunction = "Stale.cs",
+                                RelevantCodePatternOrExpression = "stale path",
+                                WhyThisIsAProblem = "Late write from timed out attempt.",
+                                Confidence = "Low",
+                                FollowUpFiles = "Stale.cs",
+                                SuggestedFixDirection = "Ignore stale write.",
+                                ReviewStrategy = "Timed out attempt.",
+                                ScopeCoverage = "Stale scope.",
+                                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                            },
+                            CancellationToken.None);
+                    }
+                    finally
+                    {
+                        staleWriteObserved.TrySetResult();
+                    }
+                });
+                _ = backgroundWriteTask;
+
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return CreateFunctionCallResponse(
+                "create-report-issue",
+                "CreateRuleReportIssue",
+                CreateIssueArguments(
+                    "Performance",
+                    "High",
+                    "Program.cs",
+                    "Repeated synchronous call",
+                    "This blocks the request path.",
+                    "High",
+                    "Program.cs",
+                    "Use a cached async path.",
+                    "Inspected Program.cs.",
+                    "No cross-scope inspection was required.",
+                    "Reviewed the hot path first."));
+        });
+        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
+            "verdict-approve",
+            "SubmitReviewVerdict",
+            new Dictionary<string, object?>
+            {
+                ["Approved"] = true,
+                ["Message"] = "The current report diff is acceptable.",
+            }));
+        RuleReportWorkflow workflow = new(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, aggregatorChatClient, reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
+                CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, verifierChatClient, reportIssueStore, verdictBuffer),
+            reportIssueStore,
+            verdictBuffer,
+            new PromptAssetReader(),
+            new RuleReportWorkflowOptions
+            {
+                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                MaxConsecutiveRunFailures = 5,
+            });
+
+        Result<RuleReportWorkflowResult> result = await workflow.RunAsync(
+            @"Z:\GitHub\CodeSnifferDog",
+            RuleFileName,
+            "- Detect performance issues.",
+            CreateTaskItem(),
+            CreateCurrentFlowIssues(),
+            TestContext.CancellationToken);
+
+        await staleWriteObserved.Task.WaitAsync(TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(1, timedOutAttempts);
+        Assert.HasCount(1, result.Value.RepositoryIssues);
+        Assert.AreEqual("Program.cs", result.Value.RepositoryIssues[0].FileOrFunction);
+        Assert.IsFalse(result.Value.RepositoryIssues.Any(issue => issue.FileOrFunction == "Stale.cs"));
+    }
+
+    [TestMethod]
     public async Task RunAsync_PreservesWorkingReportAcrossVerifierRetry()
     {
         List<ChatInvocation> aggregatorInvocations = [];
@@ -551,10 +651,10 @@ public sealed class RuleReportWorkflowTests
 
         bool hasCreatedIssue = invocation.Messages.Any(message =>
             message.Role == ChatRole.User &&
-            message.Text?.Contains("\"CreatedIssues\":[{", StringComparison.Ordinal) == true);
+            message.Text?.Contains("\"createdIssues\":[{", StringComparison.Ordinal) == true);
         bool hasUpdatedIssue = invocation.Messages.Any(message =>
             message.Role == ChatRole.User &&
-            message.Text?.Contains("\"UpdatedIssues\":[{", StringComparison.Ordinal) == true);
+            message.Text?.Contains("\"updatedIssues\":[{", StringComparison.Ordinal) == true);
 
         return CreateFunctionCallResponse(
             hasCreatedIssue || hasUpdatedIssue ? "verdict-approve" : "verdict-reject",
@@ -578,7 +678,7 @@ public sealed class RuleReportWorkflowTests
 
         bool needsCorrection = invocation.Messages.Any(message =>
             message.Role == ChatRole.User &&
-            message.Text?.Contains("\"CreatedIssues\":[{", StringComparison.Ordinal) == true &&
+            message.Text?.Contains("\"createdIssues\":[{", StringComparison.Ordinal) == true &&
             message.Text?.Contains("Cache.cs", StringComparison.Ordinal) == false);
 
         return CreateFunctionCallResponse(
@@ -691,6 +791,39 @@ public sealed class RuleReportWorkflowTests
             int callIndex = Interlocked.Increment(ref _callIndex);
             ChatInvocation invocation = new([.. messages], options, callIndex);
             return Task.FromResult(_responseFactory(invocation));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ChatResponse response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+
+            foreach (ChatResponseUpdate update in response.ToChatResponseUpdates())
+                yield return update;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class AsyncScriptedChatClient(Func<ChatInvocation, CancellationToken, Task<ChatResponse>> responseFactory) : IChatClient
+    {
+        private int _callIndex = -1;
+        private readonly Func<ChatInvocation, CancellationToken, Task<ChatResponse>> _responseFactory = responseFactory;
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            int callIndex = Interlocked.Increment(ref _callIndex);
+            ChatInvocation invocation = new([.. messages], options, callIndex);
+            return _responseFactory(invocation, cancellationToken);
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

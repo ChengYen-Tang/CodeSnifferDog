@@ -3,7 +3,7 @@ using CodeSnifferDog.Models.RuleReview;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
-public interface IRuleReviewIssueStore
+public interface IRuleReviewIssueStore : CodeSnifferDog.Workflows.Common.IScopedRetrySafeAgentStore<RuleFlowKey>
 {
     ValueTask<StoredRuleReviewIssue> AddAsync(RuleFlowKey ruleFlowKey, RuleReviewIssue issue, CancellationToken cancellationToken);
 

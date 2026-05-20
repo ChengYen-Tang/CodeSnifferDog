@@ -8,6 +8,7 @@ using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
+using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -31,6 +32,8 @@ public sealed class RuleReportWorkflow(
         new(promptAssetReader ?? new PromptAssetReader());
     private readonly RuleReportWorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
+    private RuleFlowKey _ruleFlowKey = default!;
+    private string _reportVerdictScopeKey = string.Empty;
 
     public async Task<Result<RuleReportWorkflowResult>> RunAsync(
         string repositoryRootPath,
@@ -62,6 +65,8 @@ public sealed class RuleReportWorkflow(
             RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
         string reportVerdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
+        _ruleFlowKey = ruleFlowKey;
+        _reportVerdictScopeKey = reportVerdictScopeKey;
         await _reportIssueStore.InitializeWorkingReportAsync(ruleReportKey, ruleKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
         _verdictBuffer.Reset(reportVerdictScopeKey);
 
@@ -107,8 +112,9 @@ public sealed class RuleReportWorkflow(
                 aggregatorAttempts++;
                 await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-                (Result runAggregatorResult, aggregatorPublishedMessageCount) = await RunAgentAsync(
+                (Result runAggregatorResult, aggregatorPublishedMessageCount, reportAggregatorAgent) = await RunAgentAsync(
                     reportAggregatorAgent,
+                    () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope),
                     aggregatorMessages,
                     aggregatorAgentScope,
                     aggregatorPublishedMessageCount,
@@ -134,8 +140,9 @@ public sealed class RuleReportWorkflow(
                 ];
                 int verifierPublishedMessageCount = 0;
 
-                (Result runVerifierResult, verifierPublishedMessageCount) = await RunAgentAsync(
+                (Result runVerifierResult, verifierPublishedMessageCount, reportVerifierAgent) = await RunAgentAsync(
                     reportVerifierAgent,
+                    () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope),
                     verifierMessages,
                     verifierAgentScope,
                     verifierPublishedMessageCount,
@@ -268,48 +275,36 @@ public sealed class RuleReportWorkflow(
         left.ScopeCoverage == right.ScopeCoverage &&
         left.CrossScopeAnalysis == right.CrossScopeAnalysis;
 
-    private static async Task<(Result Result, int PublishedMessageCount)> RunAgentAsync(
+    private Task<(Result Result, int PublishedMessageCount, AIAgent Agent)> RunAgentAsync(
         AIAgent agent,
+        Func<AIAgent> agentFactory,
         List<ChatMessage> messages,
         IAgentEventScope eventScope,
         int publishedMessageCount,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        AgentRunGuard.RunAsync(
+            agent,
+            agentFactory,
+            PrepareAttempt,
+            RestoreAttempt,
+            messages,
+            eventScope,
+            publishedMessageCount,
+            _options.AgentRunTimeout,
+            _options.MaxConsecutiveRunFailures,
+            cancellationToken);
+
+    private AttemptState PrepareAttempt(Guid attemptId)
     {
-        try
-        {
-            await PublishPendingUserMessagesAsync(messages, eventScope, publishedMessageCount, cancellationToken).ConfigureAwait(false);
-            AgentResponse response = await agent.RunAsync(messages, session: null, options: null, cancellationToken).ConfigureAwait(false);
-
-            foreach (ChatMessage message in response.Messages)
-            {
-                messages.Add(message);
-                await AgentToolEventPublisher.PublishAsync(message, eventScope, cancellationToken).ConfigureAwait(false);
-                if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
-                    await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
-            }
-
-            publishedMessageCount = messages.Count;
-
-            return (Result.Ok(), publishedMessageCount);
-        }
-        catch (Exception ex)
-        {
-            return (Result.Fail(new ExceptionalError($"Agent run failed: {ex}", ex)), publishedMessageCount);
-        }
+        return new AttemptState(
+            _reportIssueStore.BeginAttempt(_ruleFlowKey, attemptId),
+            _verdictBuffer.BeginAttempt(_reportVerdictScopeKey, attemptId));
     }
 
-    private static async ValueTask PublishPendingUserMessagesAsync(
-        List<ChatMessage> messages,
-        IAgentEventScope eventScope,
-        int publishedMessageCount,
-        CancellationToken cancellationToken)
+    private void RestoreAttempt(AttemptState state)
     {
-        for (int index = publishedMessageCount; index < messages.Count; index++)
-        {
-            ChatMessage message = messages[index];
-            if (message.Role == ChatRole.User && !string.IsNullOrWhiteSpace(message.Text))
-                await eventScope.PublishUserMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
-        }
+        state.StoreLease.Restore();
+        state.VerdictLease.Restore();
     }
 
     private static Result<AIAgent> TryCreateAgent(Func<AIAgent> factory, string agentName)
@@ -340,4 +335,13 @@ public sealed class RuleReportWorkflow(
     private string BuildVerifierInput(RuleReportDiff diff)
         =>
         $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(diff)}";
+
+    private sealed class AttemptState(
+        IAgentAttemptLease storeLease,
+        IAgentAttemptLease verdictLease)
+    {
+        public IAgentAttemptLease StoreLease { get; } = storeLease;
+
+        public IAgentAttemptLease VerdictLease { get; } = verdictLease;
+    }
 }

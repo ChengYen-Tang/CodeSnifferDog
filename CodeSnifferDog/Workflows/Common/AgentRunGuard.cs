@@ -1,0 +1,112 @@
+using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Modules.ReviewAgentTeam;
+using FluentResults;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+
+namespace CodeSnifferDog.Workflows.Common;
+
+internal static class AgentRunGuard
+{
+    public static async Task<(Result Result, int PublishedMessageCount, AIAgent Agent)> RunAsync<TSnapshot>(
+        AIAgent agent,
+        Func<AIAgent> agentFactory,
+        Func<Guid, TSnapshot> prepareAttempt,
+        Action<TSnapshot> restoreAttempt,
+        List<ChatMessage> messages,
+        IAgentEventScope eventScope,
+        int publishedMessageCount,
+        TimeSpan timeout,
+        int maxConsecutiveFailures,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(agent);
+        ArgumentNullException.ThrowIfNull(agentFactory);
+        ArgumentNullException.ThrowIfNull(prepareAttempt);
+        ArgumentNullException.ThrowIfNull(restoreAttempt);
+        ArgumentNullException.ThrowIfNull(messages);
+        ArgumentNullException.ThrowIfNull(eventScope);
+
+        if (timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Agent run timeout must be greater than zero.");
+        if (maxConsecutiveFailures <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxConsecutiveFailures), "Max consecutive failures must be greater than zero.");
+
+        Exception? lastException = null;
+
+        for (int attempt = 1; attempt <= maxConsecutiveFailures; attempt++)
+        {
+            Guid attemptId = Guid.NewGuid();
+            TSnapshot snapshot = prepareAttempt(attemptId);
+
+            try
+            {
+                publishedMessageCount = await PublishPendingUserMessagesAsync(
+                    messages,
+                    eventScope,
+                    publishedMessageCount,
+                    cancellationToken).ConfigureAwait(false);
+
+                using CancellationTokenSource timeoutTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutTokenSource.CancelAfter(timeout);
+
+                AgentResponse response = await AgentRunAttemptContext.RunAsync(
+                    attemptId,
+                    () => agent.RunAsync(
+                        messages,
+                        session: null,
+                        options: null,
+                        timeoutTokenSource.Token)).ConfigureAwait(false);
+
+                foreach (ChatMessage message in response.Messages)
+                {
+                    messages.Add(message);
+                    await AgentToolEventPublisher.PublishAsync(message, eventScope, cancellationToken).ConfigureAwait(false);
+                    if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
+                        await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
+                }
+
+                return (Result.Ok(), messages.Count, agent);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                restoreAttempt(snapshot);
+                throw;
+            }
+            catch (OperationCanceledException ex)
+            {
+                restoreAttempt(snapshot);
+                lastException = new TimeoutException(
+                    $"Agent run attempt {attempt} timed out after {timeout}.",
+                    ex);
+            }
+            catch (Exception ex)
+            {
+                restoreAttempt(snapshot);
+                lastException = ex;
+            }
+
+            agent = agentFactory();
+        }
+
+        return (Result.Fail(new ExceptionalError(
+            $"Agent run failed after {maxConsecutiveFailures} consecutive attempts: {lastException}",
+            lastException!)), publishedMessageCount, agent);
+    }
+
+    private static async Task<int> PublishPendingUserMessagesAsync(
+        List<ChatMessage> messages,
+        IAgentEventScope eventScope,
+        int publishedMessageCount,
+        CancellationToken cancellationToken)
+    {
+        for (int index = publishedMessageCount; index < messages.Count; index++)
+        {
+            ChatMessage message = messages[index];
+            if (message.Role == ChatRole.User && !string.IsNullOrWhiteSpace(message.Text))
+                await eventScope.PublishUserMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
+        }
+
+        return messages.Count;
+    }
+}
