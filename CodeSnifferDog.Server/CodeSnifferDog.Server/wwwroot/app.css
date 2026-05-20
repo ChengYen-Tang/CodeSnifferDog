@@ -521,6 +521,7 @@ a {
 }
 
 .agent-message-bubble {
+    min-width: 0;
     max-width: 78%;
     padding: 0.95rem 1.05rem;
     border-radius: 0.9rem;
@@ -536,7 +537,8 @@ a {
 }
 
 .tool-message .agent-message-bubble {
-    width: min(680px, 78%);
+    width: fit-content;
+    max-width: min(680px, 78%);
     padding: 0.75rem;
     background: #f8fbff;
 }
@@ -544,6 +546,9 @@ a {
 .agent-message-text {
     color: #344767;
     line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .tool-call-summary {
@@ -558,6 +563,12 @@ a {
     font-size: 0.9rem;
     font-weight: 700;
     text-align: left;
+}
+
+.tool-call-summary-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .tool-call-summary span:last-child {
@@ -599,6 +610,8 @@ a {
     background: #1f2430;
     color: #e6edf3;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .agent-compaction-notice {
