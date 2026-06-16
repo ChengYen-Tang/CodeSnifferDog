@@ -82,6 +82,12 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
         return BuildRuleReportsAsync(cancellationToken);
     }
 
+    internal Task<ReviewAgentTeamAnalysisResult> AnalyzeDetailedAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return AnalyzeDetailedCoreAsync(cancellationToken);
+    }
+
     internal Task<Result<RepositoryPreparationWorkflowResult>> RunPreparationAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -98,30 +104,68 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
 
     private async Task<Result> AnalyzeCoreAsync(CancellationToken cancellationToken)
     {
-        Result<RepositoryPreparationWorkflowResult> preparationResult =
-            await RunPreparationAsync(cancellationToken).ConfigureAwait(false);
+        ReviewAgentTeamAnalysisResult analysisResult =
+            await AnalyzeDetailedCoreAsync(cancellationToken).ConfigureAwait(false);
+        ReviewAgentTeamAnalysisCompletionDecision completionDecision =
+            ReviewAgentTeamAnalysisCompletionPolicy.Evaluate(analysisResult);
 
-        if (preparationResult.IsFailed)
-            return preparationResult.ToResult();
-
-        Result<ReviewStageWorkflowResult> reviewStageResult =
-            await RunReviewStageAsync(preparationResult.Value, cancellationToken).ConfigureAwait(false);
-
-        if (reviewStageResult.IsFailed)
-            return reviewStageResult.ToResult();
+        if (!completionDecision.IsSuccess)
+            return Result.Fail(completionDecision.FailureMessage ?? "Project analysis failed.");
 
         return Result.Ok();
     }
 
+    private async Task<ReviewAgentTeamAnalysisResult> AnalyzeDetailedCoreAsync(CancellationToken cancellationToken)
+    {
+        Result<RepositoryPreparationWorkflowResult> preparationResult =
+            await RunPreparationAsync(cancellationToken).ConfigureAwait(false);
+
+        if (preparationResult.IsFailed)
+        {
+            return new ReviewAgentTeamAnalysisResult
+            {
+                PreparationSucceeded = false,
+                ReviewStageSucceeded = false,
+                HasAnyFindings = false,
+                AllRuleFlowsSucceeded = false,
+                ExecutionErrors = [.. preparationResult.Errors.Select(error => error.Message)],
+                RuleReports = [],
+            };
+        }
+
+        Result<ReviewStageWorkflowResult> reviewStageResult =
+            await RunReviewStageAsync(preparationResult.Value, cancellationToken).ConfigureAwait(false);
+        RuleReportBuildResult reportBuildResult = await BuildRuleReportsWithMetadataAsync(cancellationToken).ConfigureAwait(false);
+
+        return new ReviewAgentTeamAnalysisResult
+        {
+            PreparationSucceeded = true,
+            ReviewStageSucceeded = reviewStageResult.IsSuccess,
+            HasAnyFindings = reportBuildResult.HasAnyFindings,
+            AllRuleFlowsSucceeded = reviewStageResult.IsSuccess && AllRuleFlowsSucceeded(reviewStageResult.Value),
+            ExecutionErrors = reviewStageResult.IsFailed
+                ? [.. reviewStageResult.Errors.Select(error => error.Message)]
+                : [],
+            RuleReports = reportBuildResult.RuleReports,
+        };
+    }
+
     private async Task<IReadOnlyList<ReviewAgentTeamRuleReport>> BuildRuleReportsAsync(CancellationToken cancellationToken)
     {
+        return (await BuildRuleReportsWithMetadataAsync(cancellationToken).ConfigureAwait(false)).RuleReports;
+    }
+
+    private async Task<RuleReportBuildResult> BuildRuleReportsWithMetadataAsync(CancellationToken cancellationToken)
+    {
         List<ReviewAgentTeamRuleReport> ruleReports = [];
+        bool hasAnyFindings = false;
 
         foreach (ReviewAgentRuleDefinition ruleDefinition in _ruleDefinitions)
         {
             RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(_repositoryRootPath, ruleDefinition.RuleKey);
             IReadOnlyList<StoredRuleReportIssue> issues =
                 await _ruleReportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
+            hasAnyFindings |= issues.Count > 0;
 
             ruleReports.Add(new ReviewAgentTeamRuleReport
             {
@@ -130,7 +174,24 @@ public sealed class ReviewAgentTeamWorker : IDisposable, IAsyncDisposable
             });
         }
 
-        return ruleReports;
+        return new RuleReportBuildResult
+        {
+            RuleReports = ruleReports,
+            HasAnyFindings = hasAnyFindings,
+        };
+    }
+
+    private static bool AllRuleFlowsSucceeded(ReviewStageWorkflowResult reviewStageResult) =>
+        reviewStageResult.ProjectResults
+            .SelectMany(projectResult => projectResult.ReviewGroupResults)
+            .SelectMany(reviewGroupResult => reviewGroupResult.FlowResults)
+            .All(flowResult => flowResult.IsApprovedCompletion);
+
+    private sealed class RuleReportBuildResult
+    {
+        public required IReadOnlyList<ReviewAgentTeamRuleReport> RuleReports { get; init; }
+
+        public required bool HasAnyFindings { get; init; }
     }
 
     public void Dispose()

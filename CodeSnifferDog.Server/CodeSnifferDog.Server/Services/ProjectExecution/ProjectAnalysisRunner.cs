@@ -43,7 +43,8 @@ public sealed class ProjectAnalysisRunner(
     IOptions<ProjectExecutionOptions> options,
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider,
-    ILogger<ProjectAnalysisRunner> logger) : IProjectAnalysisRunner
+    ILogger<ProjectAnalysisRunner> logger,
+    Func<ProjectAnalysisContext, IReadOnlyList<ProjectExecutionRuleDefinition>, CancellationToken, Task<ReviewAgentTeamAnalysisResult>>? analysisOverride = null) : IProjectAnalysisRunner
 {
     private readonly IProjectChatClientProvider _chatClientProvider = chatClientProvider;
     private readonly IReviewRuleMarkdownProvider _ruleMarkdownProvider = ruleMarkdownProvider;
@@ -54,6 +55,7 @@ public sealed class ProjectAnalysisRunner(
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
     private readonly ILogger<ProjectAnalysisRunner> _logger = logger;
+    private readonly Func<ProjectAnalysisContext, IReadOnlyList<ProjectExecutionRuleDefinition>, CancellationToken, Task<ReviewAgentTeamAnalysisResult>>? _analysisOverride = analysisOverride;
 
     public bool IsReady => _chatClientProvider.IsReady && _ruleMarkdownProvider.HasRules;
 
@@ -76,19 +78,25 @@ public sealed class ProjectAnalysisRunner(
 
         await ClearAgentStatusDataAsync(context.ProjectId, cancellationToken);
 
-        IChatClient chatClient = _chatClientProvider.CreateChatClient();
         IReadOnlyList<ProjectExecutionRuleDefinition> rules = await _ruleMarkdownProvider.LoadRulesAsync(cancellationToken);
 
         if (rules.Count == 0)
             throw new InvalidOperationException("No review rule markdown files were found.");
 
+        if (_analysisOverride is not null)
+        {
+            ReviewAgentTeamAnalysisResult overrideResult =
+                await _analysisOverride(context, rules, cancellationToken).ConfigureAwait(false);
+            await CompleteAnalysisAsync(context.ProjectId, rules, overrideResult, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        IChatClient chatClient = _chatClientProvider.CreateChatClient();
         InMemoryRuleReportIssueStore ruleReportIssueStore = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber eventSubscriber =
             new(context.ProjectId, _dbContextFactory, _projectAgentStatusLiveUpdateNotifier, eventStream.Events);
         ReviewAgentTeamFactory teamFactory = CreateTeamFactory(chatClient, ruleReportIssueStore, eventStream);
-        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports;
-
         try
         {
             await using ReviewAgentTeamWorker worker = teamFactory.CreateWorker(
@@ -105,19 +113,32 @@ public sealed class ProjectAnalysisRunner(
                     ContextCompactionMode = _options.ContextCompactionMode,
                 });
 
-            Result result = await worker.AnalyzeAsync(cancellationToken);
-            if (result.IsFailed)
-                throw new InvalidOperationException(string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-
-            ruleReports = await worker.GetRuleReportsAsync(cancellationToken);
+            ReviewAgentTeamAnalysisResult analysisResult = await worker.AnalyzeDetailedAsync(cancellationToken);
+            await CompleteAnalysisAsync(context.ProjectId, rules, analysisResult, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             eventStream.Complete();
         }
-
-        await PersistReportsAsync(context.ProjectId, rules, ruleReports, cancellationToken);
         _logger.LogInformation("Project {ProjectId} analysis completed.", context.ProjectId);
+    }
+
+    private async Task CompleteAnalysisAsync(
+        Guid projectId,
+        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+        ReviewAgentTeamAnalysisResult analysisResult,
+        CancellationToken cancellationToken)
+    {
+        ReviewAgentTeamAnalysisCompletionDecision completionDecision =
+            ReviewAgentTeamAnalysisCompletionPolicy.Evaluate(analysisResult);
+
+        if (completionDecision.ShouldPersistReports)
+            await PersistReportsAsync(projectId, rules, analysisResult.RuleReports, cancellationToken).ConfigureAwait(false);
+        else
+            await _projectReportService.ReplaceProjectReportsAsync(projectId, [], cancellationToken).ConfigureAwait(false);
+
+        if (!completionDecision.IsSuccess)
+            throw new InvalidOperationException(completionDecision.FailureMessage);
     }
 
     private async Task ClearAgentStatusDataAsync(Guid projectId, CancellationToken cancellationToken)
