@@ -3,6 +3,7 @@ using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
@@ -452,7 +453,7 @@ public sealed class RuleReportWorkflowTests
             options);
     }
 
-    private static AIAgent CreateAggregatorAgent(
+    private static AgentCreationResult CreateAggregatorAgent(
         string repositoryRootPath,
         string ruleFileName,
         string ruleMarkdown,
@@ -463,7 +464,7 @@ public sealed class RuleReportWorkflowTests
         new ReportAggregatorAgentFactory(CreateCompactionOptions(ReportPromptAssetPaths.ReportSummaryPrompt))
             .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reportIssueStore, verdictBuffer);
 
-    private static AIAgent CreateVerifierAgent(
+    private static AgentCreationResult CreateVerifierAgent(
         string repositoryRootPath,
         string ruleFileName,
         string ruleMarkdown,

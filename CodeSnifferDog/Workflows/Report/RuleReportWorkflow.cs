@@ -16,16 +16,16 @@ using Microsoft.Extensions.AI;
 namespace CodeSnifferDog.Workflows.Report;
 
 public sealed class RuleReportWorkflow(
-    Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> reportAggregatorAgentFactory,
-    Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, IAgentEventScope, AIAgent> reportVerifierAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> reportAggregatorAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, IAgentEventScope, AgentCreationResult> reportVerifierAgentFactory,
     IRuleReportIssueStore reportIssueStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     RuleReportWorkflowOptions? options = null,
     IAgentEventBus? agentEventBus = null)
 {
-    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
-    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, IAgentEventScope, AIAgent> _reportVerifierAgentFactory = reportVerifierAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, IAgentEventScope, AgentCreationResult> _reportVerifierAgentFactory = reportVerifierAgentFactory;
     private readonly IRuleReportIssueStore _reportIssueStore = reportIssueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly RuleReportWorkflowMessageTemplates _messageTemplates =
@@ -76,7 +76,7 @@ public sealed class RuleReportWorkflow(
             IAgentEventScope aggregatorAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportAggregatorAgentKey(taskItem, ruleKey));
             IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportVerifierAgentKey(taskItem, ruleKey));
 
-            Result<AIAgent> createAggregatorResult = TryCreateAgent(
+            Result<AgentCreationResult> createAggregatorResult = TryCreateAgent(
                 () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope),
                 "Report Aggregator Agent");
 
@@ -84,10 +84,11 @@ public sealed class RuleReportWorkflow(
                 return createAggregatorResult.ToResult<RuleReportWorkflowResult>();
             await aggregatorAgentScope.PublishCreatedAsync(
                 AgentStatusCatalog.CreateReportAggregatorAgentDisplayName(ruleKey),
+                createAggregatorResult.Value.SystemPrompt,
                 AgentStatusCatalog.WaitingStatus,
                 cancellationToken).ConfigureAwait(false);
 
-            Result<AIAgent> createVerifierResult = TryCreateAgent(
+            Result<AgentCreationResult> createVerifierResult = TryCreateAgent(
                 () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope),
                 "Report Verifier Agent");
 
@@ -95,11 +96,12 @@ public sealed class RuleReportWorkflow(
                 return createVerifierResult.ToResult<RuleReportWorkflowResult>();
             await verifierAgentScope.PublishCreatedAsync(
                 AgentStatusCatalog.CreateReportVerifierAgentDisplayName(ruleKey),
+                createVerifierResult.Value.SystemPrompt,
                 AgentStatusCatalog.WaitingStatus,
                 cancellationToken).ConfigureAwait(false);
 
-            AIAgent reportAggregatorAgent = createAggregatorResult.Value;
-            AIAgent reportVerifierAgent = createVerifierResult.Value;
+            AIAgent reportAggregatorAgent = createAggregatorResult.Value.Agent;
+            AIAgent reportVerifierAgent = createVerifierResult.Value.Agent;
             List<ChatMessage> aggregatorMessages = CreateAggregatorMessages(currentFlowIssues);
             int aggregatorPublishedMessageCount = 0;
 
@@ -114,7 +116,7 @@ public sealed class RuleReportWorkflow(
 
                 (Result runAggregatorResult, aggregatorPublishedMessageCount, reportAggregatorAgent) = await RunAgentAsync(
                     reportAggregatorAgent,
-                    () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope),
+                    () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope).Agent,
                     aggregatorMessages,
                     aggregatorAgentScope,
                     aggregatorPublishedMessageCount,
@@ -142,7 +144,7 @@ public sealed class RuleReportWorkflow(
 
                 (Result runVerifierResult, verifierPublishedMessageCount, reportVerifierAgent) = await RunAgentAsync(
                     reportVerifierAgent,
-                    () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope),
+                    () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope).Agent,
                     verifierMessages,
                     verifierAgentScope,
                     verifierPublishedMessageCount,
@@ -307,7 +309,7 @@ public sealed class RuleReportWorkflow(
         state.VerdictLease.Restore();
     }
 
-    private static Result<AIAgent> TryCreateAgent(Func<AIAgent> factory, string agentName)
+    private static Result<AgentCreationResult> TryCreateAgent(Func<AgentCreationResult> factory, string agentName)
     {
         ArgumentNullException.ThrowIfNull(factory);
         ArgumentException.ThrowIfNullOrWhiteSpace(agentName);

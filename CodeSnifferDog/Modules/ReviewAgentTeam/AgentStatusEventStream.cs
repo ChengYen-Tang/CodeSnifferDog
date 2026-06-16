@@ -79,10 +79,12 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
 
         public ValueTask PublishCreatedAsync(
             string displayName,
+            string systemPrompt,
             string initialStatus,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(systemPrompt);
             ArgumentException.ThrowIfNullOrWhiteSpace(initialStatus);
 
             return _bus.PublishAsync(new AgentCreatedEvent
@@ -90,6 +92,7 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
                 AgentKey = AgentKey,
                 GroupKey = GroupKey,
                 DisplayName = displayName.Trim(),
+                SystemPrompt = systemPrompt,
                 InitialStatus = initialStatus.Trim(),
                 OccurredAtUtc = DateTimeOffset.UtcNow,
             }, cancellationToken);

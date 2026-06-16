@@ -10,6 +10,8 @@ public sealed class ProjectAgentRecord
 
     public required string DisplayName { get; set; }
 
+    public required string SystemPrompt { get; set; }
+
     public ProjectAgentStatus Status { get; set; }
 
     public DateTimeOffset CreatedAtUtc { get; set; }

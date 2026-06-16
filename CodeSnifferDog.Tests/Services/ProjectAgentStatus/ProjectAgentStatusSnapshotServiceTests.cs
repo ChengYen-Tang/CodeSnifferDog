@@ -152,6 +152,7 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
             ProjectAgentGroupId = alphaGroup.Id,
             RuntimeKey = "agent-beta",
             DisplayName = "Beta Agent",
+            SystemPrompt = "System prompt beta",
             Status = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus.Running,
             CreatedAtUtc = new DateTimeOffset(2026, 5, 10, 10, 3, 0, TimeSpan.Zero),
         };
@@ -162,6 +163,7 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
             ProjectAgentGroupId = alphaGroup.Id,
             RuntimeKey = "agent-alpha",
             DisplayName = "Alpha Agent",
+            SystemPrompt = "System prompt alpha",
             Status = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus.Completed,
             CreatedAtUtc = new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
         };
@@ -172,6 +174,7 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
             ProjectAgentGroupId = zuluGroup.Id,
             RuntimeKey = "agent-zulu",
             DisplayName = "Zulu Agent",
+            SystemPrompt = "System prompt zulu",
             Status = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus.Waiting,
             CreatedAtUtc = new DateTimeOffset(2026, 5, 10, 10, 6, 0, TimeSpan.Zero),
         };

@@ -8,5 +8,7 @@ internal sealed record AgentCreatedEvent : AgentStatusEvent
 
     public required string DisplayName { get; init; }
 
+    public required string SystemPrompt { get; init; }
+
     public required string InitialStatus { get; init; }
 }

@@ -15,16 +15,16 @@ using Microsoft.Extensions.AI;
 namespace CodeSnifferDog.Workflows.RuleReview;
 
 public sealed class RuleReviewWorkflow(
-    Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> ruleReviewAgentFactory,
-    Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> reviewVerifierAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> ruleReviewAgentFactory,
+    Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> reviewVerifierAgentFactory,
     IRuleReviewIssueStore issueStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     RuleReviewWorkflowOptions? options = null,
     IAgentEventBus? agentEventBus = null)
 {
-    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> _ruleReviewAgentFactory = ruleReviewAgentFactory;
-    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AIAgent> _reviewVerifierAgentFactory = reviewVerifierAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> _ruleReviewAgentFactory = ruleReviewAgentFactory;
+    private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> _reviewVerifierAgentFactory = reviewVerifierAgentFactory;
     private readonly IRuleReviewIssueStore _issueStore = issueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly RuleReviewWorkflowMessageTemplates _messageTemplates =
@@ -69,7 +69,7 @@ public sealed class RuleReviewWorkflow(
             IAgentEventScope reviewAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateRuleReviewAgentKey(taskItem, ruleKey));
             IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReviewVerifierAgentKey(taskItem, ruleKey));
 
-            Result<AIAgent> createRuleReviewAgentResult = TryCreateAgent(
+            Result<AgentCreationResult> createRuleReviewAgentResult = TryCreateAgent(
                 () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope),
                 "Rule Review Agent");
 
@@ -77,10 +77,11 @@ public sealed class RuleReviewWorkflow(
                 return createRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
             await reviewAgentScope.PublishCreatedAsync(
                 AgentStatusCatalog.CreateRuleReviewAgentDisplayName(ruleKey),
+                createRuleReviewAgentResult.Value.SystemPrompt,
                 AgentStatusCatalog.WaitingStatus,
                 cancellationToken).ConfigureAwait(false);
 
-            Result<AIAgent> createReviewVerifierAgentResult = TryCreateAgent(
+            Result<AgentCreationResult> createReviewVerifierAgentResult = TryCreateAgent(
                 () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope),
                 "Review Verifier Agent");
 
@@ -88,11 +89,12 @@ public sealed class RuleReviewWorkflow(
                 return createReviewVerifierAgentResult.ToResult<RuleReviewWorkflowResult>();
             await verifierAgentScope.PublishCreatedAsync(
                 AgentStatusCatalog.CreateReviewVerifierAgentDisplayName(ruleKey),
+                createReviewVerifierAgentResult.Value.SystemPrompt,
                 AgentStatusCatalog.WaitingStatus,
                 cancellationToken).ConfigureAwait(false);
 
-            AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value;
-            AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value;
+            AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value.Agent;
+            AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value.Agent;
             List<ChatMessage> reviewMessages = CreateReviewMessages();
             int reviewPublishedMessageCount = 0;
 
@@ -109,7 +111,7 @@ public sealed class RuleReviewWorkflow(
 
                 (Result runReviewResult, reviewPublishedMessageCount, ruleReviewAgent) = await RunAgentAsync(
                     ruleReviewAgent,
-                    () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope),
+                    () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope).Agent,
                     reviewMessages,
                     reviewAgentScope,
                     reviewPublishedMessageCount,
@@ -157,14 +159,14 @@ public sealed class RuleReviewWorkflow(
                                 stoppedAfterMissingSubmissionLimit: true));
                         }
 
-                        Result<AIAgent> recreateRuleReviewAgentResult = TryCreateAgent(
+                        Result<AgentCreationResult> recreateRuleReviewAgentResult = TryCreateAgent(
                             () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope),
                             "Rule Review Agent");
 
                         if (recreateRuleReviewAgentResult.IsFailed)
                             return recreateRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
 
-                        ruleReviewAgent = recreateRuleReviewAgentResult.Value;
+                        ruleReviewAgent = recreateRuleReviewAgentResult.Value.Agent;
                         await reviewAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
                         reviewMessages = CreateReviewMessages();
                         reviewPublishedMessageCount = 0;
@@ -189,7 +191,7 @@ public sealed class RuleReviewWorkflow(
 
                 (Result runVerifierResult, verifierPublishedMessageCount, reviewVerifierAgent) = await RunAgentAsync(
                     reviewVerifierAgent,
-                    () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope),
+                    () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope).Agent,
                     verifierMessages,
                     verifierAgentScope,
                     verifierPublishedMessageCount,
@@ -312,7 +314,7 @@ public sealed class RuleReviewWorkflow(
         state.VerdictLease.Restore();
     }
 
-    private static Result<AIAgent> TryCreateAgent(Func<AIAgent> factory, string agentName)
+    private static Result<AgentCreationResult> TryCreateAgent(Func<AgentCreationResult> factory, string agentName)
     {
         ArgumentNullException.ThrowIfNull(factory);
         ArgumentException.ThrowIfNullOrWhiteSpace(agentName);

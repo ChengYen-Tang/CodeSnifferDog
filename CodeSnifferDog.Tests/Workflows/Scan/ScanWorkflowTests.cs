@@ -488,11 +488,6 @@ public sealed class ScanWorkflowTests
         ScanWorkflow workflow = new(
             (repositoryRootPath, _) => new ScanAgentFactory(compactionOptions).Create(
                 scanChatClient,
-                """
-                You are the Scan Agent for CodeSnifferDog.
-
-                Use the system-controlled user input as the source of truth for the repository root path.
-                """,
                 repositoryRootPath,
                 scanProjectStore,
                 verdictBuffer),
@@ -618,7 +613,7 @@ public sealed class ScanWorkflowTests
         =>
         new(new PromptAssetReader());
 
-    private static AIAgent CreateScanAgent(
+    private static AgentCreationResult CreateScanAgent(
         string repositoryRootPath,
         IChatClient chatClient,
         IScanProjectStore scanProjectStore,
@@ -626,7 +621,7 @@ public sealed class ScanWorkflowTests
         new ScanAgentFactory(CreateCompactionOptions(ScanPromptAssetPaths.ScanSummaryPrompt))
             .Create(chatClient, repositoryRootPath, scanProjectStore, verdictBuffer);
 
-    private static AIAgent CreateVerifierAgent(
+    private static AgentCreationResult CreateVerifierAgent(
         string repositoryRootPath,
         IChatClient chatClient,
         IScanProjectStore scanProjectStore,
@@ -857,6 +852,7 @@ public sealed class ScanWorkflowTests
 
         public ValueTask PublishCreatedAsync(
             string displayName,
+            string systemPrompt,
             string initialStatus,
             CancellationToken cancellationToken = default)
         {

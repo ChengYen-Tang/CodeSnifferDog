@@ -2,6 +2,7 @@ using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Common;
@@ -26,7 +27,7 @@ public sealed class ReviewVerifierAgentFactory(
     private readonly ILoggerFactory? _loggerFactory = loggerFactory;
     private readonly IServiceProvider? _serviceProvider = serviceProvider;
 
-    public AIAgent Create(
+    public AgentCreationResult Create(
         IChatClient chatClient,
         string repositoryRootPath,
         string ruleKey,
@@ -34,7 +35,7 @@ public sealed class ReviewVerifierAgentFactory(
         StoredProjectPlanTaskItem taskItem,
         IRuleReviewIssueStore issueStore,
         ReviewVerdictBuffer verdictBuffer) =>
-        Create(
+        CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(RuleReviewPromptAssetPaths.ReviewVerifierAgentPrompt),
             repositoryRootPath,
@@ -44,7 +45,7 @@ public sealed class ReviewVerifierAgentFactory(
             issueStore,
             verdictBuffer);
 
-    public AIAgent Create(
+    private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
         string promptTemplate,
         string repositoryRootPath,
@@ -63,20 +64,25 @@ public sealed class ReviewVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(issueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
+        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, taskItem);
         CommonToolSet commonToolSet = new(repositoryRootPath);
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReviewToolSet toolSet = new(issueStore, verdictBuffer, ruleFlowKey);
         AIAgent agent = chatClient.AsAIAgent(
-            RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, taskItem),
+            systemPrompt,
             "Review Verifier Agent",
             "Verifies whether the current rule review result is acceptable.",
             [.. commonToolSet.CreateTools(), .. toolSet.CreateVerifierTools()],
             _loggerFactory,
             _serviceProvider);
 
-        return new AIAgentBuilder(agent)
-            .UseOperationalContextCompaction(_compactionOptions)
-            .Build(_serviceProvider);
+        return new AgentCreationResult
+        {
+            Agent = new AIAgentBuilder(agent)
+                .UseOperationalContextCompaction(_compactionOptions)
+                .Build(_serviceProvider),
+            SystemPrompt = systemPrompt,
+        };
     }
 
     private string RenderPrompt(

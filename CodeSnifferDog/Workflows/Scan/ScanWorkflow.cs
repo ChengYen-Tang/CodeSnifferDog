@@ -14,16 +14,16 @@ using Microsoft.Extensions.AI;
 namespace CodeSnifferDog.Workflows.Scan;
 
 public sealed class ScanWorkflow(
-    Func<string, IAgentEventScope, AIAgent> scanAgentFactory,
-    Func<string, IAgentEventScope, AIAgent> scanVerifierAgentFactory,
+    Func<string, IAgentEventScope, AgentCreationResult> scanAgentFactory,
+    Func<string, IAgentEventScope, AgentCreationResult> scanVerifierAgentFactory,
     IScanProjectStore scanProjectStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     ScanWorkflowOptions? options = null,
     IAgentEventBus? agentEventBus = null)
 {
-    private readonly Func<string, IAgentEventScope, AIAgent> _scanAgentFactory = scanAgentFactory;
-    private readonly Func<string, IAgentEventScope, AIAgent> _scanVerifierAgentFactory = scanVerifierAgentFactory;
+    private readonly Func<string, IAgentEventScope, AgentCreationResult> _scanAgentFactory = scanAgentFactory;
+    private readonly Func<string, IAgentEventScope, AgentCreationResult> _scanVerifierAgentFactory = scanVerifierAgentFactory;
     private readonly IScanProjectStore _scanProjectStore = scanProjectStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly ScanWorkflowMessageTemplates _messageTemplates =
@@ -49,15 +49,19 @@ public sealed class ScanWorkflow(
             AgentStatusCatalog.CreateScanGroupDisplayName(),
             cancellationToken).ConfigureAwait(false);
 
-        AIAgent scanAgent = _scanAgentFactory(repositoryRootPath, scanAgentScope);
+        AgentCreationResult scanAgentCreation = _scanAgentFactory(repositoryRootPath, scanAgentScope);
+        AIAgent scanAgent = scanAgentCreation.Agent;
         await scanAgentScope.PublishCreatedAsync(
             AgentStatusCatalog.CreateScanAgentDisplayName(),
+            scanAgentCreation.SystemPrompt,
             AgentStatusCatalog.WaitingStatus,
             cancellationToken).ConfigureAwait(false);
 
-        AIAgent scanVerifierAgent = _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope);
+        AgentCreationResult scanVerifierAgentCreation = _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope);
+        AIAgent scanVerifierAgent = scanVerifierAgentCreation.Agent;
         await scanVerifierAgentScope.PublishCreatedAsync(
             AgentStatusCatalog.CreateScanVerifierAgentDisplayName(),
+            scanVerifierAgentCreation.SystemPrompt,
             AgentStatusCatalog.WaitingStatus,
             cancellationToken).ConfigureAwait(false);
 
@@ -77,7 +81,7 @@ public sealed class ScanWorkflow(
 
             (Result runScanResult, scanPublishedMessageCount, scanAgent) = await RunAgentAsync(
                 scanAgent,
-                () => _scanAgentFactory(repositoryRootPath, scanAgentScope),
+                () => _scanAgentFactory(repositoryRootPath, scanAgentScope).Agent,
                 scanMessages,
                 scanAgentScope,
                 scanPublishedMessageCount,
@@ -107,7 +111,7 @@ public sealed class ScanWorkflow(
                         return Result.Fail<ScanWorkflowResult>("Scan Agent did not submit any scan projects after the allowed reset limit.");
                     }
 
-                    scanAgent = _scanAgentFactory(repositoryRootPath, scanAgentScope);
+                    scanAgent = _scanAgentFactory(repositoryRootPath, scanAgentScope).Agent;
                     await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
                     scanMessages = CreateScanMessages(repositoryRootPath);
                     scanPublishedMessageCount = 0;
@@ -132,7 +136,7 @@ public sealed class ScanWorkflow(
 
             (Result runVerifierResult, verifierPublishedMessageCount, scanVerifierAgent) = await RunAgentAsync(
                 scanVerifierAgent,
-                () => _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope),
+                () => _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope).Agent,
                 verifierMessages,
                 scanVerifierAgentScope,
                 verifierPublishedMessageCount,

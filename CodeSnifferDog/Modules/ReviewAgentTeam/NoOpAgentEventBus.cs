@@ -37,10 +37,12 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
 
         public ValueTask PublishCreatedAsync(
             string displayName,
+            string systemPrompt,
             string initialStatus,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(systemPrompt);
             ArgumentException.ThrowIfNullOrWhiteSpace(initialStatus);
             return ValueTask.CompletedTask;
         }

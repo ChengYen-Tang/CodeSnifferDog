@@ -2,6 +2,7 @@ using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
@@ -27,7 +28,7 @@ public sealed class ReportVerifierAgentFactory(
     private readonly ILoggerFactory? _loggerFactory = loggerFactory;
     private readonly IServiceProvider? _serviceProvider = serviceProvider;
 
-    public AIAgent Create(
+    public AgentCreationResult Create(
         IChatClient chatClient,
         string repositoryRootPath,
         string ruleKey,
@@ -36,7 +37,7 @@ public sealed class ReportVerifierAgentFactory(
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
         IRuleReportIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer) =>
-        Create(
+        CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(ReportPromptAssetPaths.ReportVerifierAgentPrompt),
             repositoryRootPath,
@@ -47,7 +48,7 @@ public sealed class ReportVerifierAgentFactory(
             reportIssueStore,
             verdictBuffer);
 
-    public AIAgent Create(
+    private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
         string promptTemplate,
         string repositoryRootPath,
@@ -68,21 +69,26 @@ public sealed class ReportVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(reportIssueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
+        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, currentFlowIssues);
         CommonToolSet commonToolSet = new(repositoryRootPath);
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
         ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
         AIAgent agent = chatClient.AsAIAgent(
-            RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, currentFlowIssues),
+            systemPrompt,
             "Report Verifier Agent",
             "Verifies whether the current repository-level aggregation diff is acceptable.",
             [.. commonToolSet.CreateTools(), .. toolSet.CreateVerifierTools()],
             _loggerFactory,
             _serviceProvider);
 
-        return new AIAgentBuilder(agent)
-            .UseOperationalContextCompaction(_compactionOptions)
-            .Build(_serviceProvider);
+        return new AgentCreationResult
+        {
+            Agent = new AIAgentBuilder(agent)
+                .UseOperationalContextCompaction(_compactionOptions)
+                .Build(_serviceProvider),
+            SystemPrompt = systemPrompt,
+        };
     }
 
     private string RenderPrompt(

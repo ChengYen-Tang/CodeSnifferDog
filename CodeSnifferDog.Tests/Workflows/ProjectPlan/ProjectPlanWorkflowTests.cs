@@ -3,6 +3,7 @@ using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ProjectPlan.Tools;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
@@ -396,28 +397,15 @@ public sealed class ProjectPlanWorkflowTests
             {
                 ProjectVerifierAgentFactory factory =
                     new(CreateCompactionOptions(ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt));
-                string promptTemplate =
-                    """
-                    You are the Project Verifier Agent for CodeSnifferDog.
-
-                    - Repository root path:
-                    {{RepositoryRootPath}}
-
-                    - Scan project:
-                    {{ScanProjectJson}}
-                    """;
-
-                verifierPrompt = promptTemplate
-                    .Replace("{{RepositoryRootPath}}", repositoryRootPath, StringComparison.Ordinal)
-                    .Replace("{{ScanProjectJson}}", System.Text.Json.JsonSerializer.Serialize(currentScanProject), StringComparison.Ordinal);
-
-                return factory.Create(
+                AgentCreationResult createdAgent = factory.Create(
                     verifierChatClient,
-                    promptTemplate,
                     repositoryRootPath,
                     currentScanProject,
                     taskItemStore,
                     verdictBuffer);
+
+                verifierPrompt = createdAgent.SystemPrompt;
+                return createdAgent;
             },
             taskItemStore,
             verdictBuffer,
@@ -462,12 +450,6 @@ public sealed class ProjectPlanWorkflowTests
         ProjectPlanWorkflow workflow = new(
             (repositoryRootPath, _) => new ProjectPlanAgentFactory(compactionOptions).Create(
                 planChatClient,
-                """
-                You are the Project Plan Agent for CodeSnifferDog.
-
-                - Repository root path:
-                {{RepositoryRootPath}}
-                """,
                 repositoryRootPath,
                 taskItemStore,
                 verdictBuffer),
@@ -593,7 +575,7 @@ public sealed class ProjectPlanWorkflowTests
             Reason = "Primary application project.",
         };
 
-    private static AIAgent CreatePlanAgent(
+    private static AgentCreationResult CreatePlanAgent(
         string repositoryRootPath,
         IChatClient chatClient,
         IProjectPlanTaskItemStore taskItemStore,
@@ -601,7 +583,7 @@ public sealed class ProjectPlanWorkflowTests
         new ProjectPlanAgentFactory(CreateCompactionOptions(ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt))
             .Create(chatClient, repositoryRootPath, taskItemStore, verdictBuffer);
 
-    private static AIAgent CreateVerifierAgent(
+    private static AgentCreationResult CreateVerifierAgent(
         string repositoryRootPath,
         IChatClient chatClient,
         StoredScanProject scanProject,

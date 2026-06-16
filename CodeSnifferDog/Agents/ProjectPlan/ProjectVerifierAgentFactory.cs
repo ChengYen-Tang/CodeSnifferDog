@@ -1,5 +1,6 @@
 using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
@@ -25,13 +26,13 @@ public sealed class ProjectVerifierAgentFactory(
     private readonly ILoggerFactory? _loggerFactory = loggerFactory;
     private readonly IServiceProvider? _serviceProvider = serviceProvider;
 
-    public AIAgent Create(
+    public AgentCreationResult Create(
         IChatClient chatClient,
         string repositoryRootPath,
         StoredScanProject scanProject,
         IProjectPlanTaskItemStore taskItemStore,
         ReviewVerdictBuffer verdictBuffer) =>
-        Create(
+        CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(ProjectPlanPromptAssetPaths.ProjectVerifierAgentPrompt),
             repositoryRootPath,
@@ -39,7 +40,7 @@ public sealed class ProjectVerifierAgentFactory(
             taskItemStore,
             verdictBuffer);
 
-    public AIAgent Create(
+    private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
         string promptTemplate,
         string repositoryRootPath,
@@ -54,19 +55,24 @@ public sealed class ProjectVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(taskItemStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
+        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath, scanProject);
         CommonToolSet commonToolSet = new(repositoryRootPath);
         ProjectPlanToolSet toolSet = new(taskItemStore, verdictBuffer);
         AIAgent agent = chatClient.AsAIAgent(
-            RenderPrompt(promptTemplate, repositoryRootPath, scanProject),
+            systemPrompt,
             "Project Verifier Agent",
             "Verifies whether the current project plan result is acceptable.",
             [.. commonToolSet.CreateTools(), .. toolSet.CreateVerifierTools()],
             _loggerFactory,
             _serviceProvider);
 
-        return new AIAgentBuilder(agent)
-            .UseOperationalContextCompaction(_compactionOptions)
-            .Build(_serviceProvider);
+        return new AgentCreationResult
+        {
+            Agent = new AIAgentBuilder(agent)
+                .UseOperationalContextCompaction(_compactionOptions)
+                .Build(_serviceProvider),
+            SystemPrompt = systemPrompt,
+        };
     }
 
     private string RenderPrompt(string promptTemplate, string repositoryRootPath, StoredScanProject scanProject)

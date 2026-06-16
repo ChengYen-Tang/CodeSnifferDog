@@ -113,6 +113,7 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
                 ProjectAgentGroupId = groupId,
                 RuntimeKey = "agent-a",
                 DisplayName = "Agent A",
+                SystemPrompt = "System prompt A",
                 Status = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus.Running,
                 CreatedAtUtc = new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
             },
@@ -122,6 +123,7 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
                 ProjectAgentGroupId = groupId,
                 RuntimeKey = "agent-b",
                 DisplayName = "Agent B",
+                SystemPrompt = "System prompt B",
                 Status = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus.Waiting,
                 CreatedAtUtc = new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
             });

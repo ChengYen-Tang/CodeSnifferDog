@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Common;
@@ -23,19 +24,19 @@ public sealed class ProjectPlanAgentFactory(
     private readonly ILoggerFactory? _loggerFactory = loggerFactory;
     private readonly IServiceProvider? _serviceProvider = serviceProvider;
 
-    public AIAgent Create(
+    public AgentCreationResult Create(
         IChatClient chatClient,
         string repositoryRootPath,
         IProjectPlanTaskItemStore taskItemStore,
         ReviewVerdictBuffer verdictBuffer) =>
-        Create(
+        CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(ProjectPlanPromptAssetPaths.ProjectPlanAgentPrompt),
             repositoryRootPath,
             taskItemStore,
             verdictBuffer);
 
-    public AIAgent Create(
+    private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
         string promptTemplate,
         string repositoryRootPath,
@@ -48,19 +49,24 @@ public sealed class ProjectPlanAgentFactory(
         ArgumentNullException.ThrowIfNull(taskItemStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
+        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath);
         CommonToolSet commonToolSet = new(repositoryRootPath);
         ProjectPlanToolSet toolSet = new(taskItemStore, verdictBuffer);
         AIAgent agent = chatClient.AsAIAgent(
-            RenderPrompt(promptTemplate, repositoryRootPath),
+            systemPrompt,
             "Project Plan Agent",
             "Creates review task items for one scanned project.",
             [.. commonToolSet.CreateTools(), .. toolSet.CreateProjectPlanAgentTools()],
             _loggerFactory,
             _serviceProvider);
 
-        return new AIAgentBuilder(agent)
-            .UseOperationalContextCompaction(_compactionOptions)
-            .Build(_serviceProvider);
+        return new AgentCreationResult
+        {
+            Agent = new AIAgentBuilder(agent)
+                .UseOperationalContextCompaction(_compactionOptions)
+                .Build(_serviceProvider),
+            SystemPrompt = systemPrompt,
+        };
     }
 
     private string RenderPrompt(string promptTemplate, string repositoryRootPath)

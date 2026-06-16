@@ -2,6 +2,7 @@ using CodeSnifferDog.Agents.RuleReview;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
@@ -627,7 +628,7 @@ public sealed class RuleReviewWorkflowTests
             options);
     }
 
-    private static AIAgent CreateReviewAgent(
+    private static AgentCreationResult CreateReviewAgent(
         string repositoryRootPath,
         string ruleFileName,
         string ruleMarkdown,
@@ -638,7 +639,7 @@ public sealed class RuleReviewWorkflowTests
         new RuleReviewAgentFactory(CreateCompactionOptions(RuleReviewPromptAssetPaths.RuleReviewSummaryPrompt))
             .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, issueStore, verdictBuffer);
 
-    private static AIAgent CreateVerifierAgent(
+    private static AgentCreationResult CreateVerifierAgent(
         string repositoryRootPath,
         string ruleFileName,
         string ruleMarkdown,

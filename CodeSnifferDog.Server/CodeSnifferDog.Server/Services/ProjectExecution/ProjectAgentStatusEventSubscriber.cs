@@ -166,6 +166,7 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
         if (existingAgent is not null)
         {
             existingAgent.DisplayName = agentEvent.DisplayName;
+            existingAgent.SystemPrompt = agentEvent.SystemPrompt;
             existingAgent.Status = ParseStatus(agentEvent.InitialStatus);
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             await NotifyAsync(CreateAgentUpsertUpdate(existingAgent), cancellationToken).ConfigureAwait(false);
@@ -178,6 +179,7 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             ProjectAgentGroupId = group.Id,
             RuntimeKey = agentEvent.AgentKey,
             DisplayName = agentEvent.DisplayName,
+            SystemPrompt = agentEvent.SystemPrompt,
             Status = ParseStatus(agentEvent.InitialStatus),
             CreatedAtUtc = agentEvent.OccurredAtUtc,
         };

@@ -1,5 +1,11 @@
+using CodeSnifferDog.Agents.ProjectPlan;
+using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Modules.ContextCompaction.Core;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
+using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus;
@@ -8,6 +14,7 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
@@ -32,7 +39,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
         await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
 
@@ -52,6 +59,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
             .ToListAsync(TestContext.CancellationToken);
 
         Assert.HasCount(1, entries);
+        Assert.AreEqual("System prompt", agent.SystemPrompt);
         Assert.AreEqual(ProjectAgentTimelineEntryType.Tool, entries[0].EntryType);
         Assert.AreEqual("call-1", entries[0].ToolCallId);
         Assert.AreEqual("CreateRuleReviewIssue", entries[0].ToolName);
@@ -77,7 +85,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
 
         eventStream.Complete();
@@ -106,6 +114,56 @@ public sealed class ProjectAgentStatusEventSubscriberTests
     }
 
     [TestMethod]
+    public async Task CreatedEvent_PersistsFinalRenderedSystemPrompt()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+
+        string groupKey = "group-1";
+        string agentKey = "agent-1";
+        string repositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
+        string promptTemplate = new PromptAssetReader().ReadRequiredPrompt(ProjectPlanPromptAssetPaths.ProjectPlanAgentPrompt);
+        string expectedSystemPrompt = new PromptTemplateRenderer().Render(
+            promptTemplate,
+            new Dictionary<string, string>
+            {
+                ["RepositoryRootPath"] = repositoryRootPath,
+            });
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, agentKey);
+        AgentCreationResult createdAgent = new ProjectPlanAgentFactory(CreateCompactionOptions())
+            .Create(
+                NoOpChatClient.Instance,
+                repositoryRootPath,
+                new InMemoryProjectPlanTaskItemStore(),
+                new CodeSnifferDog.Modules.Tools.Review.ReviewVerdictBuffer());
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", createdAgent.SystemPrompt, "Waiting", TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        await using CodeSnifferDogServerDbContext dbContext =
+            await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+
+        ProjectAgentGroupRecord group = await dbContext.ProjectAgentGroups
+            .SingleAsync(candidate => candidate.ProjectId == projectId && candidate.RuntimeKey == groupKey, TestContext.CancellationToken);
+        ProjectAgentRecord agent = await dbContext.ProjectAgents
+            .SingleAsync(candidate => candidate.ProjectAgentGroupId == group.Id && candidate.RuntimeKey == agentKey, TestContext.CancellationToken);
+
+        Assert.AreEqual(expectedSystemPrompt, createdAgent.SystemPrompt);
+        Assert.AreEqual(createdAgent.SystemPrompt, agent.SystemPrompt);
+        Assert.AreNotEqual(promptTemplate, agent.SystemPrompt);
+        Assert.IsFalse(agent.SystemPrompt.Contains("{{RepositoryRootPath}}", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task ToolCallStartedEvent_Replayed_UpdatesExistingToolTimelineEntry()
     {
         Guid projectId = Guid.NewGuid();
@@ -121,7 +179,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
         await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"Critical\" }", TestContext.CancellationToken);
 
@@ -165,7 +223,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
         await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
 
@@ -210,7 +268,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishUserMessageAsync("Inspect Program.cs", TestContext.CancellationToken);
         await agentScope.PublishAssistantMessageAsync("I will inspect Program.cs.", TestContext.CancellationToken);
 
@@ -257,7 +315,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishCompactionAsync(TestContext.CancellationToken);
         await agentScope.PublishCompactionAsync(TestContext.CancellationToken);
 
@@ -303,7 +361,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishStatusChangedAsync("Running", TestContext.CancellationToken);
         await agentScope.PublishUserMessageAsync("Inspect Program.cs", TestContext.CancellationToken);
 
@@ -358,7 +416,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
-        await agentScope.PublishCreatedAsync("Rule Review", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
         await agentScope.PublishToolCallCompletedAsync("call-1", "Created issue RRI-1", TestContext.CancellationToken);
         await agentScope.PublishToolCallStartedAsync("call-1", "CreateRuleReviewIssue", "{ \"Severity\": \"High\" }", TestContext.CancellationToken);
 
@@ -393,6 +451,17 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         return services.BuildServiceProvider();
     }
 
+    private static OperationalContextAgentCompactionOptions CreateCompactionOptions() =>
+        new OperationalContextAgentCompactionOptionsFactory(
+            new PromptAssetReader(),
+            new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"))
+            .CreateFromPromptAsset(
+                ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt,
+                new OperationalContextCompactionOptions
+                {
+                    ModelContextWindowTokens = 100,
+                });
+
     private sealed class CollectingProjectAgentStatusLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
     {
         public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
@@ -402,5 +471,43 @@ public sealed class ProjectAgentStatusEventSubscriberTests
             Updates.Add(update);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class NoOpChatClient : IChatClient
+    {
+        public static NoOpChatClient Instance { get; } = new();
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, string.Empty)));
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer
+    {
+        private readonly string _response = response;
+
+        public ValueTask<string> SummarizeAsync(
+            IReadOnlyList<ChatMessage> messages,
+            string summaryPrompt,
+            OperationalContextCompactionOptions options,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(_response);
     }
 }

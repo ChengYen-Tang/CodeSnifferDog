@@ -16,13 +16,7 @@ public sealed class NavMenuTests
     public void InitialSnapshot_RendersSidebarWithoutClientReload()
     {
         using Bunit.TestContext context = new();
-        context.Services.AddSingleton(new HttpClient(new ThrowingHttpMessageHandler())
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddScoped<IProjectSidebarRefreshSignalClient, StubProjectSidebarRefreshSignalClient>();
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
 
         ProjectSidebarSnapshotDto snapshot = new()
@@ -99,13 +93,7 @@ public sealed class NavMenuTests
     public void RefreshKeepsCurrentSelectedProjectWhenItStillExists()
     {
         using Bunit.TestContext context = new();
-        context.Services.AddSingleton(new HttpClient(new ThrowingHttpMessageHandler())
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddScoped<IProjectSidebarRefreshSignalClient, StubProjectSidebarRefreshSignalClient>();
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
         ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
 
@@ -141,13 +129,7 @@ public sealed class NavMenuTests
     public void RefreshKeepsCollapsedGroupStateForExistingGroup()
     {
         using Bunit.TestContext context = new();
-        context.Services.AddSingleton(new HttpClient(new ThrowingHttpMessageHandler())
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddScoped<IProjectSidebarRefreshSignalClient, StubProjectSidebarRefreshSignalClient>();
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
         ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
 
@@ -185,13 +167,7 @@ public sealed class NavMenuTests
     public void RefreshFallsBackToFirstValidProjectWhenCurrentSelectionDisappears()
     {
         using Bunit.TestContext context = new();
-        context.Services.AddSingleton(new HttpClient(new ThrowingHttpMessageHandler())
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddScoped<IProjectSidebarRefreshSignalClient, StubProjectSidebarRefreshSignalClient>();
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
         ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
 
@@ -245,13 +221,7 @@ public sealed class NavMenuTests
     public void RefreshRemovesExpansionStateForMissingGroup()
     {
         using Bunit.TestContext context = new();
-        context.Services.AddSingleton(new HttpClient(new ThrowingHttpMessageHandler())
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddScoped<IProjectSidebarRefreshSignalClient, StubProjectSidebarRefreshSignalClient>();
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
         ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
 
@@ -343,13 +313,7 @@ public sealed class NavMenuTests
     public void Reconnecting_KeepsExistingSidebarSummaryVisible()
     {
         using Bunit.TestContext context = new();
-        context.Services.AddSingleton(new HttpClient(new ThrowingHttpMessageHandler())
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddScoped<IProjectSidebarRefreshSignalClient, StubProjectSidebarRefreshSignalClient>();
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
         ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
 
@@ -398,20 +362,17 @@ public sealed class NavMenuTests
     {
         using Bunit.TestContext context = new();
         ControlledProjectSidebarRefreshSignalClient refreshSignalClient = new();
-        context.Services.AddSingleton(new HttpClient(new SidebarSnapshotMessageHandler(
+        RegisterSidebarServices(
+            context,
+            new SidebarSnapshotMessageHandler(
             CreateSnapshot(
                 selectedProjectId: Guid.Parse("70000000-0000-0000-0000-000000000461"),
                 CreateReviewingGroup(
                     Guid.Parse("70000000-0000-0000-0000-000000000461"),
                     "repo-after-status-change.zip",
                     Guid.Parse("70000000-0000-0000-0000-000000000462"),
-                    "repo-secondary.zip"))))
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddSingleton<IProjectSidebarRefreshSignalClient>(refreshSignalClient);
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+                    "repo-secondary.zip"))),
+            refreshSignalClient);
         context.Renderer.SetRendererInfo(new RendererInfo("WebAssembly", isInteractive: true));
 
         ProjectSidebarSnapshotDto initialSnapshot = CreateSnapshot(
@@ -454,7 +415,9 @@ public sealed class NavMenuTests
     {
         using Bunit.TestContext context = new();
         ControlledProjectSidebarRefreshSignalClient refreshSignalClient = new();
-        context.Services.AddSingleton(new HttpClient(new SidebarSnapshotMessageHandler(
+        RegisterSidebarServices(
+            context,
+            new SidebarSnapshotMessageHandler(
             CreateSnapshot(
                 selectedProjectId: Guid.Parse("70000000-0000-0000-0000-000000000471"),
                 new ProjectSidebarGroupDto
@@ -474,13 +437,8 @@ public sealed class NavMenuTests
                             SortOrder = 0,
                         }
                     ],
-                })))
-        {
-            BaseAddress = new Uri("http://localhost"),
-        });
-        context.Services.AddSingleton<IProjectSidebarRefreshSignalClient>(refreshSignalClient);
-        context.Services.AddScoped<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddScoped<ProjectSidebarSyncService>();
+                })),
+            refreshSignalClient);
         context.Renderer.SetRendererInfo(new RendererInfo("WebAssembly", isInteractive: true));
 
         ProjectSidebarSnapshotDto initialSnapshot = CreateSnapshot(
@@ -533,6 +491,24 @@ public sealed class NavMenuTests
         SelectedProjectId = selectedProjectId,
         Groups = groups,
     };
+
+    private static void RegisterSidebarServices(
+        Bunit.TestContext context,
+        HttpMessageHandler messageHandler,
+        IProjectSidebarRefreshSignalClient? refreshSignalClient = null)
+    {
+        context.Services.AddSingleton(new HttpClient(messageHandler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        context.Services.AddSingleton<IProjectSidebarRefreshSignalClient>(
+            refreshSignalClient ?? new StubProjectSidebarRefreshSignalClient());
+        context.Services.AddSingleton<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
+        context.Services.AddSingleton<ProjectSidebarSyncService>();
+        context.Services.AddSingleton<IProjectSidebarController>(serviceProvider =>
+            serviceProvider.GetRequiredService<ProjectSidebarSyncService>());
+    }
 
     private static ProjectSidebarGroupDto CreateReviewingGroup(
         Guid projectAId,

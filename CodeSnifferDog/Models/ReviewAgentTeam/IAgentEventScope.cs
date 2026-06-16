@@ -8,6 +8,7 @@ public interface IAgentEventScope
 
     ValueTask PublishCreatedAsync(
         string displayName,
+        string systemPrompt,
         string initialStatus,
         CancellationToken cancellationToken = default);
 

@@ -15,16 +15,16 @@ using Microsoft.Extensions.AI;
 namespace CodeSnifferDog.Workflows.ProjectPlan;
 
 public sealed class ProjectPlanWorkflow(
-    Func<string, IAgentEventScope, AIAgent> projectPlanAgentFactory,
-    Func<string, StoredScanProject, IAgentEventScope, AIAgent> projectVerifierAgentFactory,
+    Func<string, IAgentEventScope, AgentCreationResult> projectPlanAgentFactory,
+    Func<string, StoredScanProject, IAgentEventScope, AgentCreationResult> projectVerifierAgentFactory,
     IProjectPlanTaskItemStore taskItemStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     ProjectPlanWorkflowOptions? options = null,
     IAgentEventBus? agentEventBus = null)
 {
-    private readonly Func<string, IAgentEventScope, AIAgent> _projectPlanAgentFactory = projectPlanAgentFactory;
-    private readonly Func<string, StoredScanProject, IAgentEventScope, AIAgent> _projectVerifierAgentFactory = projectVerifierAgentFactory;
+    private readonly Func<string, IAgentEventScope, AgentCreationResult> _projectPlanAgentFactory = projectPlanAgentFactory;
+    private readonly Func<string, StoredScanProject, IAgentEventScope, AgentCreationResult> _projectVerifierAgentFactory = projectVerifierAgentFactory;
     private readonly IProjectPlanTaskItemStore _taskItemStore = taskItemStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
@@ -54,15 +54,19 @@ public sealed class ProjectPlanWorkflow(
             AgentStatusCatalog.CreateProjectPlanGroupDisplayName(scanProject),
             cancellationToken).ConfigureAwait(false);
 
-        AIAgent projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope);
+        AgentCreationResult projectPlanAgentCreation = _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope);
+        AIAgent projectPlanAgent = projectPlanAgentCreation.Agent;
         await plannerAgentScope.PublishCreatedAsync(
             AgentStatusCatalog.CreateProjectPlannerAgentDisplayName(),
+            projectPlanAgentCreation.SystemPrompt,
             AgentStatusCatalog.WaitingStatus,
             cancellationToken).ConfigureAwait(false);
 
-        AIAgent projectVerifierAgent = _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope);
+        AgentCreationResult projectVerifierAgentCreation = _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope);
+        AIAgent projectVerifierAgent = projectVerifierAgentCreation.Agent;
         await verifierAgentScope.PublishCreatedAsync(
             AgentStatusCatalog.CreateProjectVerifierAgentDisplayName(),
+            projectVerifierAgentCreation.SystemPrompt,
             AgentStatusCatalog.WaitingStatus,
             cancellationToken).ConfigureAwait(false);
 
@@ -82,7 +86,7 @@ public sealed class ProjectPlanWorkflow(
 
             (Result runPlanResult, planPublishedMessageCount, projectPlanAgent) = await RunAgentAsync(
                 projectPlanAgent,
-                () => _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope),
+                () => _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope).Agent,
                 planMessages,
                 plannerAgentScope,
                 planPublishedMessageCount,
@@ -114,7 +118,7 @@ public sealed class ProjectPlanWorkflow(
                             "Project Plan Agent did not submit any task items after the allowed reset limit.");
                     }
 
-                    projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope);
+                    projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope).Agent;
                     await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
                     planMessages = CreatePlanMessages(messageTemplates, scanProject);
                     planPublishedMessageCount = 0;
@@ -139,7 +143,7 @@ public sealed class ProjectPlanWorkflow(
 
             (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await RunAgentAsync(
                 projectVerifierAgent,
-                () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope),
+                () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope).Agent,
                 verifierMessages,
                 verifierAgentScope,
                 verifierPublishedMessageCount,

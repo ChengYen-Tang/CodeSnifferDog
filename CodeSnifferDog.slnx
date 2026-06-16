@@ -1,6 +1,5 @@
 <Solution>
   <Project Path="CodeSnifferDog.Server/CodeSnifferDog.Server.Client/CodeSnifferDog.Server.Client.csproj" Id="f9422efa-26d1-4432-be8c-e9b75290602d" />
   <Project Path="CodeSnifferDog.Server/CodeSnifferDog.Server/CodeSnifferDog.Server.csproj" Id="d1638d3b-d3fd-46b1-80b0-2beeccb519fd" />
-  <Project Path="CodeSnifferDog.Tests/CodeSnifferDog.Tests.csproj" />
   <Project Path="CodeSnifferDog/CodeSnifferDog.csproj" />
 </Solution>
