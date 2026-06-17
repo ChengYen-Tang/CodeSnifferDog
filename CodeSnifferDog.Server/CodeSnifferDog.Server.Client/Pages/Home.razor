@@ -1,11 +1,10 @@
 @page "/"
 @rendermode InteractiveAuto
 
-@using System.Net.Http.Headers
-@using System.Net.Http.Json
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 
-@inject HttpClient HttpClient
+@inject IJSRuntime JsRuntime
 @inject NavigationManager NavigationManager
 
 <script type="module" src="@Assets["Pages/Home.razor.js"]"></script>
@@ -66,24 +65,20 @@
 
         try
         {
-            using MultipartFormDataContent formData = new();
-            using StreamContent fileContent = new(_selectedFile.OpenReadStream(_selectedFile.Size));
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
-            formData.Add(fileContent, "file", _selectedFile.Name);
+            ProjectUploadResponse? uploadResponse = await JsRuntime.InvokeAsync<ProjectUploadResponse>(
+                "codeSnifferDogProjectUpload.upload",
+                UploadInputElementId,
+                "/api/projects/");
 
-            using HttpResponseMessage response = await HttpClient.PostAsync("/api/projects/", formData);
-            if (!response.IsSuccessStatusCode)
-            {
-                _errorMessage = await TryReadErrorMessageAsync(response).ConfigureAwait(false);
-                return;
-            }
-
-            ProjectUploadResponse? uploadResponse = await response.Content
-                .ReadFromJsonAsync<ProjectUploadResponse>()
-                .ConfigureAwait(false);
             if (uploadResponse is null)
             {
                 _errorMessage = "The upload completed, but the server response was empty.";
+                return;
+            }
+
+            if (!uploadResponse.Success)
+            {
+                _errorMessage = uploadResponse.Message ?? "Upload failed.";
                 return;
             }
 
@@ -98,21 +93,6 @@
             _isUploading = false;
             await InvokeAsync(StateHasChanged);
         }
-    }
-
-    private static async Task<string> TryReadErrorMessageAsync(HttpResponseMessage response)
-    {
-        try
-        {
-            UploadErrorResponse? error = await response.Content.ReadFromJsonAsync<UploadErrorResponse>().ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(error?.Message))
-                return error.Message;
-        }
-        catch
-        {
-        }
-
-        return $"Upload failed with status {(int)response.StatusCode} ({response.ReasonPhrase}).";
     }
 
     private static string FormatFileSize(long bytes)
@@ -130,15 +110,12 @@
         return $"{size:0.#} {units[unitIndex]}";
     }
 
-    private sealed class UploadErrorResponse
-    {
-        public string? Message { get; init; }
-    }
-
     private sealed class ProjectUploadResponse
     {
-        public required Guid ProjectId { get; init; }
-        public required string OriginalFileName { get; init; }
+        public bool Success { get; init; }
+        public string? Message { get; init; }
+        public Guid ProjectId { get; init; }
+        public string? OriginalFileName { get; init; }
     }
 }
 
