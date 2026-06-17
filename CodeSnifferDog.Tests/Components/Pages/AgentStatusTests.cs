@@ -92,6 +92,69 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
+    public void SystemPromptButtonOpensAndClosesSelectedAgentPromptModal()
+    {
+        using Bunit.TestContext context = new();
+        RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000300");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000300");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000300");
+        string systemPrompt = "You are the scan agent.\nInspect repository boundaries.";
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 10, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Scan Agent",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000300"),
+                                    agentId,
+                                    1,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "Scanning")
+                            ],
+                            systemPrompt)
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Scan Agent"));
+        Assert.DoesNotContain(cut.Markup, systemPrompt);
+
+        cut.Find(".agent-system-prompt-button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "System Prompt");
+            StringAssert.Contains(cut.Markup, systemPrompt);
+        });
+
+        cut.Find(".agent-system-prompt-close").Click();
+
+        cut.WaitForAssertion(() => Assert.DoesNotContain(cut.Markup, systemPrompt));
+    }
+
+    [TestMethod]
     public void ReplacesSelectedAgentWhenSnapshotChangesAndOriginalAgentDisappears()
     {
         using Bunit.TestContext context = new();
@@ -1799,12 +1862,14 @@ public sealed class AgentStatusTests
         string displayName,
         ProjectAgentRunStatus status,
         DateTimeOffset createdAtUtc,
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timeline) => new()
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timeline,
+        string systemPrompt = "") => new()
         {
             AgentId = agentId,
             GroupId = groupId,
             RuntimeKey = runtimeKey,
             DisplayName = displayName,
+            SystemPrompt = systemPrompt,
             Status = status,
             CreatedAtUtc = createdAtUtc,
             HasLoadedHistory = timeline.Count > 0,

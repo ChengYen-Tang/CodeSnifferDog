@@ -10,6 +10,8 @@ public sealed class ProjectAgentSnapshotDto
 
     public required string DisplayName { get; init; }
 
+    public string SystemPrompt { get; init; } = string.Empty;
+
     public required ProjectAgentRunStatus Status { get; init; }
 
     public required DateTimeOffset CreatedAtUtc { get; init; }

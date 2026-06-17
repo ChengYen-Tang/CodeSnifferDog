@@ -484,6 +484,10 @@ a {
 
 .agent-history-toolbar {
     flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     padding: 1.15rem 1.35rem;
     border-bottom: 1px solid #e3eaf5;
     background: #fff;
@@ -498,6 +502,107 @@ a {
     margin-top: 0.2rem;
     color: #738198;
     font-size: 0.9rem;
+}
+
+.agent-system-prompt-button {
+    flex: 0 0 auto;
+    min-height: 2rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid #d7e2f2;
+    border-radius: 0.45rem;
+    background: #fff;
+    color: #34517d;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.agent-system-prompt-button:hover:not(:disabled),
+.agent-system-prompt-button:focus-visible {
+    border-color: #8fb1f4;
+    background: #f4f8ff;
+    color: #1f55c8;
+}
+
+.agent-system-prompt-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.agent-system-prompt-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(15, 23, 42, 0.38);
+}
+
+.agent-system-prompt-modal {
+    width: min(920px, 100%);
+    max-height: min(760px, calc(100vh - 3rem));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid #d8e3f3;
+    border-radius: 0.5rem;
+    background: #fff;
+    box-shadow: 0 1rem 2.75rem rgba(15, 23, 42, 0.22);
+}
+
+.agent-system-prompt-modal-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.15rem;
+    border-bottom: 1px solid #e3eaf5;
+}
+
+.agent-system-prompt-modal-title {
+    color: #344767;
+    font-weight: 800;
+}
+
+.agent-system-prompt-modal-subtitle {
+    margin-top: 0.15rem;
+    color: #738198;
+    font-size: 0.9rem;
+}
+
+.agent-system-prompt-close {
+    flex: 0 0 auto;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid #d7e2f2;
+    border-radius: 0.45rem;
+    background: #fff;
+    color: #5d6b80;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.agent-system-prompt-close:hover,
+.agent-system-prompt-close:focus-visible {
+    border-color: #9fb3ce;
+    background: #f6f8fb;
+    color: #26364d;
+}
+
+.agent-system-prompt-content {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: 1.15rem;
+    overflow: auto;
+    color: #24344d;
+    background: #fbfcfe;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .agent-chat-log {

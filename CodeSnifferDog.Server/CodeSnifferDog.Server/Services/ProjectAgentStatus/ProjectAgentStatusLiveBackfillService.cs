@@ -83,6 +83,7 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
                 GroupId = agent.ProjectAgentGroupId,
                 RuntimeKey = agent.RuntimeKey,
                 DisplayName = agent.DisplayName,
+                SystemPrompt = agent.SystemPrompt,
                 Status = MapAgentStatus(agent.Status),
                 CreatedAtUtc = agent.CreatedAtUtc,
             },

@@ -55,6 +55,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
                 agent.ProjectAgentGroupId,
                 agent.RuntimeKey,
                 agent.DisplayName,
+                agent.SystemPrompt,
                 agent.Status,
                 agent.CreatedAtUtc))
             .ToListAsync(cancellationToken)
@@ -162,6 +163,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
         GroupId = agent.GroupId,
         RuntimeKey = agent.RuntimeKey,
         DisplayName = agent.DisplayName,
+        SystemPrompt = agent.SystemPrompt,
         Status = MapAgentStatus(agent.Status),
         CreatedAtUtc = agent.CreatedAtUtc,
         HasLoadedHistory = selectedAgentId == agent.AgentId,
@@ -256,6 +258,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
         Guid GroupId,
         string RuntimeKey,
         string DisplayName,
+        string SystemPrompt,
         Data.Entities.ProjectAgentStatus Status,
         DateTimeOffset CreatedAtUtc);
 

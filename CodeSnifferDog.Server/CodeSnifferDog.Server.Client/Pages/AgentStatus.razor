@@ -22,6 +22,7 @@
     private int _reconnectReloadInProgress;
     private int _historyLoadVersion;
     private bool _disposed;
+    private bool _isSystemPromptModalOpen;
 
     private AgentStatusSnapshotState Snapshot => _pageState.Snapshot;
 
@@ -44,6 +45,11 @@
         Selection.SelectedAgentId is null || History.AgentId != Selection.SelectedAgentId
             ? []
             : History.TimelineEntries;
+
+    private string SelectedSystemPrompt =>
+        string.IsNullOrWhiteSpace(SelectedAgent?.SystemPrompt)
+            ? "No system prompt is available for this agent."
+            : SelectedAgent.SystemPrompt;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -175,6 +181,17 @@
     private void ToggleToolDetails(string key)
     {
         Selection.ToggleToolDetails(key);
+    }
+
+    private void OpenSystemPromptModal()
+    {
+        if (SelectedAgent is not null)
+            _isSystemPromptModalOpen = true;
+    }
+
+    private void CloseSystemPromptModal()
+    {
+        _isSystemPromptModalOpen = false;
     }
 
     internal void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
@@ -518,6 +535,7 @@
                             GroupId = agent.GroupId,
                             RuntimeKey = agent.RuntimeKey,
                             DisplayName = agent.DisplayName,
+                            SystemPrompt = agent.SystemPrompt,
                             Status = agent.Status,
                             CreatedAtUtc = agent.CreatedAtUtc,
                             HasLoadedHistory = agent.AgentId == agentIdToKeep && agent.HasLoadedHistory,
@@ -588,6 +606,7 @@
                 DisplayName = agent.DisplayName,
                 Status = agent.Status,
                 CreatedAtUtc = agent.CreatedAtUtc,
+                SystemPrompt = agent.SystemPrompt,
                 HasLoadedHistory = existingIndex >= 0 && agents[existingIndex].HasLoadedHistory,
                 TimelineEntries = timelineEntries,
             };
@@ -634,6 +653,7 @@
                     GroupId = existingAgent.GroupId,
                     RuntimeKey = existingAgent.RuntimeKey,
                     DisplayName = existingAgent.DisplayName,
+                    SystemPrompt = existingAgent.SystemPrompt,
                     Status = agentStatus.Status,
                     CreatedAtUtc = existingAgent.CreatedAtUtc,
                     HasLoadedHistory = existingAgent.HasLoadedHistory,
@@ -684,6 +704,7 @@
                     GroupId = agent.GroupId,
                     RuntimeKey = agent.RuntimeKey,
                     DisplayName = agent.DisplayName,
+                    SystemPrompt = agent.SystemPrompt,
                     Status = agent.Status,
                     CreatedAtUtc = agent.CreatedAtUtc,
                     HasLoadedHistory = true,
@@ -730,6 +751,7 @@
                     GroupId = existingAgent.GroupId,
                     RuntimeKey = existingAgent.RuntimeKey,
                     DisplayName = existingAgent.DisplayName,
+                    SystemPrompt = existingAgent.SystemPrompt,
                     Status = existingAgent.Status,
                     CreatedAtUtc = existingAgent.CreatedAtUtc,
                     HasLoadedHistory = true,
@@ -1027,6 +1049,13 @@
                         <div class="small text-body-secondary">@SelectedAgent.DisplayName</div>
                     }
                 </div>
+                <button type="button"
+                        class="agent-system-prompt-button"
+                        disabled="@(SelectedAgent is null)"
+                        title="Show system prompt"
+                        @onclick="OpenSystemPromptModal">
+                    Prompt
+                </button>
             </div>
 
             <div class="agent-chat-log">
@@ -1097,4 +1126,30 @@
             </div>
         </section>
     </div>
+
+    @if (_isSystemPromptModalOpen && SelectedAgent is not null)
+    {
+        <div class="agent-system-prompt-backdrop" role="presentation" @onclick="CloseSystemPromptModal">
+            <section class="agent-system-prompt-modal"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="agent-system-prompt-title"
+                     @onclick:stopPropagation="true">
+                <div class="agent-system-prompt-modal-header">
+                    <div>
+                        <div id="agent-system-prompt-title" class="agent-system-prompt-modal-title">System Prompt</div>
+                        <div class="agent-system-prompt-modal-subtitle">@SelectedAgent.DisplayName</div>
+                    </div>
+                    <button type="button"
+                            class="agent-system-prompt-close"
+                            title="Close"
+                            aria-label="Close system prompt"
+                            @onclick="CloseSystemPromptModal">
+                        x
+                    </button>
+                </div>
+                <pre class="agent-system-prompt-content">@SelectedSystemPrompt</pre>
+            </section>
+        </div>
+    }
 </div>
