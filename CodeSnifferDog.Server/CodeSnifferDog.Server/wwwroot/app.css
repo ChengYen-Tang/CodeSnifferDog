@@ -528,26 +528,15 @@ a {
     cursor: not-allowed;
 }
 
-.agent-system-prompt-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1.5rem;
-    background: rgba(15, 23, 42, 0.38);
+.agent-system-prompt-dialog {
+    max-width: min(920px, calc(100vw - 2rem));
 }
 
 .agent-system-prompt-modal {
-    width: min(920px, 100%);
     max-height: min(760px, calc(100vh - 3rem));
-    display: flex;
-    flex-direction: column;
     overflow: hidden;
     border: 1px solid #d8e3f3;
     border-radius: 0.5rem;
-    background: #fff;
     box-shadow: 0 1rem 2.75rem rgba(15, 23, 42, 0.22);
 }
 

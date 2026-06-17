@@ -70,6 +70,19 @@ public sealed class CommonToolSetTests
     }
 
     [TestMethod]
+    public void CreateTools_RipgrepToolDescriptionIncludesArgumentOnlyExample()
+    {
+        string repositoryRootPath = CreateTemporaryDirectory();
+        CommonToolSet toolSet = new(repositoryRootPath);
+
+        Microsoft.Extensions.AI.AITool ripgrepTool = toolSet.CreateTools()
+            .Single(tool => string.Equals(tool.Name, "RunRipgrepCommand", StringComparison.Ordinal));
+
+        Assert.Contains("use \"-n \\\"SystemPrompt\\\" .\"", ripgrepTool.Description);
+        Assert.Contains("instead of \"rg -n \\\"SystemPrompt\\\" .\"", ripgrepTool.Description);
+    }
+
+    [TestMethod]
     public async Task RunRipgrepCommandAsync_RejectsRipgrepExecutablePrefix()
     {
         string repositoryRootPath = CreateTemporaryDirectory();

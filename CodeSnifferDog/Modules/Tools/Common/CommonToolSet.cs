@@ -22,7 +22,7 @@ public sealed class CommonToolSet(string repositoryRootPath)
         AIFunctionFactory.Create(
             RunRipgrepCommandToolAsync,
             "RunRipgrepCommand",
-            "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text.",
+            "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\".",
             serializerOptions: null),
     ];
 
@@ -40,7 +40,7 @@ public sealed class CommonToolSet(string repositoryRootPath)
 
     [Description("Run one ripgrep search command in the repository root path.")]
     private ValueTask<CommandExecutionResult> RunRipgrepCommandToolAsync(
-        [Description("Arguments after rg. Do not include rg or rg.exe. Full paths are allowed when you need to inspect files outside the repository root path.")]
+        [Description("Arguments after rg. Do not include rg or rg.exe. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\". Full paths are allowed when you need to inspect files outside the repository root path.")]
         string Command,
         CancellationToken cancellationToken) =>
         RunRipgrepCommandAsync(

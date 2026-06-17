@@ -92,7 +92,7 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
-    public void SystemPromptButtonOpensAndClosesSelectedAgentPromptModal()
+    public void SystemPromptButtonTargetsSelectedAgentPromptModal()
     {
         using Bunit.TestContext context = new();
         RegisterLiveSubscriptionClient(context);
@@ -139,19 +139,18 @@ public sealed class AgentStatusTests
         IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Scan Agent"));
-        Assert.DoesNotContain(cut.Markup, systemPrompt);
+        IElement promptButton = cut.Find(".agent-system-prompt-button");
+        Assert.AreEqual("modal", promptButton.GetAttribute("data-bs-toggle"));
+        Assert.AreEqual("#agent-system-prompt-modal", promptButton.GetAttribute("data-bs-target"));
 
-        cut.Find(".agent-system-prompt-button").Click();
+        IElement modal = cut.Find("#agent-system-prompt-modal");
+        Assert.Contains("modal", modal.ClassList);
+        StringAssert.Contains(modal.TextContent, "System Prompt");
+        StringAssert.Contains(modal.TextContent, "Scan Agent");
+        StringAssert.Contains(modal.TextContent, systemPrompt);
 
-        cut.WaitForAssertion(() =>
-        {
-            StringAssert.Contains(cut.Markup, "System Prompt");
-            StringAssert.Contains(cut.Markup, systemPrompt);
-        });
-
-        cut.Find(".agent-system-prompt-close").Click();
-
-        cut.WaitForAssertion(() => Assert.DoesNotContain(cut.Markup, systemPrompt));
+        IElement closeButton = cut.Find(".agent-system-prompt-close");
+        Assert.AreEqual("modal", closeButton.GetAttribute("data-bs-dismiss"));
     }
 
     [TestMethod]

@@ -22,7 +22,6 @@
     private int _reconnectReloadInProgress;
     private int _historyLoadVersion;
     private bool _disposed;
-    private bool _isSystemPromptModalOpen;
 
     private AgentStatusSnapshotState Snapshot => _pageState.Snapshot;
 
@@ -181,17 +180,6 @@
     private void ToggleToolDetails(string key)
     {
         Selection.ToggleToolDetails(key);
-    }
-
-    private void OpenSystemPromptModal()
-    {
-        if (SelectedAgent is not null)
-            _isSystemPromptModalOpen = true;
-    }
-
-    private void CloseSystemPromptModal()
-    {
-        _isSystemPromptModalOpen = false;
     }
 
     internal void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
@@ -1053,7 +1041,8 @@
                         class="agent-system-prompt-button"
                         disabled="@(SelectedAgent is null)"
                         title="Show system prompt"
-                        @onclick="OpenSystemPromptModal">
+                        data-bs-toggle="modal"
+                        data-bs-target="#agent-system-prompt-modal">
                     Prompt
                 </button>
             </div>
@@ -1127,29 +1116,31 @@
         </section>
     </div>
 
-    @if (_isSystemPromptModalOpen && SelectedAgent is not null)
+    @if (SelectedAgent is not null)
     {
-        <div class="agent-system-prompt-backdrop" role="presentation" @onclick="CloseSystemPromptModal">
-            <section class="agent-system-prompt-modal"
-                     role="dialog"
-                     aria-modal="true"
-                     aria-labelledby="agent-system-prompt-title"
-                     @onclick:stopPropagation="true">
-                <div class="agent-system-prompt-modal-header">
-                    <div>
-                        <div id="agent-system-prompt-title" class="agent-system-prompt-modal-title">System Prompt</div>
-                        <div class="agent-system-prompt-modal-subtitle">@SelectedAgent.DisplayName</div>
+        <div class="modal fade"
+             id="agent-system-prompt-modal"
+             tabindex="-1"
+             aria-labelledby="agent-system-prompt-title"
+             aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable agent-system-prompt-dialog">
+                <section class="modal-content agent-system-prompt-modal">
+                    <div class="agent-system-prompt-modal-header">
+                        <div>
+                            <div id="agent-system-prompt-title" class="agent-system-prompt-modal-title">System Prompt</div>
+                            <div class="agent-system-prompt-modal-subtitle">@SelectedAgent.DisplayName</div>
+                        </div>
+                        <button type="button"
+                                class="agent-system-prompt-close"
+                                title="Close"
+                                aria-label="Close system prompt"
+                                data-bs-dismiss="modal">
+                            x
+                        </button>
                     </div>
-                    <button type="button"
-                            class="agent-system-prompt-close"
-                            title="Close"
-                            aria-label="Close system prompt"
-                            @onclick="CloseSystemPromptModal">
-                        x
-                    </button>
-                </div>
-                <pre class="agent-system-prompt-content">@SelectedSystemPrompt</pre>
-            </section>
+                    <pre class="agent-system-prompt-content">@SelectedSystemPrompt</pre>
+                </section>
+            </div>
         </div>
     }
 </div>
