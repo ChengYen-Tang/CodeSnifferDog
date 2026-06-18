@@ -6,7 +6,7 @@ using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
-internal sealed record RunnerFactoryContext(
+internal sealed record WorkflowRuntimeContext(
     IChatClient ChatClient,
     ExecutionOptions ExecutionOptions,
     OperationalContextAgentCompactionOptionsFactory CompactionOptionsFactory,

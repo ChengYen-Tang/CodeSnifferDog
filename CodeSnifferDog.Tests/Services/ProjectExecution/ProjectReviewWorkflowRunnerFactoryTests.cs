@@ -13,6 +13,8 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using FluentResults;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
@@ -23,13 +25,13 @@ public sealed class ProjectReviewWorkflowRunnerFactoryTests
     [TestMethod]
     public void CreateRunners_DelegatesSharedContextOptionsStoresAndEventBusToRunnerBuilders()
     {
-        CapturedScanRunner capturedScan = new();
-        CapturedProjectPlanRunner capturedProjectPlan = new();
-        CapturedRuleFlowRunner capturedRuleFlow = new();
+        CapturedScanRunnerFactory capturedScan = new();
+        CapturedProjectPlanRunnerFactory capturedProjectPlan = new();
+        CapturedRuleFlowRunnerFactory capturedRuleFlow = new();
         ProjectReviewWorkflowRunnerFactory factory = new(
-            capturedScan.CreateRunner,
-            capturedProjectPlan.CreateRunner,
-            capturedRuleFlow.CreateRunner);
+            capturedScan,
+            capturedProjectPlan,
+            capturedRuleFlow);
         ExecutionOptions executionOptions = new()
         {
             AgentRunTimeoutSeconds = 42,
@@ -75,6 +77,28 @@ public sealed class ProjectReviewWorkflowRunnerFactoryTests
     }
 
     [TestMethod]
+    public void WorkflowRunnerFactories_CanResolveFromDependencyInjection()
+    {
+        ServiceCollection services = new();
+        services.AddLogging();
+        services.AddScoped<IScanRunnerFactory, ScanRunnerFactory>();
+        services.AddScoped<IProjectPlanRunnerFactory, ProjectPlanRunnerFactory>();
+        services.AddScoped<IRuleReviewRunnerFactory, RuleReviewRunnerFactory>();
+        services.AddScoped<IRuleReportRunnerFactory, RuleReportRunnerFactory>();
+        services.AddScoped<IRuleFlowRunnerFactory, RuleFlowRunnerFactory>();
+        services.AddScoped<IProjectReviewWorkflowRunnerFactory, ProjectReviewWorkflowRunnerFactory>();
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.IsInstanceOfType<ScanRunnerFactory>(provider.GetRequiredService<IScanRunnerFactory>());
+        Assert.IsInstanceOfType<ProjectPlanRunnerFactory>(provider.GetRequiredService<IProjectPlanRunnerFactory>());
+        Assert.IsInstanceOfType<RuleReviewRunnerFactory>(provider.GetRequiredService<IRuleReviewRunnerFactory>());
+        Assert.IsInstanceOfType<RuleReportRunnerFactory>(provider.GetRequiredService<IRuleReportRunnerFactory>());
+        Assert.IsInstanceOfType<RuleFlowRunnerFactory>(provider.GetRequiredService<IRuleFlowRunnerFactory>());
+        Assert.IsInstanceOfType<ProjectReviewWorkflowRunnerFactory>(
+            provider.GetRequiredService<IProjectReviewWorkflowRunnerFactory>());
+    }
+
+    [TestMethod]
     public void RunnerFactories_UseExpectedSummaryPromptAssets()
     {
         Assert.AreEqual(ScanPromptAssetPaths.ScanSummaryPrompt, ScanRunnerFactory.SummaryPromptAssetPath);
@@ -111,14 +135,14 @@ public sealed class ProjectReviewWorkflowRunnerFactoryTests
             Mode = OperationalContextCompactionMode.Standard,
         };
 
-    private sealed class CapturedScanRunner
+    private sealed class CapturedScanRunnerFactory : IScanRunnerFactory
     {
-        public RunnerFactoryContext? Context { get; private set; }
+        public WorkflowRuntimeContext? Context { get; private set; }
 
         public OperationalContextCompactionOptions? CompactionOptions { get; private set; }
 
         public Func<string, CancellationToken, Task<Result<ScanWorkflowResult>>> CreateRunner(
-            RunnerFactoryContext context,
+            WorkflowRuntimeContext context,
             OperationalContextCompactionOptions compactionOptions)
         {
             Context = context;
@@ -127,14 +151,14 @@ public sealed class ProjectReviewWorkflowRunnerFactoryTests
         }
     }
 
-    private sealed class CapturedProjectPlanRunner
+    private sealed class CapturedProjectPlanRunnerFactory : IProjectPlanRunnerFactory
     {
-        public RunnerFactoryContext? Context { get; private set; }
+        public WorkflowRuntimeContext? Context { get; private set; }
 
         public OperationalContextCompactionOptions? CompactionOptions { get; private set; }
 
         public Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> CreateRunner(
-            RunnerFactoryContext context,
+            WorkflowRuntimeContext context,
             OperationalContextCompactionOptions compactionOptions)
         {
             Context = context;
@@ -143,9 +167,9 @@ public sealed class ProjectReviewWorkflowRunnerFactoryTests
         }
     }
 
-    private sealed class CapturedRuleFlowRunner
+    private sealed class CapturedRuleFlowRunnerFactory : IRuleFlowRunnerFactory
     {
-        public RunnerFactoryContext? Context { get; private set; }
+        public WorkflowRuntimeContext? Context { get; private set; }
 
         public OperationalContextCompactionOptions? RuleReviewCompactionOptions { get; private set; }
 
@@ -156,7 +180,7 @@ public sealed class ProjectReviewWorkflowRunnerFactoryTests
         public IRuleReportIssueStore? RuleReportIssueStore { get; private set; }
 
         public Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> CreateRunner(
-            RunnerFactoryContext context,
+            WorkflowRuntimeContext context,
             OperationalContextCompactionOptions ruleReviewCompactionOptions,
             OperationalContextCompactionOptions reportCompactionOptions,
             IRuleReviewIssueStore ruleReviewIssueStore,

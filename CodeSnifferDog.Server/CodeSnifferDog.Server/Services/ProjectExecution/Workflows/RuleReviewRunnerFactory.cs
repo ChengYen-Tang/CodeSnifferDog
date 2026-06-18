@@ -13,7 +13,7 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
 internal sealed class RuleReviewRunnerFactory(
     ILoggerFactory loggerFactory,
-    IServiceProvider serviceProvider)
+    IServiceProvider serviceProvider) : IRuleReviewRunnerFactory
 {
     internal static string SummaryPromptAssetPath => RuleReviewPromptAssetPaths.RuleReviewSummaryPrompt;
 
@@ -21,7 +21,7 @@ internal sealed class RuleReviewRunnerFactory(
     private readonly IServiceProvider _serviceProvider = serviceProvider;
 
     public Task<Result<RuleReviewWorkflowResult>> RunAsync(
-        RunnerFactoryContext context,
+        WorkflowRuntimeContext context,
         string repositoryRootPath,
         string ruleKey,
         string ruleMarkdown,

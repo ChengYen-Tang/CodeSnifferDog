@@ -9,14 +9,14 @@ using FluentResults;
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
 internal sealed class RuleFlowRunnerFactory(
-    RuleReviewRunnerFactory ruleReviewRunnerFactory,
-    RuleReportRunnerFactory ruleReportRunnerFactory)
+    IRuleReviewRunnerFactory ruleReviewRunnerFactory,
+    IRuleReportRunnerFactory ruleReportRunnerFactory) : IRuleFlowRunnerFactory
 {
-    private readonly RuleReviewRunnerFactory _ruleReviewRunnerFactory = ruleReviewRunnerFactory;
-    private readonly RuleReportRunnerFactory _ruleReportRunnerFactory = ruleReportRunnerFactory;
+    private readonly IRuleReviewRunnerFactory _ruleReviewRunnerFactory = ruleReviewRunnerFactory;
+    private readonly IRuleReportRunnerFactory _ruleReportRunnerFactory = ruleReportRunnerFactory;
 
     public Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> CreateRunner(
-        RunnerFactoryContext context,
+        WorkflowRuntimeContext context,
         OperationalContextCompactionOptions ruleReviewCompactionOptions,
         OperationalContextCompactionOptions reportCompactionOptions,
         IRuleReviewIssueStore ruleReviewIssueStore,
@@ -35,7 +35,7 @@ internal sealed class RuleFlowRunnerFactory(
                 cancellationToken);
 
     private Task<Result<RuleFlowWorkflowResult>> RunAsync(
-        RunnerFactoryContext context,
+        WorkflowRuntimeContext context,
         string repositoryRootPath,
         string ruleKey,
         string ruleMarkdown,

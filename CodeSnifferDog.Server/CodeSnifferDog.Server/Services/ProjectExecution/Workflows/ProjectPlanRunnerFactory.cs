@@ -13,7 +13,7 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
 internal sealed class ProjectPlanRunnerFactory(
     ILoggerFactory loggerFactory,
-    IServiceProvider serviceProvider)
+    IServiceProvider serviceProvider) : IProjectPlanRunnerFactory
 {
     internal static string SummaryPromptAssetPath => ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt;
 
@@ -21,13 +21,13 @@ internal sealed class ProjectPlanRunnerFactory(
     private readonly IServiceProvider _serviceProvider = serviceProvider;
 
     public Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> CreateRunner(
-        RunnerFactoryContext context,
+        WorkflowRuntimeContext context,
         OperationalContextCompactionOptions compactionOptions) =>
         (repositoryRootPath, scanProject, cancellationToken) =>
             RunAsync(context, repositoryRootPath, scanProject, compactionOptions, cancellationToken);
 
     private Task<Result<ProjectPlanWorkflowResult>> RunAsync(
-        RunnerFactoryContext context,
+        WorkflowRuntimeContext context,
         string repositoryRootPath,
         StoredScanProject scanProject,
         OperationalContextCompactionOptions compactionOptions,

@@ -48,6 +48,11 @@ builder.Services.AddSingleton<IProjectExecutionQueueLock, ProjectExecutionQueueL
 builder.Services.AddSingleton<IProjectChatClientProvider, ProjectChatClientProvider>();
 builder.Services.AddSingleton<IReviewRuleMarkdownProvider, FileSystemReviewRuleMarkdownProvider>();
 builder.Services.AddScoped<ProjectReviewAgentCompactionOptionsFactory>();
+builder.Services.AddScoped<IScanRunnerFactory, ScanRunnerFactory>();
+builder.Services.AddScoped<IProjectPlanRunnerFactory, ProjectPlanRunnerFactory>();
+builder.Services.AddScoped<IRuleReviewRunnerFactory, RuleReviewRunnerFactory>();
+builder.Services.AddScoped<IRuleReportRunnerFactory, RuleReportRunnerFactory>();
+builder.Services.AddScoped<IRuleFlowRunnerFactory, RuleFlowRunnerFactory>();
 builder.Services.AddScoped<IProjectReviewWorkflowRunnerFactory, ProjectReviewWorkflowRunnerFactory>();
 builder.Services.AddScoped<IProjectReviewAgentTeamDependenciesFactory, ProjectReviewAgentTeamDependenciesFactory>();
 builder.Services.AddScoped<IProjectReviewAgentTeamWorkerFactory, ProjectReviewAgentTeamWorkerFactory>();
