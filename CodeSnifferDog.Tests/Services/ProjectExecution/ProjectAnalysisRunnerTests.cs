@@ -1,12 +1,9 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectExecution;
-using CodeSnifferDog.Server.Services.ProjectReports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -18,51 +15,37 @@ public sealed class ProjectAnalysisRunnerTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
-    public async Task RunAsync_NoFindingsAndDegradedFlow_ThrowsAndClearsReports()
+    public async Task RunAsync_LoadsRules_RunsExecutor_AndCompletesAnalysis()
     {
         Guid projectId = Guid.NewGuid();
-        using ServiceProvider services = CreateServices();
-        await SeedProjectAsync(services, projectId, seedExistingReport: true);
-        ProjectAnalysisRunner runner = CreateRunner(
-            services,
-            (_, rules, _) => Task.FromResult(new ReviewAgentTeamAnalysisResult
-            {
-                PreparationSucceeded = true,
-                ReviewStageSucceeded = true,
-                HasAnyFindings = false,
-                AllRuleFlowsSucceeded = false,
-                ExecutionErrors = [],
-                RuleReports = CreateRuleReports(rules, withFindings: false),
-            }));
+        TestReviewAnalysisExecutor analysisExecutor = new(CreateAnalysisResult());
+        TestAnalysisCompletionService completionService = new();
+        ProjectAnalysisRunner runner = CreateRunner(analysisExecutor, completionService, out _, out FixedRuleMarkdownProvider ruleMarkdownProvider);
 
-        InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-            runner.RunAsync(new ProjectAnalysisContext
-            {
-                ProjectId = projectId,
-                RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
-            }, TestContext.CancellationToken));
+        ProjectAnalysisContext context = new()
+        {
+            ProjectId = projectId,
+            RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
+        };
 
-        StringAssert.Contains(exception.Message, "did not finish successfully");
-        await AssertProjectReportCountAsync(services, projectId, expectedCount: 0);
+        await runner.RunAsync(context, TestContext.CancellationToken);
+
+        Assert.AreEqual(1, ruleMarkdownProvider.LoadRulesCallCount);
+        Assert.AreSame(context, analysisExecutor.Context);
+        CollectionAssert.AreEqual(ruleMarkdownProvider.Rules.ToArray(), analysisExecutor.Rules!.ToArray());
+        Assert.AreEqual(projectId, completionService.ProjectId);
+        CollectionAssert.AreEqual(ruleMarkdownProvider.Rules.ToArray(), completionService.Rules!.ToArray());
+        Assert.AreSame(analysisExecutor.Result, completionService.AnalysisResult);
     }
 
     [TestMethod]
-    public async Task RunAsync_FindingsExist_CompletesAndPersistsReports()
+    public async Task RunAsync_ClearsExistingAgentStatusData_BeforeRunningExecutor()
     {
         Guid projectId = Guid.NewGuid();
-        using ServiceProvider services = CreateServices();
-        await SeedProjectAsync(services, projectId, seedExistingReport: false);
-        ProjectAnalysisRunner runner = CreateRunner(
-            services,
-            (_, rules, _) => Task.FromResult(new ReviewAgentTeamAnalysisResult
-            {
-                PreparationSucceeded = true,
-                ReviewStageSucceeded = false,
-                HasAnyFindings = true,
-                AllRuleFlowsSucceeded = false,
-                ExecutionErrors = ["rule-b flow failed."],
-                RuleReports = CreateRuleReports(rules, withFindings: true),
-            }));
+        TestReviewAnalysisExecutor analysisExecutor = new(CreateAnalysisResult());
+        TestAnalysisCompletionService completionService = new();
+        ProjectAnalysisRunner runner = CreateRunner(analysisExecutor, completionService, out IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory, out _);
+        await SeedAgentGroupAsync(dbContextFactory, projectId);
 
         await runner.RunAsync(new ProjectAnalysisContext
         {
@@ -70,46 +53,62 @@ public sealed class ProjectAnalysisRunnerTests
             RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
         }, TestContext.CancellationToken);
 
-        await AssertProjectReportCountAsync(services, projectId, expectedCount: 2);
+        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+        int groupCount = await dbContext.ProjectAgentGroups.CountAsync(group => group.ProjectId == projectId, TestContext.CancellationToken);
+        Assert.AreEqual(0, groupCount);
+        Assert.IsTrue(analysisExecutor.WasCalled);
     }
 
     [TestMethod]
-    public async Task RunAsync_FailedRerunAfterPreviousReports_ClearsReports()
+    public async Task RunAsync_ExecutorResultFailsCompletion_StillDelegatesToCompletionService()
     {
-        Guid projectId = Guid.NewGuid();
-        using ServiceProvider services = CreateServices();
-        await SeedProjectAsync(services, projectId, seedExistingReport: true);
-        ProjectAnalysisRunner runner = CreateRunner(
-            services,
-            (_, rules, _) => Task.FromResult(new ReviewAgentTeamAnalysisResult
-            {
-                PreparationSucceeded = true,
-                ReviewStageSucceeded = true,
-                HasAnyFindings = false,
-                AllRuleFlowsSucceeded = false,
-                ExecutionErrors = [],
-                RuleReports = CreateRuleReports(rules, withFindings: false),
-            }));
+        ReviewAgentTeamAnalysisResult degradedResult = new()
+        {
+            PreparationSucceeded = true,
+            ReviewStageSucceeded = true,
+            HasAnyFindings = false,
+            AllRuleFlowsSucceeded = false,
+            ExecutionErrors = [],
+            RuleReports = [],
+        };
+        TestReviewAnalysisExecutor analysisExecutor = new(degradedResult);
+        TestAnalysisCompletionService completionService = new()
+        {
+            Exception = new InvalidOperationException("Analysis did not finish successfully."),
+        };
+        ProjectAnalysisRunner runner = CreateRunner(analysisExecutor, completionService, out _, out _);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             runner.RunAsync(new ProjectAnalysisContext
             {
-                ProjectId = projectId,
+                ProjectId = Guid.NewGuid(),
                 RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
             }, TestContext.CancellationToken));
 
-        await AssertProjectReportCountAsync(services, projectId, expectedCount: 0);
+        StringAssert.Contains(exception.Message, "did not finish successfully");
+        Assert.AreSame(degradedResult, completionService.AnalysisResult);
     }
 
     private static ProjectAnalysisRunner CreateRunner(
-        ServiceProvider services,
-        Func<ProjectAnalysisContext, IReadOnlyList<ProjectExecutionRuleDefinition>, CancellationToken, Task<ReviewAgentTeamAnalysisResult>> analysisOverride) =>
-        new(
+        IProjectReviewAnalysisExecutor analysisExecutor,
+        IProjectAnalysisCompletionService completionService,
+        out IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+        out FixedRuleMarkdownProvider ruleMarkdownProvider)
+    {
+        InMemoryDatabaseRoot databaseRoot = new();
+        DbContextOptions<CodeSnifferDogServerDbContext> dbContextOptions =
+            new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot)
+                .Options;
+        dbContextFactory = new TestDbContextFactory(dbContextOptions);
+        ruleMarkdownProvider = new FixedRuleMarkdownProvider();
+
+        return new ProjectAnalysisRunner(
             new ReadyChatClientProvider(),
-            new FixedRuleMarkdownProvider(),
-            services.GetRequiredService<IProjectReportService>(),
-            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-            services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+            ruleMarkdownProvider,
+            analysisExecutor,
+            completionService,
+            dbContextFactory,
             Options.Create(new ProjectExecutionOptions
             {
                 ExecutionOptions = new ExecutionOptions
@@ -120,77 +119,81 @@ public sealed class ProjectAnalysisRunnerTests
                     MaxConsecutiveAgentRunFailures = 3,
                 },
             }),
-            NullLoggerFactory.Instance,
-            services,
-            NullLogger<ProjectAnalysisRunner>.Instance,
-            analysisOverride);
-
-    private static ServiceProvider CreateServices()
-    {
-        InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
-        ServiceCollection services = [];
-        services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
-            options.UseInMemoryDatabase(databaseName, databaseRoot));
-        services.AddScoped<IProjectReportService, ProjectReportService>();
-        services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, NoOpProjectAgentStatusLiveUpdateNotifier>();
-        return services.BuildServiceProvider();
+            NullLogger<ProjectAnalysisRunner>.Instance);
     }
 
-    private static async Task SeedProjectAsync(ServiceProvider services, Guid projectId, bool seedExistingReport)
-    {
-        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
-        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
-        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-
-        ProjectRecord project = new()
+    private static ReviewAgentTeamAnalysisResult CreateAnalysisResult() =>
+        new()
         {
-            Id = projectId,
-            OriginalFileName = "repo.zip",
-            StoredZipRelativePath = $"uploads/{projectId:N}.zip",
-            Status = ProjectProcessingStatus.Reviewing,
-            FileSizeBytes = 10,
-            CreatedAtUtc = nowUtc,
-            UpdatedAtUtc = nowUtc,
-            QueueTimestampUtc = nowUtc,
-            ProcessingStartedAtUtc = nowUtc,
+            PreparationSucceeded = true,
+            ReviewStageSucceeded = true,
+            HasAnyFindings = false,
+            AllRuleFlowsSucceeded = true,
+            ExecutionErrors = [],
+            RuleReports = [],
         };
-        dbContext.Projects.Add(project);
 
-        if (seedExistingReport)
+    private static async Task SeedAgentGroupAsync(IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory, Guid projectId)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        dbContext.ProjectAgentGroups.Add(new ProjectAgentGroupRecord
         {
-            dbContext.ProjectRuleReports.Add(new ProjectRuleReportRecord
-            {
-                Id = Guid.NewGuid(),
-                ProjectId = projectId,
-                RuleKey = "rule-a",
-                RuleKeyHash = "HASH-A",
-                RuleName = "Rule A",
-                MarkdownContent = "# old-report.md",
-                CreatedAtUtc = nowUtc,
-            });
-        }
-
+            Id = Guid.NewGuid(),
+            ProjectId = projectId,
+            RuntimeKey = "group-a",
+            DisplayName = "Group A",
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        });
         await dbContext.SaveChangesAsync();
     }
 
-    private static IReadOnlyList<ReviewAgentTeamRuleReport> CreateRuleReports(
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
-        bool withFindings) =>
-        [.. rules.Select(rule => new ReviewAgentTeamRuleReport
-        {
-            RuleKey = rule.RuleKey,
-            MarkdownContent = withFindings
-                ? $"# {rule.RuleKey}-report.md{Environment.NewLine}{Environment.NewLine}1 issue(s) were reported for this rule in the latest completed analysis."
-                : $"# {rule.RuleKey}-report.md{Environment.NewLine}{Environment.NewLine}No issues were reported for this rule in the latest completed analysis.",
-        })];
-
-    private static async Task AssertProjectReportCountAsync(ServiceProvider services, Guid projectId, int expectedCount)
+    private sealed class TestReviewAnalysisExecutor(ReviewAgentTeamAnalysisResult result) : IProjectReviewAnalysisExecutor
     {
-        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
-        await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
-        int reportCount = await dbContext.ProjectRuleReports.CountAsync(report => report.ProjectId == projectId);
-        Assert.AreEqual(expectedCount, reportCount);
+        public ReviewAgentTeamAnalysisResult Result { get; } = result;
+
+        public bool WasCalled { get; private set; }
+
+        public ProjectAnalysisContext? Context { get; private set; }
+
+        public IReadOnlyList<ProjectExecutionRuleDefinition>? Rules { get; private set; }
+
+        public Task<ReviewAgentTeamAnalysisResult> AnalyzeAsync(
+            ProjectAnalysisContext context,
+            IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+            CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
+            Context = context;
+            Rules = rules;
+            return Task.FromResult(Result);
+        }
+    }
+
+    private sealed class TestAnalysisCompletionService : IProjectAnalysisCompletionService
+    {
+        public Guid ProjectId { get; private set; }
+
+        public IReadOnlyList<ProjectExecutionRuleDefinition>? Rules { get; private set; }
+
+        public ReviewAgentTeamAnalysisResult? AnalysisResult { get; private set; }
+
+        public Exception? Exception { get; init; }
+
+        public Task CompleteAnalysisAsync(
+            Guid projectId,
+            IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+            ReviewAgentTeamAnalysisResult analysisResult,
+            CancellationToken cancellationToken = default)
+        {
+            ProjectId = projectId;
+            Rules = rules;
+            AnalysisResult = analysisResult;
+
+            if (Exception is not null)
+                throw Exception;
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class ReadyChatClientProvider : IProjectChatClientProvider
@@ -198,34 +201,41 @@ public sealed class ProjectAnalysisRunnerTests
         public bool IsReady => true;
 
         public Microsoft.Extensions.AI.IChatClient CreateChatClient() =>
-            throw new InvalidOperationException("The analysis override should bypass chat client creation.");
+            throw new InvalidOperationException("The runner should delegate execution to IProjectReviewAnalysisExecutor.");
     }
 
     private sealed class FixedRuleMarkdownProvider : IReviewRuleMarkdownProvider
     {
+        public int LoadRulesCallCount { get; private set; }
+
         public bool HasRules => true;
 
-        public Task<IReadOnlyList<ProjectExecutionRuleDefinition>> LoadRulesAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<ProjectExecutionRuleDefinition>>(
-            [
-                new()
-                {
-                    RuleKey = "rule-a",
-                    RuleName = "Rule A",
-                    RuleMarkdown = "- Rule A",
-                },
-                new()
-                {
-                    RuleKey = "rule-b",
-                    RuleName = "Rule B",
-                    RuleMarkdown = "- Rule B",
-                },
-            ]);
+        public IReadOnlyList<ProjectExecutionRuleDefinition> Rules { get; } =
+        [
+            new()
+            {
+                RuleKey = "rule-a",
+                RuleName = "Rule A",
+                RuleMarkdown = "- Rule A",
+            },
+            new()
+            {
+                RuleKey = "rule-b",
+                RuleName = "Rule B",
+                RuleMarkdown = "- Rule B",
+            },
+        ];
+
+        public Task<IReadOnlyList<ProjectExecutionRuleDefinition>> LoadRulesAsync(CancellationToken cancellationToken = default)
+        {
+            LoadRulesCallCount++;
+            return Task.FromResult(Rules);
+        }
     }
 
-    private sealed class NoOpProjectAgentStatusLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
+    private sealed class TestDbContextFactory(DbContextOptions<CodeSnifferDogServerDbContext> options)
+        : IDbContextFactory<CodeSnifferDogServerDbContext>
     {
-        public Task NotifyAsync(CodeSnifferDog.Server.Shared.AgentStatus.ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public CodeSnifferDogServerDbContext CreateDbContext() => new(options);
     }
 }
