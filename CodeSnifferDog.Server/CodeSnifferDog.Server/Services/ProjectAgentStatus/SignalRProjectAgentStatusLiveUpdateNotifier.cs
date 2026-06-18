@@ -13,9 +13,16 @@ public sealed class SignalRProjectAgentStatusLiveUpdateNotifier(IHubContext<Proj
     {
         ArgumentNullException.ThrowIfNull(update);
 
-        return update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted && update.TimelineEntry is not null
+        Guid? agentId = update.Kind switch
+        {
+            ProjectAgentLiveUpdateKind.TimelineEntryUpserted => update.TimelineEntry?.AgentId,
+            ProjectAgentLiveUpdateKind.TimelineEntriesRemoved => update.RemovedTimelineEntries?.AgentId,
+            _ => null,
+        };
+
+        return agentId is Guid projectAgentId
             ? _hubContext.Clients
-                .Group(ProjectUpdatesContract.GetProjectAgentChannelName(update.ProjectId, update.TimelineEntry.AgentId))
+                .Group(ProjectUpdatesContract.GetProjectAgentChannelName(update.ProjectId, projectAgentId))
                 .SendAsync(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update, cancellationToken)
             : _hubContext.Clients
                 .Group(ProjectUpdatesContract.GetProjectChannelName(update.ProjectId))

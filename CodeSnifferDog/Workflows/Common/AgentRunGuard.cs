@@ -38,6 +38,7 @@ internal static class AgentRunGuard
         {
             Guid attemptId = Guid.NewGuid();
             TSnapshot snapshot = prepareAttempt(attemptId);
+            DateTimeOffset attemptRunStartedAtUtc = DateTimeOffset.MinValue;
 
             try
             {
@@ -50,6 +51,7 @@ internal static class AgentRunGuard
                 using CancellationTokenSource timeoutTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutTokenSource.CancelAfter(timeout);
 
+                attemptRunStartedAtUtc = DateTimeOffset.UtcNow;
                 AgentResponse response = await AgentRunAttemptContext.RunAsync(
                     attemptId,
                     () => agent.RunAsync(
@@ -58,9 +60,15 @@ internal static class AgentRunGuard
                         options: null,
                         timeoutTokenSource.Token)).ConfigureAwait(false);
 
+                bool transcriptEventsPublished =
+                    AgentTranscriptEventAgentBuilderExtensions.HasPublishedTranscriptEvents(response);
+
                 foreach (ChatMessage message in response.Messages)
                 {
                     messages.Add(message);
+                    if (transcriptEventsPublished)
+                        continue;
+
                     await AgentToolEventPublisher.PublishAsync(message, eventScope, cancellationToken).ConfigureAwait(false);
                     if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
                         await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
@@ -76,6 +84,7 @@ internal static class AgentRunGuard
             catch (OperationCanceledException ex)
             {
                 restoreAttempt(snapshot);
+                await ClearAttemptTranscriptAsync(eventScope, attemptRunStartedAtUtc, cancellationToken).ConfigureAwait(false);
                 lastException = new TimeoutException(
                     $"Agent run attempt {attempt} timed out after {timeout}.",
                     ex);
@@ -83,6 +92,7 @@ internal static class AgentRunGuard
             catch (Exception ex)
             {
                 restoreAttempt(snapshot);
+                await ClearAttemptTranscriptAsync(eventScope, attemptRunStartedAtUtc, cancellationToken).ConfigureAwait(false);
                 lastException = ex;
             }
 
@@ -93,6 +103,14 @@ internal static class AgentRunGuard
             $"Agent run failed after {maxConsecutiveFailures} consecutive attempts: {lastException}",
             lastException!)), publishedMessageCount, agent);
     }
+
+    private static ValueTask ClearAttemptTranscriptAsync(
+        IAgentEventScope eventScope,
+        DateTimeOffset attemptRunStartedAtUtc,
+        CancellationToken cancellationToken) =>
+        attemptRunStartedAtUtc == DateTimeOffset.MinValue
+            ? ValueTask.CompletedTask
+            : eventScope.PublishTranscriptClearedAsync(attemptRunStartedAtUtc, cancellationToken);
 
     private static async Task<int> PublishPendingUserMessagesAsync(
         List<ChatMessage> messages,

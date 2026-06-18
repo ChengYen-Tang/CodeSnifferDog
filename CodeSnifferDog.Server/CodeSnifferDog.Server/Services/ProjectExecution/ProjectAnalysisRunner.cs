@@ -232,7 +232,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 _loggerFactory,
-                _serviceProvider).Create(chatClient, scanRepositoryRootPath, scanProjectStore, verdictBuffer),
+                _serviceProvider).Create(chatClient, scanRepositoryRootPath, scanProjectStore, verdictBuffer, eventScope),
             (scanRepositoryRootPath, eventScope) => new ScanVerifierAgentFactory(
                 CreateCompactionOptions(
                     compactionOptionsFactory,
@@ -241,7 +241,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, scanRepositoryRootPath, scanProjectStore, verdictBuffer),
+                serviceProvider: _serviceProvider).Create(chatClient, scanRepositoryRootPath, scanProjectStore, verdictBuffer, eventScope),
             scanProjectStore,
             verdictBuffer,
             promptAssetReader,
@@ -276,7 +276,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, planRepositoryRootPath, taskItemStore, verdictBuffer),
+                serviceProvider: _serviceProvider).Create(chatClient, planRepositoryRootPath, taskItemStore, verdictBuffer, eventScope),
             (planRepositoryRootPath, verifierScanProject, eventScope) => new ProjectVerifierAgentFactory(
                 CreateCompactionOptions(
                     compactionOptionsFactory,
@@ -285,7 +285,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, planRepositoryRootPath, verifierScanProject, taskItemStore, verdictBuffer),
+                serviceProvider: _serviceProvider).Create(chatClient, planRepositoryRootPath, verifierScanProject, taskItemStore, verdictBuffer, eventScope),
             taskItemStore,
             verdictBuffer,
             promptAssetReader,
@@ -369,7 +369,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer),
+                serviceProvider: _serviceProvider).Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer, eventScope),
             (reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, eventScope) => new ReviewVerifierAgentFactory(
                 CreateCompactionOptions(
                     compactionOptionsFactory,
@@ -378,7 +378,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer),
+                serviceProvider: _serviceProvider).Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer, eventScope),
             issueStore,
             verdictBuffer,
             promptAssetReader,
@@ -416,7 +416,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, reportIssueStore, verdictBuffer),
+                serviceProvider: _serviceProvider).Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, reportIssueStore, verdictBuffer, eventScope),
             (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, eventScope) => new ReportVerifierAgentFactory(
                 CreateCompactionOptions(
                     compactionOptionsFactory,
@@ -425,7 +425,7 @@ public sealed class ProjectAnalysisRunner(
                     eventScope),
                 promptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer),
+                serviceProvider: _serviceProvider).Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer, eventScope),
             reportIssueStore,
             verdictBuffer,
             promptAssetReader,

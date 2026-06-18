@@ -776,6 +776,96 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
+    public void LiveReducer_TimelineEntriesRemoved_RemovesSelectedAgentHistoryEntries()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000206");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000206");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000206");
+        Guid inputEntryId = Guid.Parse("73000000-0000-0000-0000-000000000206");
+        Guid outputEntryId = Guid.Parse("74000000-0000-0000-0000-000000000206");
+        Guid toolEntryId = Guid.Parse("75000000-0000-0000-0000-000000000206");
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 12, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-a",
+                            "Retry Agent",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    inputEntryId,
+                                    agentId,
+                                    sequence: 1,
+                                    entryKind: ProjectAgentTimelineEntryKind.Input,
+                                    message: "Inspect Program.cs"),
+                                CreateTimelineEntry(
+                                    outputEntryId,
+                                    agentId,
+                                    sequence: 2,
+                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    message: "Failed attempt output"),
+                                CreateTimelineEntry(
+                                    toolEntryId,
+                                    agentId,
+                                    sequence: 3,
+                                    entryKind: ProjectAgentTimelineEntryKind.Tool,
+                                    toolCallId: "call-1",
+                                    toolName: "RunShellCommand"),
+                            ])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Inspect Program.cs");
+            StringAssert.Contains(cut.Markup, "Failed attempt output");
+            StringAssert.Contains(cut.Markup, "RunShellCommand");
+        });
+
+        InvokeApplyLiveUpdate(
+            cut,
+            new ProjectAgentLiveUpdateDto
+            {
+                ProjectId = projectId,
+                Kind = ProjectAgentLiveUpdateKind.TimelineEntriesRemoved,
+                OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
+                RemovedTimelineEntries = new ProjectAgentTimelineEntriesRemovedDto
+                {
+                    AgentId = agentId,
+                    TimelineEntryIds = [outputEntryId, toolEntryId],
+                },
+            });
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Inspect Program.cs");
+            Assert.IsFalse(cut.Markup.Contains("Failed attempt output", StringComparison.Ordinal));
+            Assert.IsFalse(cut.Markup.Contains("RunShellCommand", StringComparison.Ordinal));
+        });
+    }
+
+    [TestMethod]
     public void LiveReducer_UnknownGroupOrAgentEvents_AreIgnoredWithoutBreakingSelection()
     {
         using Bunit.TestContext context = new();

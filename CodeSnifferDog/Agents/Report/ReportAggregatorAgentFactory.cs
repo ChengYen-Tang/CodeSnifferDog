@@ -5,6 +5,7 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -34,7 +35,8 @@ public sealed class ReportAggregatorAgentFactory(
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IRuleReportIssueStore reportIssueStore,
-        ReviewVerdictBuffer verdictBuffer) =>
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(ReportPromptAssetPaths.ReportAggregatorAgentPrompt),
@@ -43,7 +45,8 @@ public sealed class ReportAggregatorAgentFactory(
             ruleMarkdown,
             taskItem,
             reportIssueStore,
-            verdictBuffer);
+            verdictBuffer,
+            eventScope);
 
     private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
@@ -53,7 +56,8 @@ public sealed class ReportAggregatorAgentFactory(
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IRuleReportIssueStore reportIssueStore,
-        ReviewVerdictBuffer verdictBuffer)
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(promptTemplate);
@@ -81,6 +85,7 @@ public sealed class ReportAggregatorAgentFactory(
         {
             Agent = new AIAgentBuilder(agent)
                 .UseOperationalContextCompaction(_compactionOptions)
+                .UseAgentTranscriptEventsIfAvailable(eventScope)
                 .Build(_serviceProvider),
             SystemPrompt = systemPrompt,
         };

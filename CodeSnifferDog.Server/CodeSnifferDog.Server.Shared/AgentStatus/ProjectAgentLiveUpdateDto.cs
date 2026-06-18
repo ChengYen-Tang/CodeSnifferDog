@@ -16,5 +16,7 @@ public sealed class ProjectAgentLiveUpdateDto
 
     public ProjectAgentTimelineEntryDto? TimelineEntry { get; init; }
 
+    public ProjectAgentTimelineEntriesRemovedDto? RemovedTimelineEntries { get; init; }
+
     public ProjectExecutionStatusChangedDto? ProjectStatus { get; init; }
 }

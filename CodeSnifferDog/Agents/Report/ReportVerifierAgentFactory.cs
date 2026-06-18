@@ -6,6 +6,7 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -36,7 +37,8 @@ public sealed class ReportVerifierAgentFactory(
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
         IRuleReportIssueStore reportIssueStore,
-        ReviewVerdictBuffer verdictBuffer) =>
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(ReportPromptAssetPaths.ReportVerifierAgentPrompt),
@@ -46,7 +48,8 @@ public sealed class ReportVerifierAgentFactory(
             taskItem,
             currentFlowIssues,
             reportIssueStore,
-            verdictBuffer);
+            verdictBuffer,
+            eventScope);
 
     private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
@@ -57,7 +60,8 @@ public sealed class ReportVerifierAgentFactory(
         StoredProjectPlanTaskItem taskItem,
         IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
         IRuleReportIssueStore reportIssueStore,
-        ReviewVerdictBuffer verdictBuffer)
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(promptTemplate);
@@ -86,6 +90,7 @@ public sealed class ReportVerifierAgentFactory(
         {
             Agent = new AIAgentBuilder(agent)
                 .UseOperationalContextCompaction(_compactionOptions)
+                .UseAgentTranscriptEventsIfAvailable(eventScope)
                 .Build(_serviceProvider),
             SystemPrompt = systemPrompt,
         };

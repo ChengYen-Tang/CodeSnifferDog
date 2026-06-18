@@ -26,6 +26,7 @@ public sealed class AgentFactoryConventionsTests
 
             Assert.Contains("commonToolSet.CreateTools()", source);
             Assert.Contains(".UseOperationalContextCompaction(_compactionOptions)", source);
+            Assert.Contains(".UseAgentTranscriptEventsIfAvailable(eventScope)", source);
         }
     }
 

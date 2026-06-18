@@ -108,6 +108,10 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             case AgentCompactionEvent compactionEvent:
                 await AppendCompactionEntryAsync(compactionEvent, cancellationToken).ConfigureAwait(false);
                 return;
+
+            case AgentTranscriptClearedEvent transcriptClearedEvent:
+                await RemoveTranscriptEntriesAsync(transcriptClearedEvent, cancellationToken).ConfigureAwait(false);
+                return;
         }
     }
 
@@ -210,6 +214,31 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
             message: null,
             agentEvent.OccurredAtUtc,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task RemoveTranscriptEntriesAsync(
+        AgentTranscriptClearedEvent agentEvent,
+        CancellationToken cancellationToken)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+
+        ProjectAgentRecord agent = await GetAgentAsync(dbContext, agentEvent.GroupKey, agentEvent.AgentKey, cancellationToken).ConfigureAwait(false);
+        List<ProjectAgentTimelineEntryRecord> entries = await dbContext.ProjectAgentTimelineEntries
+            .Where(entry =>
+                entry.ProjectAgentId == agent.Id &&
+                entry.EntryType != ProjectAgentTimelineEntryType.Input &&
+                entry.OccurredAtUtc >= agentEvent.ClearAfterUtc)
+            .OrderBy(entry => entry.Sequence)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (entries.Count == 0)
+            return;
+
+        Guid[] removedEntryIds = [.. entries.Select(static entry => entry.Id)];
+        dbContext.ProjectAgentTimelineEntries.RemoveRange(entries);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(CreateTimelineEntriesRemovedUpdate(agent.Id, removedEntryIds, agentEvent.OccurredAtUtc), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task AppendToolCallStartedEntryAsync(ToolCallStartedEvent agentEvent, CancellationToken cancellationToken)
@@ -412,6 +441,22 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
                 ToolName = entry.ToolName,
                 ToolArguments = entry.ToolArguments,
                 ToolResult = entry.ToolResult,
+            },
+        };
+
+    private ProjectAgentLiveUpdateDto CreateTimelineEntriesRemovedUpdate(
+        Guid agentId,
+        IReadOnlyList<Guid> removedEntryIds,
+        DateTimeOffset occurredAtUtc) =>
+        new()
+        {
+            ProjectId = _projectId,
+            Kind = ProjectAgentLiveUpdateKind.TimelineEntriesRemoved,
+            OccurredAtUtc = occurredAtUtc,
+            RemovedTimelineEntries = new ProjectAgentTimelineEntriesRemovedDto
+            {
+                AgentId = agentId,
+                TimelineEntryIds = removedEntryIds,
             },
         };
 

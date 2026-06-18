@@ -2,6 +2,7 @@ using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -28,20 +29,23 @@ public sealed class ProjectPlanAgentFactory(
         IChatClient chatClient,
         string repositoryRootPath,
         IProjectPlanTaskItemStore taskItemStore,
-        ReviewVerdictBuffer verdictBuffer) =>
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(ProjectPlanPromptAssetPaths.ProjectPlanAgentPrompt),
             repositoryRootPath,
             taskItemStore,
-            verdictBuffer);
+            verdictBuffer,
+            eventScope);
 
     private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
         string promptTemplate,
         string repositoryRootPath,
         IProjectPlanTaskItemStore taskItemStore,
-        ReviewVerdictBuffer verdictBuffer)
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(promptTemplate);
@@ -64,6 +68,7 @@ public sealed class ProjectPlanAgentFactory(
         {
             Agent = new AIAgentBuilder(agent)
                 .UseOperationalContextCompaction(_compactionOptions)
+                .UseAgentTranscriptEventsIfAvailable(eventScope)
                 .Build(_serviceProvider),
             SystemPrompt = systemPrompt,
         };

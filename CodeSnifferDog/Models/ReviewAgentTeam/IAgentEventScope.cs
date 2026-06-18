@@ -36,4 +36,8 @@ public interface IAgentEventScope
         CancellationToken cancellationToken = default);
 
     ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default);
+
+    ValueTask PublishTranscriptClearedAsync(
+        DateTimeOffset clearAfterUtc,
+        CancellationToken cancellationToken = default);
 }

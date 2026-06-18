@@ -908,6 +908,14 @@ public sealed class ScanWorkflowTests
             events.Add(new EventRecord("compaction", GroupKey, AgentKey, null, null));
             return ValueTask.CompletedTask;
         }
+
+        public ValueTask PublishTranscriptClearedAsync(
+            DateTimeOffset clearAfterUtc,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add(new EventRecord("clear", GroupKey, AgentKey, clearAfterUtc.ToString("O"), null));
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed record EventRecord(string EventType, string GroupKey, string? AgentKey, string? Payload, string? ToolCallId);

@@ -18,22 +18,44 @@ internal static class AgentToolEventPublisher
         {
             if (content is FunctionCallContent functionCall)
             {
-                await eventScope.PublishToolCallStartedAsync(
-                    functionCall.CallId,
-                    functionCall.Name,
-                    SerializePayload(functionCall.Arguments),
-                    cancellationToken).ConfigureAwait(false);
+                await PublishStartedAsync(functionCall, eventScope, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
             if (content is FunctionResultContent functionResult)
             {
-                await eventScope.PublishToolCallCompletedAsync(
-                    functionResult.CallId,
-                    SerializePayload(functionResult.Result),
-                    cancellationToken).ConfigureAwait(false);
+                await PublishCompletedAsync(functionResult, eventScope, cancellationToken).ConfigureAwait(false);
             }
         }
+    }
+
+    public static ValueTask PublishStartedAsync(
+        FunctionCallContent functionCall,
+        IAgentEventScope eventScope,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(functionCall);
+        ArgumentNullException.ThrowIfNull(eventScope);
+
+        return eventScope.PublishToolCallStartedAsync(
+            functionCall.CallId,
+            functionCall.Name,
+            SerializePayload(functionCall.Arguments),
+            cancellationToken);
+    }
+
+    public static ValueTask PublishCompletedAsync(
+        FunctionResultContent functionResult,
+        IAgentEventScope eventScope,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(functionResult);
+        ArgumentNullException.ThrowIfNull(eventScope);
+
+        return eventScope.PublishToolCallCompletedAsync(
+            functionResult.CallId,
+            SerializePayload(functionResult.Result),
+            cancellationToken);
     }
 
     private static string? SerializePayload(object? value) =>

@@ -300,6 +300,57 @@ public sealed class ProjectAgentStatusEventSubscriberTests
     }
 
     [TestMethod]
+    public async Task TranscriptClearedEvent_RemovesAttemptTranscriptEntries_ButPreservesInputs()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+
+        string groupKey = "group-1";
+        IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
+
+        await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
+        await agentScope.PublishCreatedAsync("Rule Review", "System prompt", "Waiting", TestContext.CancellationToken);
+        await agentScope.PublishUserMessageAsync("Inspect Program.cs", TestContext.CancellationToken);
+        DateTimeOffset clearAfterUtc = DateTimeOffset.UtcNow.AddSeconds(-1);
+        await agentScope.PublishAssistantMessageAsync("I will inspect Program.cs.", TestContext.CancellationToken);
+        await agentScope.PublishToolCallStartedAsync("call-1", "RunShellCommand", "{}", TestContext.CancellationToken);
+        await agentScope.PublishToolCallCompletedAsync("call-1", "Program.cs", TestContext.CancellationToken);
+        await agentScope.PublishCompactionAsync(TestContext.CancellationToken);
+        await agentScope.PublishTranscriptClearedAsync(clearAfterUtc, TestContext.CancellationToken);
+
+        eventStream.Complete();
+        await subscriber.DisposeAsync();
+
+        await using CodeSnifferDogServerDbContext dbContext =
+            await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+
+        ProjectAgentGroupRecord group = await dbContext.ProjectAgentGroups
+            .SingleAsync(candidate => candidate.ProjectId == projectId && candidate.RuntimeKey == groupKey, TestContext.CancellationToken);
+        ProjectAgentRecord agent = await dbContext.ProjectAgents
+            .SingleAsync(candidate => candidate.ProjectAgentGroupId == group.Id && candidate.RuntimeKey == "agent-1", TestContext.CancellationToken);
+        List<ProjectAgentTimelineEntryRecord> entries = await dbContext.ProjectAgentTimelineEntries
+            .Where(entry => entry.ProjectAgentId == agent.Id)
+            .OrderBy(entry => entry.Sequence)
+            .ToListAsync(TestContext.CancellationToken);
+
+        Assert.HasCount(1, entries);
+        Assert.AreEqual(ProjectAgentTimelineEntryType.Input, entries[0].EntryType);
+        Assert.AreEqual("Inspect Program.cs", entries[0].Message);
+
+        ProjectAgentLiveUpdateDto removeUpdate = liveUpdateNotifier.Updates
+            .Single(update => update.Kind == ProjectAgentLiveUpdateKind.TimelineEntriesRemoved);
+        Assert.IsNotNull(removeUpdate.RemovedTimelineEntries);
+        Assert.AreEqual(agent.Id, removeUpdate.RemovedTimelineEntries.AgentId);
+        Assert.HasCount(3, removeUpdate.RemovedTimelineEntries.TimelineEntryIds);
+    }
+
+    [TestMethod]
     public async Task CompactionEvent_PersistsCompactionTimelineEntry()
     {
         Guid projectId = Guid.NewGuid();

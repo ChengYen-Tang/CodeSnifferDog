@@ -187,5 +187,16 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
                 AgentKey = AgentKey,
                 OccurredAtUtc = DateTimeOffset.UtcNow,
             }, cancellationToken);
+
+        public ValueTask PublishTranscriptClearedAsync(
+            DateTimeOffset clearAfterUtc,
+            CancellationToken cancellationToken = default) =>
+            _bus.PublishAsync(new AgentTranscriptClearedEvent
+            {
+                GroupKey = GroupKey,
+                AgentKey = AgentKey,
+                ClearAfterUtc = clearAfterUtc,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+            }, cancellationToken);
     }
 }

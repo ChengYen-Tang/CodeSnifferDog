@@ -439,6 +439,21 @@
 
         public void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
         {
+            if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntriesRemoved)
+            {
+                ProjectAgentTimelineEntriesRemovedDto? removedEntries = update.RemovedTimelineEntries;
+                if (removedEntries is null)
+                    return;
+
+                if (!Snapshot.RemoveTimelineEntries(removedEntries.AgentId, removedEntries.TimelineEntryIds))
+                    return;
+
+                if (removedEntries.AgentId == Selection.SelectedAgentId)
+                    History.ApplySelectedAgentSnapshot(Snapshot.GetHistory(removedEntries.AgentId), removedEntries.AgentId);
+
+                return;
+            }
+
             if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
             {
                 if (update.TimelineEntry?.AgentId == Selection.SelectedAgentId)
@@ -700,6 +715,58 @@
                         .OrderBy(candidate => candidate.Sequence)
                         .ThenBy(candidate => candidate.OccurredAtUtc)
                         .ToList(),
+                };
+
+                groups[groupIndex] = new ProjectAgentGroupSnapshotDto
+                {
+                    GroupId = group.GroupId,
+                    RuntimeKey = group.RuntimeKey,
+                    DisplayName = group.DisplayName,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                    Agents = agents,
+                };
+
+                ReplaceSnapshotGroups(groups);
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool RemoveTimelineEntries(Guid agentId, IReadOnlyList<Guid> timelineEntryIds)
+        {
+            if (Snapshot is null || timelineEntryIds.Count == 0)
+                return false;
+
+            HashSet<Guid> timelineEntryIdSet = [.. timelineEntryIds];
+            List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+            for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
+            {
+                ProjectAgentGroupSnapshotDto group = groups[groupIndex];
+                List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
+                int agentIndex = agents.FindIndex(candidate => candidate.AgentId == agentId);
+                if (agentIndex < 0)
+                    continue;
+
+                ProjectAgentSnapshotDto agent = agents[agentIndex];
+                List<ProjectAgentTimelineEntryDto> timelineEntries = agent.TimelineEntries
+                    .Where(entry => !timelineEntryIdSet.Contains(entry.TimelineEntryId))
+                    .ToList();
+
+                if (timelineEntries.Count == agent.TimelineEntries.Count)
+                    return false;
+
+                agents[agentIndex] = new ProjectAgentSnapshotDto
+                {
+                    AgentId = agent.AgentId,
+                    GroupId = agent.GroupId,
+                    RuntimeKey = agent.RuntimeKey,
+                    DisplayName = agent.DisplayName,
+                    SystemPrompt = agent.SystemPrompt,
+                    Status = agent.Status,
+                    CreatedAtUtc = agent.CreatedAtUtc,
+                    HasLoadedHistory = agent.HasLoadedHistory,
+                    TimelineEntries = timelineEntries,
                 };
 
                 groups[groupIndex] = new ProjectAgentGroupSnapshotDto

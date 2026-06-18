@@ -5,6 +5,7 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
@@ -34,7 +35,8 @@ public sealed class RuleReviewAgentFactory(
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IRuleReviewIssueStore issueStore,
-        ReviewVerdictBuffer verdictBuffer) =>
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
             _promptAssetReader.ReadRequiredPrompt(RuleReviewPromptAssetPaths.RuleReviewAgentPrompt),
@@ -43,7 +45,8 @@ public sealed class RuleReviewAgentFactory(
             ruleMarkdown,
             taskItem,
             issueStore,
-            verdictBuffer);
+            verdictBuffer,
+            eventScope);
 
     private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
@@ -53,7 +56,8 @@ public sealed class RuleReviewAgentFactory(
         string ruleMarkdown,
         StoredProjectPlanTaskItem taskItem,
         IRuleReviewIssueStore issueStore,
-        ReviewVerdictBuffer verdictBuffer)
+        ReviewVerdictBuffer verdictBuffer,
+        IAgentEventScope? eventScope)
     {
         ArgumentNullException.ThrowIfNull(chatClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(promptTemplate);
@@ -80,6 +84,7 @@ public sealed class RuleReviewAgentFactory(
         {
             Agent = new AIAgentBuilder(agent)
                 .UseOperationalContextCompaction(_compactionOptions)
+                .UseAgentTranscriptEventsIfAvailable(eventScope)
                 .Build(_serviceProvider),
             SystemPrompt = systemPrompt,
         };

@@ -93,5 +93,10 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
 
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
+
+        public ValueTask PublishTranscriptClearedAsync(
+            DateTimeOffset clearAfterUtc,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
     }
 }
