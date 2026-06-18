@@ -1,10 +1,10 @@
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
+using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Server.Services.ProjectExecution;
+using FluentResults;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using System.Runtime.CompilerServices;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
@@ -13,12 +13,12 @@ namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 public sealed class ProjectReviewAgentTeamWorkerFactoryTests
 {
     [TestMethod]
-    public async Task CreateWorker_MapsRulesAndExecutionOptions_ToReviewAgentTeamWorker()
+    public async Task CreateWorker_MapsRulesAndExecutionOptions_AndUsesDependenciesFactory()
     {
+        CapturedDependenciesFactory dependenciesFactory = new();
         CapturedWorkerFactory capturedWorkerFactory = new();
         ProjectReviewAgentTeamWorkerFactory factory = new(
-            NullLoggerFactory.Instance,
-            new ServiceCollection().BuildServiceProvider(),
+            dependenciesFactory,
             capturedWorkerFactory.CreateWorker);
         IReadOnlyList<ProjectExecutionRuleDefinition> rules = CreateRules();
         ExecutionOptions executionOptions = new()
@@ -38,6 +38,10 @@ public sealed class ProjectReviewAgentTeamWorkerFactoryTests
             NoOpAgentEventBus.Instance);
 
         Assert.IsNotNull(worker);
+        Assert.AreSame(NoOpChatClient.Instance, dependenciesFactory.ChatClient);
+        Assert.AreSame(executionOptions, dependenciesFactory.ExecutionOptions);
+        Assert.AreSame(NoOpAgentEventBus.Instance, dependenciesFactory.AgentEventBus);
+        Assert.AreSame(dependenciesFactory.Dependencies, capturedWorkerFactory.Dependencies);
         Assert.AreEqual(@"Z:\GitHub\CodeSnifferDog", capturedWorkerFactory.RepositoryRootPath);
         Assert.HasCount(2, capturedWorkerFactory.RuleDefinitions!);
         Assert.AreEqual("rule-a", capturedWorkerFactory.RuleDefinitions![0].RuleKey);
@@ -47,8 +51,6 @@ public sealed class ProjectReviewAgentTeamWorkerFactoryTests
         Assert.AreEqual(4, capturedWorkerFactory.ExecutionOptions!.MaxParallelAgents);
         Assert.AreEqual(32_000L, capturedWorkerFactory.ExecutionOptions.ModelContextWindowTokens);
         Assert.AreEqual(OperationalContextCompactionMode.ReactiveOnly, capturedWorkerFactory.ExecutionOptions.ContextCompactionMode);
-        Assert.IsNotNull(capturedWorkerFactory.Dependencies!.RuleReportIssueStore);
-        Assert.AreSame(NoOpAgentEventBus.Instance, capturedWorkerFactory.Dependencies.AgentEventBus);
     }
 
     private static IReadOnlyList<ProjectExecutionRuleDefinition> CreateRules() =>
@@ -66,6 +68,35 @@ public sealed class ProjectReviewAgentTeamWorkerFactoryTests
             RuleMarkdown = "- Rule B",
         },
     ];
+
+    private sealed class CapturedDependenciesFactory : IProjectReviewAgentTeamDependenciesFactory
+    {
+        public ReviewAgentTeamDependencies Dependencies { get; } = new()
+        {
+            ScanWorkflowRunner = (_, _) => Task.FromResult(Result.Fail<Models.Scan.ScanWorkflowResult>("Not used.")),
+            ProjectPlanWorkflowRunner = (_, _, _) => Task.FromResult(Result.Fail<Models.ProjectPlan.ProjectPlanWorkflowResult>("Not used.")),
+            RuleFlowWorkflowRunner = (_, _, _, _, _) => Task.FromResult(Result.Fail<Models.RuleFlow.RuleFlowWorkflowResult>("Not used.")),
+            RuleReportIssueStore = new InMemoryRuleReportIssueStore(),
+            AgentEventBus = NoOpAgentEventBus.Instance,
+        };
+
+        public IChatClient? ChatClient { get; private set; }
+
+        public ExecutionOptions? ExecutionOptions { get; private set; }
+
+        public IAgentEventBus? AgentEventBus { get; private set; }
+
+        public ReviewAgentTeamDependencies CreateDependencies(
+            IChatClient chatClient,
+            ExecutionOptions executionOptions,
+            IAgentEventBus agentEventBus)
+        {
+            ChatClient = chatClient;
+            ExecutionOptions = executionOptions;
+            AgentEventBus = agentEventBus;
+            return Dependencies;
+        }
+    }
 
     private sealed class CapturedWorkerFactory
     {

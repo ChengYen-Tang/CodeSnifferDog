@@ -44,6 +44,9 @@ builder.Services.AddSingleton<IProjectExecutionLeaseRegistry, ProjectExecutionLe
 builder.Services.AddSingleton<IProjectExecutionQueueLock, ProjectExecutionQueueLock>();
 builder.Services.AddSingleton<IProjectChatClientProvider, ProjectChatClientProvider>();
 builder.Services.AddSingleton<IReviewRuleMarkdownProvider, FileSystemReviewRuleMarkdownProvider>();
+builder.Services.AddScoped<ProjectReviewAgentCompactionOptionsFactory>();
+builder.Services.AddScoped<IProjectReviewWorkflowRunnerFactory, ProjectReviewWorkflowRunnerFactory>();
+builder.Services.AddScoped<IProjectReviewAgentTeamDependenciesFactory, ProjectReviewAgentTeamDependenciesFactory>();
 builder.Services.AddScoped<IProjectReviewAgentTeamWorkerFactory, ProjectReviewAgentTeamWorkerFactory>();
 builder.Services.AddScoped<IProjectReviewAnalysisExecutor, ProjectReviewAnalysisExecutor>();
 builder.Services.AddScoped<IProjectAnalysisCompletionService, ProjectAnalysisCompletionService>();
