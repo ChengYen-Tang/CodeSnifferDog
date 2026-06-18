@@ -9,7 +9,7 @@ using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus;
-using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;

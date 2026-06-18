@@ -1,6 +1,6 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.ProjectStorage;

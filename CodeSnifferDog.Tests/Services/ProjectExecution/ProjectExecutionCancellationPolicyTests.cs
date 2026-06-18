@@ -1,4 +1,4 @@
-using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 

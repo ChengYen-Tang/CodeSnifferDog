@@ -1,7 +1,9 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
+using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;

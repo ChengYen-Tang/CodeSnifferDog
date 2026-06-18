@@ -1,5 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
-using CodeSnifferDog.Server.Services.ProjectExecution;
+using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
