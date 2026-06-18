@@ -24,6 +24,31 @@ public sealed class ProjectAgentStatusEventSubscriberTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
+    public async Task DisposeAsync_WaitsForQueuedEventsAndProcessesThemInOrder()
+    {
+        BlockingAgentStatusEventHandler eventHandler = new();
+        using AgentStatusEventStream eventStream = new();
+        await using ProjectAgentStatusEventSubscriber subscriber =
+            new(eventHandler, eventStream.Events);
+
+        await eventStream.PublishGroupCreatedAsync("group-1", "Group 1", TestContext.CancellationToken);
+        await eventStream.PublishGroupCreatedAsync("group-2", "Group 2", TestContext.CancellationToken);
+        await eventHandler.FirstEventStarted.Task.WaitAsync(TestContext.CancellationToken);
+
+        Task disposeTask = subscriber.DisposeAsync().AsTask();
+        await Task.Delay(TimeSpan.FromMilliseconds(50), TestContext.CancellationToken);
+
+        Assert.IsFalse(disposeTask.IsCompleted);
+
+        eventHandler.ReleaseFirstEvent.SetResult();
+        await disposeTask.WaitAsync(TestContext.CancellationToken);
+
+        CollectionAssert.AreEqual(
+            new[] { "group-1", "group-2" },
+            eventHandler.GroupKeys);
+    }
+
+    [TestMethod]
     public async Task ToolCallEvents_MergeIntoSingleToolTimelineEntry()
     {
         Guid projectId = Guid.NewGuid();
@@ -521,6 +546,31 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         {
             Updates.Add(update);
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class BlockingAgentStatusEventHandler : IAgentStatusEventHandler
+    {
+        private int _handledCount;
+
+        public TaskCompletionSource FirstEventStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ReleaseFirstEvent { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public List<string> GroupKeys { get; } = [];
+
+        public async Task HandleAsync(AgentStatusEvent agentEvent, CancellationToken cancellationToken)
+        {
+            if (agentEvent is AgentGroupCreatedEvent groupCreatedEvent)
+                GroupKeys.Add(groupCreatedEvent.GroupKey);
+
+            if (Interlocked.Increment(ref _handledCount) == 1)
+            {
+                FirstEventStarted.SetResult();
+                await ReleaseFirstEvent.Task.WaitAsync(cancellationToken);
+            }
         }
     }
 
