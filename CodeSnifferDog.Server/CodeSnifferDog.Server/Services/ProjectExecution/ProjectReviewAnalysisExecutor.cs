@@ -1,32 +1,7 @@
-using CodeSnifferDog.Agents.ProjectPlan;
-using CodeSnifferDog.Agents.Report;
-using CodeSnifferDog.Agents.RuleReview;
-using CodeSnifferDog.Agents.Scan;
-using CodeSnifferDog.Models.ContextCompaction;
-using CodeSnifferDog.Models.ProjectPlan;
-using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Models.RuleFlow;
-using CodeSnifferDog.Models.RuleReview;
-using CodeSnifferDog.Models.Scan;
-using CodeSnifferDog.Modules.ContextCompaction.Core;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
-using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Modules.Tools.ProjectPlan;
-using CodeSnifferDog.Modules.Tools.Report;
-using CodeSnifferDog.Modules.Tools.Review;
-using CodeSnifferDog.Modules.Tools.RuleReview;
-using CodeSnifferDog.Modules.Tools.Scan;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus;
-using CodeSnifferDog.Workflows.ProjectPlan;
-using CodeSnifferDog.Workflows.Report;
-using CodeSnifferDog.Workflows.RuleFlow;
-using CodeSnifferDog.Workflows.RuleReview;
-using CodeSnifferDog.Workflows.Scan;
-using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -35,18 +10,16 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution;
 
 internal sealed class ProjectReviewAnalysisExecutor(
     IProjectChatClientProvider chatClientProvider,
+    IProjectReviewAgentTeamWorkerFactory workerFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier,
-    IOptions<ProjectExecutionOptions> options,
-    ILoggerFactory loggerFactory,
-    IServiceProvider serviceProvider) : IProjectReviewAnalysisExecutor
+    IOptions<ProjectExecutionOptions> options) : IProjectReviewAnalysisExecutor
 {
     private readonly IProjectChatClientProvider _chatClientProvider = chatClientProvider;
+    private readonly IProjectReviewAgentTeamWorkerFactory _workerFactory = workerFactory;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectAgentStatusLiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
-    private readonly ILoggerFactory _loggerFactory = loggerFactory;
-    private readonly IServiceProvider _serviceProvider = serviceProvider;
 
     public async Task<ReviewAgentTeamAnalysisResult> AnalyzeAsync(
         ProjectAnalysisContext context,
@@ -54,26 +27,18 @@ internal sealed class ProjectReviewAnalysisExecutor(
         CancellationToken cancellationToken = default)
     {
         IChatClient chatClient = _chatClientProvider.CreateChatClient();
-        InMemoryRuleReportIssueStore ruleReportIssueStore = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber eventSubscriber =
             new(context.ProjectId, _dbContextFactory, _projectAgentStatusLiveUpdateNotifier, eventStream.Events);
-        ReviewAgentTeamFactory teamFactory = CreateTeamFactory(chatClient, ruleReportIssueStore, eventStream);
+
         try
         {
-            await using ReviewAgentTeamWorker worker = teamFactory.CreateWorker(
+            await using IProjectReviewAgentTeamWorker worker = _workerFactory.CreateWorker(
+                chatClient,
                 context.RepositoryRootPath,
-                rules.Select(rule => new ReviewAgentRuleDefinition
-                {
-                    RuleKey = rule.RuleKey,
-                    RuleMarkdown = rule.RuleMarkdown,
-                }).ToArray(),
-                new ReviewAgentTeamExecutionOptions
-                {
-                    MaxParallelAgents = _options.MaxParallelAgents,
-                    ModelContextWindowTokens = _options.ModelContextWindowTokens,
-                    ContextCompactionMode = _options.ContextCompactionMode,
-                });
+                rules,
+                _options,
+                eventStream);
 
             return await worker.AnalyzeDetailedAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -81,311 +46,5 @@ internal sealed class ProjectReviewAnalysisExecutor(
         {
             eventStream.Complete();
         }
-    }
-
-    private ReviewAgentTeamFactory CreateTeamFactory(
-        IChatClient chatClient,
-        InMemoryRuleReportIssueStore ruleReportIssueStore,
-        IAgentEventBus agentEventBus)
-    {
-        PromptAssetReader promptAssetReader = new();
-        ChatClientOperationalContextCompactionSummarizer summarizer = new(chatClient);
-        OperationalContextAgentCompactionOptionsFactory compactionOptionsFactory = new(promptAssetReader, summarizer);
-        AgentCompactionSettings agentCompactionSettings = CreateAgentCompactionSettings();
-
-        InMemoryRuleReviewIssueStore ruleReviewIssueStore = new();
-
-        return new ReviewAgentTeamFactory(new ReviewAgentTeamDependencies
-        {
-            ScanWorkflowRunner = (repositoryRootPath, cancellationToken) =>
-                RunScanWorkflowAsync(chatClient, repositoryRootPath, agentCompactionSettings.Scan, compactionOptionsFactory, promptAssetReader, agentEventBus, cancellationToken),
-            ProjectPlanWorkflowRunner = (repositoryRootPath, scanProject, cancellationToken) =>
-                RunProjectPlanWorkflowAsync(chatClient, repositoryRootPath, scanProject, agentCompactionSettings.ProjectPlan, compactionOptionsFactory, promptAssetReader, agentEventBus, cancellationToken),
-            RuleFlowWorkflowRunner = (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
-                RunRuleFlowWorkflowAsync(
-                    chatClient,
-                    repositoryRootPath,
-                    ruleKey,
-                    ruleMarkdown,
-                    taskItem,
-                    agentCompactionSettings.RuleReview,
-                    agentCompactionSettings.Report,
-                    compactionOptionsFactory,
-                    ruleReviewIssueStore,
-                    ruleReportIssueStore,
-                    promptAssetReader,
-                    agentEventBus,
-                    cancellationToken),
-            RuleReportIssueStore = ruleReportIssueStore,
-            AgentEventBus = agentEventBus,
-        });
-    }
-
-    private AgentCompactionSettings CreateAgentCompactionSettings()
-    {
-        OperationalContextCompactionOptions options = new()
-        {
-            ModelContextWindowTokens = _options.ModelContextWindowTokens,
-            Mode = _options.ContextCompactionMode,
-        };
-
-        return new AgentCompactionSettings
-        {
-            Scan = options,
-            ProjectPlan = options,
-            RuleReview = options,
-            Report = options,
-        };
-    }
-
-    private Task<Result<ScanWorkflowResult>> RunScanWorkflowAsync(
-        IChatClient chatClient,
-        string repositoryRootPath,
-        OperationalContextCompactionOptions compactionOptions,
-        OperationalContextAgentCompactionOptionsFactory compactionOptionsFactory,
-        PromptAssetReader promptAssetReader,
-        IAgentEventBus agentEventBus,
-        CancellationToken cancellationToken)
-    {
-        InMemoryScanProjectStore scanProjectStore = new();
-        ReviewVerdictBuffer verdictBuffer = new();
-        ScanWorkflow workflow = new(
-            (scanRepositoryRootPath, eventScope) => new ScanAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    ScanPromptAssetPaths.ScanSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                _loggerFactory,
-                _serviceProvider).Create(chatClient, scanRepositoryRootPath, scanProjectStore, verdictBuffer, eventScope),
-            (scanRepositoryRootPath, eventScope) => new ScanVerifierAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    ScanPromptAssetPaths.ScanSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, scanRepositoryRootPath, scanProjectStore, verdictBuffer, eventScope),
-            scanProjectStore,
-            verdictBuffer,
-            promptAssetReader,
-            new ScanWorkflowOptions
-            {
-                AgentRunTimeout = _options.AgentRunTimeout,
-                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
-            },
-            agentEventBus: agentEventBus);
-
-        return workflow.RunAsync(repositoryRootPath, cancellationToken);
-    }
-
-    private Task<Result<ProjectPlanWorkflowResult>> RunProjectPlanWorkflowAsync(
-        IChatClient chatClient,
-        string repositoryRootPath,
-        StoredScanProject scanProject,
-        OperationalContextCompactionOptions compactionOptions,
-        OperationalContextAgentCompactionOptionsFactory compactionOptionsFactory,
-        PromptAssetReader promptAssetReader,
-        IAgentEventBus agentEventBus,
-        CancellationToken cancellationToken)
-    {
-        InMemoryProjectPlanTaskItemStore taskItemStore = new();
-        ReviewVerdictBuffer verdictBuffer = new();
-        ProjectPlanWorkflow workflow = new(
-            (planRepositoryRootPath, eventScope) => new ProjectPlanAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, planRepositoryRootPath, taskItemStore, verdictBuffer, eventScope),
-            (planRepositoryRootPath, verifierScanProject, eventScope) => new ProjectVerifierAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, planRepositoryRootPath, verifierScanProject, taskItemStore, verdictBuffer, eventScope),
-            taskItemStore,
-            verdictBuffer,
-            promptAssetReader,
-            new ProjectPlanWorkflowOptions
-            {
-                AgentRunTimeout = _options.AgentRunTimeout,
-                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
-            },
-            agentEventBus: agentEventBus);
-
-        return workflow.RunAsync(repositoryRootPath, scanProject, cancellationToken);
-    }
-
-    private Task<Result<RuleFlowWorkflowResult>> RunRuleFlowWorkflowAsync(
-        IChatClient chatClient,
-        string repositoryRootPath,
-        string ruleKey,
-        string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
-        OperationalContextCompactionOptions ruleReviewCompactionOptions,
-        OperationalContextCompactionOptions reportCompactionOptions,
-        OperationalContextAgentCompactionOptionsFactory compactionOptionsFactory,
-        IRuleReviewIssueStore ruleReviewIssueStore,
-        IRuleReportIssueStore ruleReportIssueStore,
-        PromptAssetReader promptAssetReader,
-        IAgentEventBus agentEventBus,
-        CancellationToken cancellationToken)
-    {
-        RuleFlowWorkflow workflow = new(
-            (reviewRepositoryRootPath, _, reviewRuleMarkdown, reviewTaskItem, reviewCancellationToken) =>
-                RunRuleReviewWorkflowAsync(
-                    chatClient,
-                    reviewRepositoryRootPath,
-                    ruleKey,
-                    reviewRuleMarkdown,
-                    reviewTaskItem,
-                    ruleReviewCompactionOptions,
-                    compactionOptionsFactory,
-                    ruleReviewIssueStore,
-                    promptAssetReader,
-                    agentEventBus,
-                    reviewCancellationToken),
-            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, currentFlowIssues, reportCancellationToken) =>
-                RunRuleReportWorkflowAsync(
-                    chatClient,
-                    reportRepositoryRootPath,
-                    reportRuleKey,
-                    reportRuleMarkdown,
-                    reportTaskItem,
-                    currentFlowIssues,
-                    reportCompactionOptions,
-                    compactionOptionsFactory,
-                    ruleReportIssueStore,
-                    promptAssetReader,
-                    agentEventBus,
-                    reportCancellationToken));
-
-        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
-    }
-
-    private Task<Result<RuleReviewWorkflowResult>> RunRuleReviewWorkflowAsync(
-        IChatClient chatClient,
-        string repositoryRootPath,
-        string ruleKey,
-        string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
-        OperationalContextCompactionOptions compactionOptions,
-        OperationalContextAgentCompactionOptionsFactory compactionOptionsFactory,
-        IRuleReviewIssueStore issueStore,
-        PromptAssetReader promptAssetReader,
-        IAgentEventBus agentEventBus,
-        CancellationToken cancellationToken)
-    {
-        ReviewVerdictBuffer verdictBuffer = new();
-        RuleReviewWorkflow workflow = new(
-            (reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, eventScope) => new RuleReviewAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    RuleReviewPromptAssetPaths.RuleReviewSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer, eventScope),
-            (reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, eventScope) => new ReviewVerifierAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    RuleReviewPromptAssetPaths.RuleReviewSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer, eventScope),
-            issueStore,
-            verdictBuffer,
-            promptAssetReader,
-            new RuleReviewWorkflowOptions
-            {
-                AgentRunTimeout = _options.AgentRunTimeout,
-                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
-            },
-            agentEventBus: agentEventBus);
-
-        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
-    }
-
-    private Task<Result<RuleReportWorkflowResult>> RunRuleReportWorkflowAsync(
-        IChatClient chatClient,
-        string repositoryRootPath,
-        string ruleKey,
-        string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
-        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
-        OperationalContextCompactionOptions compactionOptions,
-        OperationalContextAgentCompactionOptionsFactory compactionOptionsFactory,
-        IRuleReportIssueStore reportIssueStore,
-        PromptAssetReader promptAssetReader,
-        IAgentEventBus agentEventBus,
-        CancellationToken cancellationToken)
-    {
-        ReviewVerdictBuffer verdictBuffer = new();
-        RuleReportWorkflow workflow = new(
-            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, eventScope) => new ReportAggregatorAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    ReportPromptAssetPaths.ReportSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, reportIssueStore, verdictBuffer, eventScope),
-            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, eventScope) => new ReportVerifierAgentFactory(
-                CreateCompactionOptions(
-                    compactionOptionsFactory,
-                    ReportPromptAssetPaths.ReportSummaryPrompt,
-                    compactionOptions,
-                    eventScope),
-                promptAssetReader,
-                loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(chatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer, eventScope),
-            reportIssueStore,
-            verdictBuffer,
-            promptAssetReader,
-            new RuleReportWorkflowOptions
-            {
-                AgentRunTimeout = _options.AgentRunTimeout,
-                MaxConsecutiveRunFailures = _options.MaxConsecutiveAgentRunFailures,
-            },
-            agentEventBus: agentEventBus);
-
-        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken);
-    }
-
-    private static OperationalContextAgentCompactionOptions CreateCompactionOptions(
-        OperationalContextAgentCompactionOptionsFactory factory,
-        string summaryPromptAssetPath,
-        OperationalContextCompactionOptions options,
-        IAgentEventScope eventScope) =>
-        factory.CreateFromPromptAsset(
-            summaryPromptAssetPath,
-            options,
-            hooks:
-            [
-                new AgentCompactionEventHook(eventScope),
-            ]);
-
-    private sealed class AgentCompactionSettings
-    {
-        public required OperationalContextCompactionOptions Scan { get; init; }
-
-        public required OperationalContextCompactionOptions ProjectPlan { get; init; }
-
-        public required OperationalContextCompactionOptions RuleReview { get; init; }
-
-        public required OperationalContextCompactionOptions Report { get; init; }
     }
 }
