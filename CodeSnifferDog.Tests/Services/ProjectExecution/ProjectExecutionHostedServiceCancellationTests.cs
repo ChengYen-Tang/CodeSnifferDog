@@ -2,7 +2,10 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Artifacts;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Shared.AgentStatus;
@@ -11,8 +14,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using System.Reflection;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
@@ -35,9 +36,9 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
         lease.TryCancel(ProjectExecutionCancellationSource.UserRequest);
 
-        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+        ClaimExecutor claimExecutor = CreateClaimExecutor(services);
 
-        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+        await claimExecutor.ExecuteAsync(1, CreateClaim(projectId, $@"extracted/{projectId:N}", lease), CancellationToken.None);
 
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
         await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
@@ -64,9 +65,9 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
         hostStoppingTokenSource.Cancel();
 
-        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+        ClaimExecutor claimExecutor = CreateClaimExecutor(services);
 
-        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+        await claimExecutor.ExecuteAsync(1, CreateClaim(projectId, $@"extracted/{projectId:N}", lease), CancellationToken.None);
 
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
         await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
@@ -92,9 +93,9 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         using CancellationTokenSource hostStoppingTokenSource = new();
         using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
 
-        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+        ClaimExecutor claimExecutor = CreateClaimExecutor(services);
 
-        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+        await claimExecutor.ExecuteAsync(1, CreateClaim(projectId, $@"extracted/{projectId:N}", lease), CancellationToken.None);
 
         Assert.IsTrue(liveUpdateNotifier.Updates.Any(update =>
             update.Kind == ProjectAgentLiveUpdateKind.ProjectStatusChanged &&
@@ -115,9 +116,9 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         using CancellationTokenSource hostStoppingTokenSource = new();
         using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
 
-        ProjectExecutionHostedService hostedService = CreateHostedService(services);
+        ClaimExecutor claimExecutor = CreateClaimExecutor(services);
 
-        await InvokeRunClaimedProjectAsync(hostedService, projectId, $@"extracted/{projectId:N}", lease);
+        await claimExecutor.ExecuteAsync(1, CreateClaim(projectId, $@"extracted/{projectId:N}", lease), CancellationToken.None);
 
         Assert.IsTrue(liveUpdateNotifier.Updates.Any(update =>
             update.Kind == ProjectAgentLiveUpdateKind.ProjectStatusChanged &&
@@ -125,15 +126,43 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
             update.ProjectStatus?.Status == ProjectStatus.Failed));
     }
 
-    private static ProjectExecutionHostedService CreateHostedService(ServiceProvider services) =>
+    [TestMethod]
+    public async Task RunClaimedProjectAsync_WhenProjectIsNoLongerReviewing_CleansArtifactsAndDoesNotRunAnalysis()
+    {
+        Guid projectId = Guid.NewGuid();
+        TestProjectChangePublisher projectChangePublisher = new();
+        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        TrackingAnalysisRunner analysisRunner = new();
+        using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, analysisRunner);
+        await SeedProjectAsync(services, projectId, ProjectProcessingStatus.Queued);
+        EnsureExtractedProjectDirectory(projectId);
+
+        using ProjectExecutionLease lease = new(projectId, CancellationToken.None, static _ => { });
+        ClaimExecutor claimExecutor = CreateClaimExecutor(services);
+
+        await claimExecutor.ExecuteAsync(1, CreateClaim(projectId, $@"extracted/{projectId:N}", lease), CancellationToken.None);
+
+        Assert.IsFalse(analysisRunner.WasCalled);
+        Assert.IsFalse(Directory.Exists(GetStoragePaths().ResolveExtractedProjectPath(projectId)));
+        Assert.AreEqual(0, projectChangePublisher.PublishCallCount);
+        Assert.IsEmpty(liveUpdateNotifier.Updates);
+    }
+
+    private static ClaimExecutor CreateClaimExecutor(ServiceProvider services) =>
         new(
             services.GetRequiredService<IServiceScopeFactory>(),
-            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-            services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
-            services.GetRequiredService<IProjectExecutionLeaseRegistry>(),
-            services.GetRequiredService<IProjectExecutionQueueLock>(),
-            Options.Create(new ProjectExecutionOptions()),
-            NullLogger<ProjectExecutionHostedService>.Instance);
+            new ExecutionArtifactStore(GetStoragePaths(), NullLogger<ExecutionArtifactStore>.Instance),
+            new ExecutionStateService(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
+                services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>()),
+            NullLogger<ClaimExecutor>.Instance);
+
+    private static ProjectExecutionClaim CreateClaim(
+        Guid projectId,
+        string storedZipRelativePath,
+        ProjectExecutionLease lease) =>
+        new(projectId, storedZipRelativePath, lease);
 
     private static ServiceProvider CreateServices(
         TestProjectChangePublisher projectChangePublisher,
@@ -156,6 +185,14 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
     private static async Task SeedReviewingProjectAsync(ServiceProvider services, Guid projectId)
     {
+        await SeedProjectAsync(services, projectId, ProjectProcessingStatus.Reviewing);
+    }
+
+    private static async Task SeedProjectAsync(
+        ServiceProvider services,
+        Guid projectId,
+        ProjectProcessingStatus status)
+    {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
         await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
@@ -165,12 +202,12 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
             Id = projectId,
             OriginalFileName = "repo.zip",
             StoredZipRelativePath = $"uploads/{projectId:N}.zip",
-            Status = ProjectProcessingStatus.Reviewing,
+            Status = status,
             FileSizeBytes = 10,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             QueueTimestampUtc = nowUtc,
-            ProcessingStartedAtUtc = nowUtc,
+            ProcessingStartedAtUtc = status == ProjectProcessingStatus.Reviewing ? nowUtc : null,
         });
         await dbContext.SaveChangesAsync();
     }
@@ -183,24 +220,6 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
         Directory.CreateDirectory(extractedProjectPath);
         File.WriteAllText(Path.Combine(extractedProjectPath, "Program.cs"), "class Program {}");
-    }
-
-    private static async Task InvokeRunClaimedProjectAsync(
-        ProjectExecutionHostedService hostedService,
-        Guid projectId,
-        string storedZipRelativePath,
-        ProjectExecutionLease lease)
-    {
-        Type hostedServiceType = typeof(ProjectExecutionHostedService);
-        Type claimType = hostedServiceType.GetNestedType("ProjectExecutionClaim", BindingFlags.NonPublic)!;
-        object claim = Activator.CreateInstance(claimType, nonPublic: true)!;
-        claimType.GetProperty("ProjectId")!.SetValue(claim, projectId);
-        claimType.GetProperty("StoredZipRelativePath")!.SetValue(claim, storedZipRelativePath);
-        claimType.GetProperty("ExecutionLease")!.SetValue(claim, lease);
-
-        MethodInfo method = hostedServiceType.GetMethod("RunClaimedProjectAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        Task task = (Task)method.Invoke(hostedService, [1, claim, CancellationToken.None])!;
-        await task;
     }
 
     private static ProjectTemporaryStoragePaths GetStoragePaths()
@@ -235,6 +254,19 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
         public Task RunAsync(ProjectAnalysisContext context, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Analysis failed.");
+    }
+
+    private sealed class TrackingAnalysisRunner : IProjectAnalysisRunner
+    {
+        public bool IsReady => true;
+
+        public bool WasCalled { get; private set; }
+
+        public Task RunAsync(ProjectAnalysisContext context, CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestProjectChangePublisher : IProjectChangePublisher

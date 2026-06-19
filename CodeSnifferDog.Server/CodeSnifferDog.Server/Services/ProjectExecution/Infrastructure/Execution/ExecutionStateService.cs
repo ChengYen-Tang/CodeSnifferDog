@@ -1,0 +1,91 @@
+using CodeSnifferDog.Server.Data;
+using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
+using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Shared.AgentStatus;
+using CodeSnifferDog.Server.Shared.Projects;
+using Microsoft.EntityFrameworkCore;
+
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
+
+internal sealed class ExecutionStateService(
+    IServiceScopeFactory serviceScopeFactory,
+    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier) : IExecutionStateService
+{
+    private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
+    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IProjectAgentStatusLiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
+
+    public async Task<bool> CanStartExecutionAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory
+            .CreateDbContextAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        ProjectProcessingStatus? status = await dbContext.Projects
+            .Where(project => project.Id == projectId)
+            .Select(project => (ProjectProcessingStatus?)project.Status)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return status == ProjectProcessingStatus.Reviewing;
+    }
+
+    public async Task CompleteAsync(
+        Guid projectId,
+        ProjectProcessingStatus status,
+        string? failureReason,
+        CancellationToken cancellationToken)
+    {
+        await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();
+        IProjectChangePublisher projectChangePublisher = scope.ServiceProvider.GetRequiredService<IProjectChangePublisher>();
+        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory
+            .CreateDbContextAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        ProjectRecord? project = await dbContext.Projects
+            .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
+
+        if (project is null)
+            return;
+
+        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+        project.Status = status;
+        project.UpdatedAtUtc = nowUtc;
+        project.FinishedAtUtc = nowUtc;
+        project.FailureReason = failureReason;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await PublishStatusUpdateAsync(projectId, status, CancellationToken.None);
+        await projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
+    }
+
+    public Task PublishStatusUpdateAsync(
+        Guid projectId,
+        ProjectProcessingStatus status,
+        CancellationToken cancellationToken)
+    {
+        return _projectAgentStatusLiveUpdateNotifier.NotifyAsync(
+            new ProjectAgentLiveUpdateDto
+            {
+                ProjectId = projectId,
+                Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+                ProjectStatus = new ProjectExecutionStatusChangedDto
+                {
+                    Status = MapProjectStatus(status),
+                },
+            },
+            cancellationToken);
+    }
+
+    internal static ProjectStatus MapProjectStatus(ProjectProcessingStatus status) => status switch
+    {
+        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
+        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
+        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
+        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
+        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
+        _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
+    };
+}
