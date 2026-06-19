@@ -17,49 +17,65 @@ internal sealed class AgentStatusProjectionMapper : IAgentStatusProjectionMapper
         _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
     };
 
-    public ProjectAgentRunStatus MapAgentStatus(PersistedAgentStatus status) => status switch
+    public ProjectAgentRunStatus MapAgentStatus(
+        PersistedAgentStatus status,
+        AgentStatusProjectionExceptionStyle exceptionStyle = AgentStatusProjectionExceptionStyle.Persisted) => status switch
     {
         PersistedAgentStatus.Waiting => ProjectAgentRunStatus.Waiting,
         PersistedAgentStatus.Running => ProjectAgentRunStatus.Running,
         PersistedAgentStatus.Completed => ProjectAgentRunStatus.Completed,
         PersistedAgentStatus.Degraded => ProjectAgentRunStatus.Degraded,
-        _ => throw new InvalidOperationException($"Unsupported persisted agent status '{status}'."),
+        _ => throw new InvalidOperationException(exceptionStyle switch
+        {
+            AgentStatusProjectionExceptionStyle.Snapshot => $"Unsupported agent status '{status}'.",
+            _ => $"Unsupported persisted agent status '{status}'.",
+        }),
     };
 
-    public ProjectAgentTimelineEntryKind MapTimelineEntryKind(ProjectAgentTimelineEntryType entryType) => entryType switch
+    public ProjectAgentTimelineEntryKind MapTimelineEntryKind(
+        ProjectAgentTimelineEntryType entryType,
+        AgentStatusProjectionExceptionStyle exceptionStyle = AgentStatusProjectionExceptionStyle.Persisted) => entryType switch
     {
         ProjectAgentTimelineEntryType.Input => ProjectAgentTimelineEntryKind.Input,
         ProjectAgentTimelineEntryType.Output => ProjectAgentTimelineEntryKind.Output,
         ProjectAgentTimelineEntryType.Tool => ProjectAgentTimelineEntryKind.Tool,
         ProjectAgentTimelineEntryType.Compaction => ProjectAgentTimelineEntryKind.Compaction,
-        _ => throw new InvalidOperationException($"Unsupported persisted timeline entry type '{entryType}'."),
+        _ => throw new InvalidOperationException(exceptionStyle switch
+        {
+            AgentStatusProjectionExceptionStyle.Snapshot => $"Unsupported timeline entry type '{entryType}'.",
+            _ => $"Unsupported persisted timeline entry type '{entryType}'.",
+        }),
     };
 
-    public ProjectAgentGroupLiveDto MapGroup(ProjectAgentGroupRecord group) => new()
+    public ProjectAgentGroupLiveDto MapGroup(AgentStatusGroupProjection group) => new()
     {
-        GroupId = group.Id,
+        GroupId = group.GroupId,
         RuntimeKey = group.RuntimeKey,
         DisplayName = group.DisplayName,
         CreatedAtUtc = group.CreatedAtUtc,
     };
 
-    public ProjectAgentLiveDto MapAgent(ProjectAgentRecord agent) => new()
+    public ProjectAgentLiveDto MapAgent(
+        AgentStatusAgentProjection agent,
+        AgentStatusProjectionExceptionStyle exceptionStyle = AgentStatusProjectionExceptionStyle.Persisted) => new()
     {
-        AgentId = agent.Id,
-        GroupId = agent.ProjectAgentGroupId,
+        AgentId = agent.AgentId,
+        GroupId = agent.GroupId,
         RuntimeKey = agent.RuntimeKey,
         DisplayName = agent.DisplayName,
         SystemPrompt = agent.SystemPrompt,
-        Status = MapAgentStatus(agent.Status),
+        Status = MapAgentStatus(agent.Status, exceptionStyle),
         CreatedAtUtc = agent.CreatedAtUtc,
     };
 
-    public ProjectAgentTimelineEntryDto MapTimelineEntry(ProjectAgentTimelineEntryRecord entry) => new()
+    public ProjectAgentTimelineEntryDto MapTimelineEntry(
+        AgentStatusTimelineEntryProjection entry,
+        AgentStatusProjectionExceptionStyle exceptionStyle = AgentStatusProjectionExceptionStyle.Persisted) => new()
     {
-        TimelineEntryId = entry.Id,
-        AgentId = entry.ProjectAgentId,
+        TimelineEntryId = entry.TimelineEntryId,
+        AgentId = entry.AgentId,
         Sequence = entry.Sequence,
-        EntryKind = MapTimelineEntryKind(entry.EntryType),
+        EntryKind = MapTimelineEntryKind(entry.EntryType, exceptionStyle),
         OccurredAtUtc = entry.OccurredAtUtc,
         Message = entry.Message,
         ToolCallId = entry.ToolCallId,

@@ -109,6 +109,29 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
         Assert.AreEqual(3L, history.TimelineEntries[2].Sequence);
     }
 
+    [TestMethod]
+    public async Task GetSnapshotAsync_UnsupportedAgentStatusThrowsSnapshotCompatibleException()
+    {
+        Guid projectId = Guid.NewGuid();
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        IProjectAgentStatusSnapshotService service = services.GetRequiredService<IProjectAgentStatusSnapshotService>();
+        await SeedProjectAsync(dbContextFactory, projectId, TestContext.CancellationToken);
+
+        await using (CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
+        {
+            ProjectAgentRecord agent = await dbContext.ProjectAgents.FirstAsync(TestContext.CancellationToken);
+            agent.Status = (CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus)999;
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => service.GetSnapshotAsync(projectId, selectedAgentId: null, TestContext.CancellationToken));
+
+        Assert.AreEqual("Unsupported agent status '999'.", exception.Message);
+    }
+
     private static async Task SeedProjectAsync(
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
         Guid projectId,

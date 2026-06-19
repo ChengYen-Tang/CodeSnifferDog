@@ -14,7 +14,11 @@ internal sealed class AgentStatusLiveUpdateFactory(IAgentStatusProjectionMapper 
             ProjectId = projectId,
             Kind = ProjectAgentLiveUpdateKind.AgentGroupUpserted,
             OccurredAtUtc = group.CreatedAtUtc,
-            Group = _projectionMapper.MapGroup(group),
+            Group = _projectionMapper.MapGroup(new AgentStatusGroupProjection(
+                group.Id,
+                group.RuntimeKey,
+                group.DisplayName,
+                group.CreatedAtUtc)),
         };
 
     public ProjectAgentLiveUpdateDto CreateAgentUpsertUpdate(Guid projectId, ProjectAgentRecord agent) =>
@@ -23,7 +27,14 @@ internal sealed class AgentStatusLiveUpdateFactory(IAgentStatusProjectionMapper 
             ProjectId = projectId,
             Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
             OccurredAtUtc = agent.CreatedAtUtc,
-            Agent = _projectionMapper.MapAgent(agent),
+            Agent = _projectionMapper.MapAgent(new AgentStatusAgentProjection(
+                agent.Id,
+                agent.ProjectAgentGroupId,
+                agent.RuntimeKey,
+                agent.DisplayName,
+                agent.SystemPrompt,
+                agent.Status,
+                agent.CreatedAtUtc)),
         };
 
     public ProjectAgentLiveUpdateDto CreateAgentStatusChangedUpdate(
@@ -52,7 +63,17 @@ internal sealed class AgentStatusLiveUpdateFactory(IAgentStatusProjectionMapper 
             ProjectId = projectId,
             Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
             OccurredAtUtc = entry.OccurredAtUtc,
-            TimelineEntry = _projectionMapper.MapTimelineEntry(entry),
+            TimelineEntry = _projectionMapper.MapTimelineEntry(new AgentStatusTimelineEntryProjection(
+                entry.Id,
+                entry.ProjectAgentId,
+                entry.Sequence,
+                entry.EntryType,
+                entry.OccurredAtUtc,
+                entry.Message,
+                entry.ToolCallId,
+                entry.ToolName,
+                entry.ToolArguments,
+                entry.ToolResult)),
         };
 
     public ProjectAgentLiveUpdateDto CreateTimelineEntriesRemovedUpdate(

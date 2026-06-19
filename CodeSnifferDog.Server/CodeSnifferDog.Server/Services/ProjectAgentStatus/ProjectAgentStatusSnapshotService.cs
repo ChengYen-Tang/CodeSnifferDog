@@ -65,14 +65,14 @@ internal sealed class ProjectAgentStatusSnapshotService(
             .ConfigureAwait(false);
 
         Guid? effectiveSelectedAgentId = ResolveSelectedAgentId(agents, selectedAgentId);
-        List<ProjectAgentTimelineEntryRecord> timelineEntries =
+        List<AgentStatusTimelineEntryProjection> timelineEntries =
             effectiveSelectedAgentId is Guid selectedHistoryAgentId
                 ? await LoadTimelineEntriesAsync(dbContext, selectedHistoryAgentId, cancellationToken).ConfigureAwait(false)
                 : [];
 
         IReadOnlyList<ProjectAgentTimelineEntryDto> selectedTimelineEntries = timelineEntries
             .OrderBy(entry => entry.Sequence)
-            .Select(_projectionMapper.MapTimelineEntry)
+            .Select(entry => _projectionMapper.MapTimelineEntry(entry, AgentStatusProjectionExceptionStyle.Snapshot))
             .ToList();
 
         Dictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId =
@@ -133,7 +133,7 @@ internal sealed class ProjectAgentStatusSnapshotService(
                 cancellationToken)
             .ConfigureAwait(false))
             .OrderBy(entry => entry.Sequence)
-            .Select(_projectionMapper.MapTimelineEntry)
+            .Select(entry => _projectionMapper.MapTimelineEntry(entry, AgentStatusProjectionExceptionStyle.Snapshot))
             .ToList();
 
         return new ProjectAgentHistorySnapshotDto
@@ -167,7 +167,7 @@ internal sealed class ProjectAgentStatusSnapshotService(
         RuntimeKey = agent.RuntimeKey,
         DisplayName = agent.DisplayName,
         SystemPrompt = agent.SystemPrompt,
-        Status = _projectionMapper.MapAgentStatus(agent.Status),
+        Status = _projectionMapper.MapAgentStatus(agent.Status, AgentStatusProjectionExceptionStyle.Snapshot),
         CreatedAtUtc = agent.CreatedAtUtc,
         HasLoadedHistory = selectedAgentId == agent.AgentId,
         TimelineEntries = timelineByAgentId.TryGetValue(agent.AgentId, out IReadOnlyList<ProjectAgentTimelineEntryDto>? timeline)
@@ -189,15 +189,26 @@ internal sealed class ProjectAgentStatusSnapshotService(
             .FirstOrDefault();
     }
 
-    private static Task<List<ProjectAgentTimelineEntryRecord>> LoadTimelineEntriesAsync(
+    private static Task<List<AgentStatusTimelineEntryProjection>> LoadTimelineEntriesAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
         CancellationToken cancellationToken) =>
         dbContext.ProjectAgentTimelineEntries
-            .AsNoTracking()
-            .Where(entry => entry.ProjectAgentId == agentId)
-            .OrderBy(entry => entry.Sequence)
-            .ToListAsync(cancellationToken);
+        .AsNoTracking()
+        .Where(entry => entry.ProjectAgentId == agentId)
+        .OrderBy(entry => entry.Sequence)
+        .Select(entry => new AgentStatusTimelineEntryProjection(
+            entry.Id,
+            entry.ProjectAgentId,
+            entry.Sequence,
+            entry.EntryType,
+            entry.OccurredAtUtc,
+            entry.Message,
+            entry.ToolCallId,
+            entry.ToolName,
+            entry.ToolArguments,
+            entry.ToolResult))
+        .ToListAsync(cancellationToken);
 
     private sealed record ProjectSnapshotRow(Guid ProjectId, ProjectProcessingStatus Status);
 

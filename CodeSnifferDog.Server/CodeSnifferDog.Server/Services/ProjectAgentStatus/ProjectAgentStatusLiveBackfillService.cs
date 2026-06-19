@@ -32,20 +32,33 @@ internal sealed class ProjectAgentStatusLiveBackfillService(
         if (projectStatus is null)
             return [];
 
-        List<ProjectAgentGroupRecord> groups = await dbContext.ProjectAgentGroups
+        List<AgentStatusGroupProjection> groups = await dbContext.ProjectAgentGroups
             .AsNoTracking()
             .Where(group => group.ProjectId == request.ProjectId)
             .OrderBy(group => group.CreatedAtUtc)
             .ThenBy(group => group.DisplayName)
+            .Select(group => new AgentStatusGroupProjection(
+                group.Id,
+                group.RuntimeKey,
+                group.DisplayName,
+                group.CreatedAtUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        List<Guid> groupIds = groups.Select(group => group.Id).ToList();
-        List<ProjectAgentRecord> agents = await dbContext.ProjectAgents
+        List<Guid> groupIds = groups.Select(group => group.GroupId).ToList();
+        List<AgentStatusAgentProjection> agents = await dbContext.ProjectAgents
             .AsNoTracking()
             .Where(agent => groupIds.Contains(agent.ProjectAgentGroupId))
             .OrderBy(agent => agent.CreatedAtUtc)
             .ThenBy(agent => agent.DisplayName)
+            .Select(agent => new AgentStatusAgentProjection(
+                agent.Id,
+                agent.ProjectAgentGroupId,
+                agent.RuntimeKey,
+                agent.DisplayName,
+                agent.SystemPrompt,
+                agent.Status,
+                agent.CreatedAtUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -74,15 +87,26 @@ internal sealed class ProjectAgentStatusLiveBackfillService(
             ProjectId = request.ProjectId,
             Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
             OccurredAtUtc = agent.CreatedAtUtc,
-            Agent = _projectionMapper.MapAgent(agent),
+            Agent = _projectionMapper.MapAgent(agent, AgentStatusProjectionExceptionStyle.Snapshot),
         }));
 
         if (request.AgentId is Guid agentId)
         {
-            List<ProjectAgentTimelineEntryRecord> timelineEntries = await dbContext.ProjectAgentTimelineEntries
+            List<AgentStatusTimelineEntryProjection> timelineEntries = await dbContext.ProjectAgentTimelineEntries
                 .AsNoTracking()
                 .Where(entry => entry.ProjectAgentId == agentId && entry.Sequence > request.LatestSequence)
                 .OrderBy(entry => entry.Sequence)
+                .Select(entry => new AgentStatusTimelineEntryProjection(
+                    entry.Id,
+                    entry.ProjectAgentId,
+                    entry.Sequence,
+                    entry.EntryType,
+                    entry.OccurredAtUtc,
+                    entry.Message,
+                    entry.ToolCallId,
+                    entry.ToolName,
+                    entry.ToolArguments,
+                    entry.ToolResult))
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
 
@@ -91,7 +115,7 @@ internal sealed class ProjectAgentStatusLiveBackfillService(
                 ProjectId = request.ProjectId,
                 Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
                 OccurredAtUtc = entry.OccurredAtUtc,
-                TimelineEntry = _projectionMapper.MapTimelineEntry(entry),
+                TimelineEntry = _projectionMapper.MapTimelineEntry(entry, AgentStatusProjectionExceptionStyle.Snapshot),
             }));
         }
 

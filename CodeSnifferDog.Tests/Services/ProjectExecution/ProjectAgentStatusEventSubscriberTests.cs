@@ -533,9 +533,10 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         IProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier,
         IObservable<AgentStatusEvent> events) =>
         new AgentStatusEventSubscriberFactory(
+            new AgentStatusRuntimeFactory(
             dbContextFactory,
             liveUpdateNotifier,
-            new AgentStatusProjectionMapper())
+            new AgentStatusProjectionMapper()))
             .Create(projectId, events);
 
     private static OperationalContextAgentCompactionOptions CreateCompactionOptions() =>

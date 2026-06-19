@@ -68,6 +68,7 @@ builder.Services.AddScoped<IRuleFlowRunnerFactory, RuleFlowRunnerFactory>();
 builder.Services.AddScoped<IProjectReviewWorkflowRunnerFactory, ProjectReviewWorkflowRunnerFactory>();
 builder.Services.AddScoped<IProjectReviewAgentTeamDependenciesFactory, ProjectReviewAgentTeamDependenciesFactory>();
 builder.Services.AddScoped<IProjectReviewAgentTeamWorkerFactory, ProjectReviewAgentTeamWorkerFactory>();
+builder.Services.AddScoped<IAgentStatusRuntimeFactory, AgentStatusRuntimeFactory>();
 builder.Services.AddScoped<IAgentStatusEventSubscriberFactory, AgentStatusEventSubscriberFactory>();
 builder.Services.AddScoped<IProjectReviewAnalysisExecutor, ProjectReviewAnalysisExecutor>();
 builder.Services.AddScoped<IProjectAnalysisCompletionService, ProjectAnalysisCompletionService>();

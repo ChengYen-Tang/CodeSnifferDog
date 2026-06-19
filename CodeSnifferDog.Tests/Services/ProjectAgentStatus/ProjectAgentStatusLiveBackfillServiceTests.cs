@@ -74,6 +74,42 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
         Assert.IsFalse(timelineUpdates.Any(update => update.TimelineEntry!.AgentId == agentBId));
     }
 
+    [TestMethod]
+    public async Task GetBackfillAsync_UnsupportedAgentStatusThrowsBackfillCompatibleException()
+    {
+        Guid projectId = Guid.NewGuid();
+        Guid groupId = Guid.NewGuid();
+        Guid agentAId = Guid.NewGuid();
+        Guid agentBId = Guid.NewGuid();
+
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        IProjectAgentStatusLiveBackfillService service =
+            services.GetRequiredService<IProjectAgentStatusLiveBackfillService>();
+        await SeedProjectAsync(dbContextFactory, projectId, groupId, agentAId, agentBId, TestContext.CancellationToken);
+
+        await using (CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
+        {
+            ProjectAgentRecord agent = await dbContext.ProjectAgents.SingleAsync(
+                agent => agent.Id == agentAId,
+                TestContext.CancellationToken);
+            agent.Status = (CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus)999;
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => service.GetBackfillAsync(
+                new ProjectAgentLiveSubscriptionRequestDto
+                {
+                    ProjectId = projectId,
+                    SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
+                },
+                TestContext.CancellationToken));
+
+        Assert.AreEqual("Unsupported agent status '999'.", exception.Message);
+    }
+
     private static async Task SeedProjectAsync(
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
         Guid projectId,
