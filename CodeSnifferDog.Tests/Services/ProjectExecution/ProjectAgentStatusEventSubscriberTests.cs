@@ -58,7 +58,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -104,7 +104,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -148,7 +148,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         string agentKey = "agent-1";
@@ -198,7 +198,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -242,7 +242,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -287,7 +287,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -334,7 +334,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -385,7 +385,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -431,7 +431,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -486,7 +486,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber subscriber =
-            new(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
+            CreateSubscriber(projectId, dbContextFactory, liveUpdateNotifier, eventStream.Events);
 
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -526,6 +526,17 @@ public sealed class ProjectAgentStatusEventSubscriberTests
             options.UseInMemoryDatabase(databaseName, databaseRoot));
         return services.BuildServiceProvider();
     }
+
+    private static ProjectAgentStatusEventSubscriber CreateSubscriber(
+        Guid projectId,
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+        IProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier,
+        IObservable<AgentStatusEvent> events) =>
+        new AgentStatusEventSubscriberFactory(
+            dbContextFactory,
+            liveUpdateNotifier,
+            new AgentStatusProjectionMapper())
+            .Create(projectId, events);
 
     private static OperationalContextAgentCompactionOptions CreateCompactionOptions() =>
         new OperationalContextAgentCompactionOptionsFactory(

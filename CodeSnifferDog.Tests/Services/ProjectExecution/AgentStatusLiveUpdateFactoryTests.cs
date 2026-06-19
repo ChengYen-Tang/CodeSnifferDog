@@ -1,4 +1,5 @@
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 
@@ -10,7 +11,7 @@ public sealed class AgentStatusLiveUpdateFactoryTests
     [TestMethod]
     public void CreateUpdates_MapsPersistedRecordsToLiveUpdateDtos()
     {
-        AgentStatusLiveUpdateFactory factory = new();
+        AgentStatusLiveUpdateFactory factory = new(new AgentStatusProjectionMapper());
         Guid projectId = Guid.NewGuid();
         Guid groupId = Guid.NewGuid();
         Guid agentId = Guid.NewGuid();
@@ -66,7 +67,7 @@ public sealed class AgentStatusLiveUpdateFactoryTests
     public void MapAgentStatus_UnsupportedValueThrowsOriginalException()
     {
         InvalidOperationException exception = Assert.ThrowsExactly<InvalidOperationException>(
-            () => AgentStatusLiveUpdateFactory.MapAgentStatus((CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus)999));
+            () => new AgentStatusProjectionMapper().MapAgentStatus((CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus)999));
 
         Assert.AreEqual("Unsupported persisted agent status '999'.", exception.Message);
     }
@@ -75,7 +76,7 @@ public sealed class AgentStatusLiveUpdateFactoryTests
     public void MapTimelineEntryKind_UnsupportedValueThrowsOriginalException()
     {
         InvalidOperationException exception = Assert.ThrowsExactly<InvalidOperationException>(
-            () => AgentStatusLiveUpdateFactory.MapTimelineEntryKind((ProjectAgentTimelineEntryType)999));
+            () => new AgentStatusProjectionMapper().MapTimelineEntryKind((ProjectAgentTimelineEntryType)999));
 
         Assert.AreEqual("Unsupported persisted timeline entry type '999'.", exception.Message);
     }

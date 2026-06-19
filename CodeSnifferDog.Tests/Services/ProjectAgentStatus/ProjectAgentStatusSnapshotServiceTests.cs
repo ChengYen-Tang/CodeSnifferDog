@@ -1,5 +1,6 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
@@ -224,6 +225,7 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
+        services.AddScoped<IAgentStatusProjectionMapper, AgentStatusProjectionMapper>();
         services.AddScoped<IProjectAgentStatusSnapshotService, ProjectAgentStatusSnapshotService>();
         return services.BuildServiceProvider();
     }

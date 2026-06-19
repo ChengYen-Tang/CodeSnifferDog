@@ -170,6 +170,7 @@ public sealed class ProjectAgentStatusLiveBackfillServiceTests
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
+        services.AddScoped<IAgentStatusProjectionMapper, AgentStatusProjectionMapper>();
         services.AddScoped<IProjectAgentStatusLiveBackfillService, ProjectAgentStatusLiveBackfillService>();
         return services.BuildServiceProvider();
     }

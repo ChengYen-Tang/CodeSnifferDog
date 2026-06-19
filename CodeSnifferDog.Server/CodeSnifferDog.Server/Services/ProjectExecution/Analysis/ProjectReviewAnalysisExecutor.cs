@@ -1,11 +1,8 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Server.Data;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 
@@ -14,14 +11,12 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 internal sealed class ProjectReviewAnalysisExecutor(
     IProjectChatClientProvider chatClientProvider,
     IProjectReviewAgentTeamWorkerFactory workerFactory,
-    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-    IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier,
+    IAgentStatusEventSubscriberFactory agentStatusEventSubscriberFactory,
     IOptions<ProjectExecutionOptions> options) : IProjectReviewAnalysisExecutor
 {
     private readonly IProjectChatClientProvider _chatClientProvider = chatClientProvider;
     private readonly IProjectReviewAgentTeamWorkerFactory _workerFactory = workerFactory;
-    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
-    private readonly IProjectAgentStatusLiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
+    private readonly IAgentStatusEventSubscriberFactory _agentStatusEventSubscriberFactory = agentStatusEventSubscriberFactory;
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
 
     public async Task<ReviewAgentTeamAnalysisResult> AnalyzeAsync(
@@ -32,7 +27,7 @@ internal sealed class ProjectReviewAnalysisExecutor(
         IChatClient chatClient = _chatClientProvider.CreateChatClient();
         using AgentStatusEventStream eventStream = new();
         await using ProjectAgentStatusEventSubscriber eventSubscriber =
-            new(context.ProjectId, _dbContextFactory, _projectAgentStatusLiveUpdateNotifier, eventStream.Events);
+            _agentStatusEventSubscriberFactory.Create(context.ProjectId, eventStream.Events);
 
         try
         {

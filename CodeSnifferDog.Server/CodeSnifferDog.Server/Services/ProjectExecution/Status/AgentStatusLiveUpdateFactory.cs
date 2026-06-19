@@ -1,23 +1,20 @@
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
 
-internal sealed class AgentStatusLiveUpdateFactory
+internal sealed class AgentStatusLiveUpdateFactory(IAgentStatusProjectionMapper projectionMapper)
 {
+    private readonly IAgentStatusProjectionMapper _projectionMapper = projectionMapper;
+
     public ProjectAgentLiveUpdateDto CreateGroupUpdate(Guid projectId, ProjectAgentGroupRecord group) =>
         new()
         {
             ProjectId = projectId,
             Kind = ProjectAgentLiveUpdateKind.AgentGroupUpserted,
             OccurredAtUtc = group.CreatedAtUtc,
-            Group = new ProjectAgentGroupLiveDto
-            {
-                GroupId = group.Id,
-                RuntimeKey = group.RuntimeKey,
-                DisplayName = group.DisplayName,
-                CreatedAtUtc = group.CreatedAtUtc,
-            },
+            Group = _projectionMapper.MapGroup(group),
         };
 
     public ProjectAgentLiveUpdateDto CreateAgentUpsertUpdate(Guid projectId, ProjectAgentRecord agent) =>
@@ -26,16 +23,7 @@ internal sealed class AgentStatusLiveUpdateFactory
             ProjectId = projectId,
             Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
             OccurredAtUtc = agent.CreatedAtUtc,
-            Agent = new ProjectAgentLiveDto
-            {
-                AgentId = agent.Id,
-                GroupId = agent.ProjectAgentGroupId,
-                RuntimeKey = agent.RuntimeKey,
-                DisplayName = agent.DisplayName,
-                SystemPrompt = agent.SystemPrompt,
-                Status = MapAgentStatus(agent.Status),
-                CreatedAtUtc = agent.CreatedAtUtc,
-            },
+            Agent = _projectionMapper.MapAgent(agent),
         };
 
     public ProjectAgentLiveUpdateDto CreateAgentStatusChangedUpdate(
@@ -51,7 +39,7 @@ internal sealed class AgentStatusLiveUpdateFactory
             AgentStatus = new ProjectAgentStatusChangedDto
             {
                 AgentId = agentId,
-                Status = MapAgentStatus(status),
+                Status = _projectionMapper.MapAgentStatus(status),
                 OccurredAtUtc = occurredAtUtc,
             },
         };
@@ -64,19 +52,7 @@ internal sealed class AgentStatusLiveUpdateFactory
             ProjectId = projectId,
             Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
             OccurredAtUtc = entry.OccurredAtUtc,
-            TimelineEntry = new ProjectAgentTimelineEntryDto
-            {
-                TimelineEntryId = entry.Id,
-                AgentId = entry.ProjectAgentId,
-                Sequence = entry.Sequence,
-                EntryKind = MapTimelineEntryKind(entry.EntryType),
-                OccurredAtUtc = entry.OccurredAtUtc,
-                Message = entry.Message,
-                ToolCallId = entry.ToolCallId,
-                ToolName = entry.ToolName,
-                ToolArguments = entry.ToolArguments,
-                ToolResult = entry.ToolResult,
-            },
+            TimelineEntry = _projectionMapper.MapTimelineEntry(entry),
         };
 
     public ProjectAgentLiveUpdateDto CreateTimelineEntriesRemovedUpdate(
@@ -94,25 +70,5 @@ internal sealed class AgentStatusLiveUpdateFactory
                 AgentId = agentId,
                 TimelineEntryIds = removedEntryIds,
             },
-        };
-
-    internal static ProjectAgentRunStatus MapAgentStatus(Data.Entities.ProjectAgentStatus status) =>
-        status switch
-        {
-            Data.Entities.ProjectAgentStatus.Waiting => ProjectAgentRunStatus.Waiting,
-            Data.Entities.ProjectAgentStatus.Running => ProjectAgentRunStatus.Running,
-            Data.Entities.ProjectAgentStatus.Completed => ProjectAgentRunStatus.Completed,
-            Data.Entities.ProjectAgentStatus.Degraded => ProjectAgentRunStatus.Degraded,
-            _ => throw new InvalidOperationException($"Unsupported persisted agent status '{status}'."),
-        };
-
-    internal static ProjectAgentTimelineEntryKind MapTimelineEntryKind(ProjectAgentTimelineEntryType entryType) =>
-        entryType switch
-        {
-            ProjectAgentTimelineEntryType.Input => ProjectAgentTimelineEntryKind.Input,
-            ProjectAgentTimelineEntryType.Output => ProjectAgentTimelineEntryKind.Output,
-            ProjectAgentTimelineEntryType.Tool => ProjectAgentTimelineEntryKind.Tool,
-            ProjectAgentTimelineEntryType.Compaction => ProjectAgentTimelineEntryKind.Compaction,
-            _ => throw new InvalidOperationException($"Unsupported persisted timeline entry type '{entryType}'."),
         };
 }

@@ -6,10 +6,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
 
-public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory)
+internal sealed class ProjectAgentStatusLiveBackfillService(
+    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IAgentStatusProjectionMapper projectionMapper)
     : IProjectAgentStatusLiveBackfillService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IAgentStatusProjectionMapper _projectionMapper = projectionMapper;
 
     public async Task<IReadOnlyList<ProjectAgentLiveUpdateDto>> GetBackfillAsync(
         ProjectAgentLiveSubscriptionRequestDto request,
@@ -54,7 +57,7 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
             OccurredAtUtc = DateTimeOffset.UtcNow,
             ProjectStatus = new ProjectExecutionStatusChangedDto
             {
-                Status = MapProjectStatus(projectStatus.Value),
+                Status = _projectionMapper.MapProjectStatus(projectStatus.Value),
             },
         });
 
@@ -63,13 +66,7 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
             ProjectId = request.ProjectId,
             Kind = ProjectAgentLiveUpdateKind.AgentGroupUpserted,
             OccurredAtUtc = group.CreatedAtUtc,
-            Group = new ProjectAgentGroupLiveDto
-            {
-                GroupId = group.Id,
-                RuntimeKey = group.RuntimeKey,
-                DisplayName = group.DisplayName,
-                CreatedAtUtc = group.CreatedAtUtc,
-            },
+            Group = _projectionMapper.MapGroup(group),
         }));
 
         updates.AddRange(agents.Select(agent => new ProjectAgentLiveUpdateDto
@@ -77,16 +74,7 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
             ProjectId = request.ProjectId,
             Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
             OccurredAtUtc = agent.CreatedAtUtc,
-            Agent = new ProjectAgentLiveDto
-            {
-                AgentId = agent.Id,
-                GroupId = agent.ProjectAgentGroupId,
-                RuntimeKey = agent.RuntimeKey,
-                DisplayName = agent.DisplayName,
-                SystemPrompt = agent.SystemPrompt,
-                Status = MapAgentStatus(agent.Status),
-                CreatedAtUtc = agent.CreatedAtUtc,
-            },
+            Agent = _projectionMapper.MapAgent(agent),
         }));
 
         if (request.AgentId is Guid agentId)
@@ -103,50 +91,10 @@ public sealed class ProjectAgentStatusLiveBackfillService(IDbContextFactory<Code
                 ProjectId = request.ProjectId,
                 Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
                 OccurredAtUtc = entry.OccurredAtUtc,
-                TimelineEntry = new ProjectAgentTimelineEntryDto
-                {
-                    TimelineEntryId = entry.Id,
-                    AgentId = entry.ProjectAgentId,
-                    Sequence = entry.Sequence,
-                    EntryKind = MapTimelineEntryKind(entry.EntryType),
-                    OccurredAtUtc = entry.OccurredAtUtc,
-                    Message = entry.Message,
-                    ToolCallId = entry.ToolCallId,
-                    ToolName = entry.ToolName,
-                    ToolArguments = entry.ToolArguments,
-                    ToolResult = entry.ToolResult,
-                },
+                TimelineEntry = _projectionMapper.MapTimelineEntry(entry),
             }));
         }
 
         return updates;
     }
-
-    private static ProjectStatus MapProjectStatus(ProjectProcessingStatus status) => status switch
-    {
-        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
-        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
-        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
-        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
-        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
-        _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
-    };
-
-    private static ProjectAgentRunStatus MapAgentStatus(Data.Entities.ProjectAgentStatus status) => status switch
-    {
-        Data.Entities.ProjectAgentStatus.Waiting => ProjectAgentRunStatus.Waiting,
-        Data.Entities.ProjectAgentStatus.Running => ProjectAgentRunStatus.Running,
-        Data.Entities.ProjectAgentStatus.Completed => ProjectAgentRunStatus.Completed,
-        Data.Entities.ProjectAgentStatus.Degraded => ProjectAgentRunStatus.Degraded,
-        _ => throw new InvalidOperationException($"Unsupported agent status '{status}'."),
-    };
-
-    private static ProjectAgentTimelineEntryKind MapTimelineEntryKind(ProjectAgentTimelineEntryType entryType) => entryType switch
-    {
-        ProjectAgentTimelineEntryType.Input => ProjectAgentTimelineEntryKind.Input,
-        ProjectAgentTimelineEntryType.Output => ProjectAgentTimelineEntryKind.Output,
-        ProjectAgentTimelineEntryType.Tool => ProjectAgentTimelineEntryKind.Tool,
-        ProjectAgentTimelineEntryType.Compaction => ProjectAgentTimelineEntryKind.Compaction,
-        _ => throw new InvalidOperationException($"Unsupported timeline entry type '{entryType}'."),
-    };
 }

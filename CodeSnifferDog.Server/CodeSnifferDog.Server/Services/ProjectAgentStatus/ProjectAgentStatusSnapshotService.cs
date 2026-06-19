@@ -1,15 +1,18 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Shared.AgentStatus;
-using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
 
-public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory)
+internal sealed class ProjectAgentStatusSnapshotService(
+    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IAgentStatusProjectionMapper projectionMapper)
     : IProjectAgentStatusSnapshotService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IAgentStatusProjectionMapper _projectionMapper = projectionMapper;
 
     public async Task<ProjectAgentStatusSnapshotDto?> GetSnapshotAsync(
         Guid projectId,
@@ -62,14 +65,14 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
             .ConfigureAwait(false);
 
         Guid? effectiveSelectedAgentId = ResolveSelectedAgentId(agents, selectedAgentId);
-        List<TimelineEntrySnapshotRow> timelineEntries =
+        List<ProjectAgentTimelineEntryRecord> timelineEntries =
             effectiveSelectedAgentId is Guid selectedHistoryAgentId
                 ? await LoadTimelineEntriesAsync(dbContext, selectedHistoryAgentId, cancellationToken).ConfigureAwait(false)
                 : [];
 
         IReadOnlyList<ProjectAgentTimelineEntryDto> selectedTimelineEntries = timelineEntries
             .OrderBy(entry => entry.Sequence)
-            .Select(MapTimelineEntry)
+            .Select(_projectionMapper.MapTimelineEntry)
             .ToList();
 
         Dictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId =
@@ -93,7 +96,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
         return new ProjectAgentStatusSnapshotDto
         {
             ProjectId = project.ProjectId,
-            ProjectStatus = MapProjectStatus(project.Status),
+            ProjectStatus = _projectionMapper.MapProjectStatus(project.Status),
             SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
             AgentGroups = groups
                 .OrderBy(group => group.CreatedAtUtc)
@@ -130,7 +133,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
                 cancellationToken)
             .ConfigureAwait(false))
             .OrderBy(entry => entry.Sequence)
-            .Select(MapTimelineEntry)
+            .Select(_projectionMapper.MapTimelineEntry)
             .ToList();
 
         return new ProjectAgentHistorySnapshotDto
@@ -154,7 +157,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
             : [],
     };
 
-    private static ProjectAgentSnapshotDto MapAgent(
+    private ProjectAgentSnapshotDto MapAgent(
         AgentSnapshotRow agent,
         IReadOnlyDictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId,
         Guid? selectedAgentId) => new()
@@ -164,7 +167,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
         RuntimeKey = agent.RuntimeKey,
         DisplayName = agent.DisplayName,
         SystemPrompt = agent.SystemPrompt,
-        Status = MapAgentStatus(agent.Status),
+        Status = _projectionMapper.MapAgentStatus(agent.Status),
         CreatedAtUtc = agent.CreatedAtUtc,
         HasLoadedHistory = selectedAgentId == agent.AgentId,
         TimelineEntries = timelineByAgentId.TryGetValue(agent.AgentId, out IReadOnlyList<ProjectAgentTimelineEntryDto>? timeline)
@@ -186,7 +189,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
             .FirstOrDefault();
     }
 
-    private static Task<List<TimelineEntrySnapshotRow>> LoadTimelineEntriesAsync(
+    private static Task<List<ProjectAgentTimelineEntryRecord>> LoadTimelineEntriesAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
         CancellationToken cancellationToken) =>
@@ -194,60 +197,7 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
             .AsNoTracking()
             .Where(entry => entry.ProjectAgentId == agentId)
             .OrderBy(entry => entry.Sequence)
-            .Select(entry => new TimelineEntrySnapshotRow(
-                entry.Id,
-                entry.ProjectAgentId,
-                entry.Sequence,
-                entry.EntryType,
-                entry.OccurredAtUtc,
-                entry.Message,
-                entry.ToolCallId,
-                entry.ToolName,
-                entry.ToolArguments,
-                entry.ToolResult))
             .ToListAsync(cancellationToken);
-
-    private static ProjectAgentTimelineEntryDto MapTimelineEntry(TimelineEntrySnapshotRow entry) => new()
-    {
-        TimelineEntryId = entry.TimelineEntryId,
-        AgentId = entry.AgentId,
-        Sequence = entry.Sequence,
-        EntryKind = MapEntryKind(entry.EntryType),
-        OccurredAtUtc = entry.OccurredAtUtc,
-        Message = entry.Message,
-        ToolCallId = entry.ToolCallId,
-        ToolName = entry.ToolName,
-        ToolArguments = entry.ToolArguments,
-        ToolResult = entry.ToolResult,
-    };
-
-    private static ProjectStatus MapProjectStatus(ProjectProcessingStatus status) => status switch
-    {
-        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
-        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
-        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
-        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
-        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
-        _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
-    };
-
-    private static ProjectAgentRunStatus MapAgentStatus(Data.Entities.ProjectAgentStatus status) => status switch
-    {
-        Data.Entities.ProjectAgentStatus.Waiting => ProjectAgentRunStatus.Waiting,
-        Data.Entities.ProjectAgentStatus.Running => ProjectAgentRunStatus.Running,
-        Data.Entities.ProjectAgentStatus.Completed => ProjectAgentRunStatus.Completed,
-        Data.Entities.ProjectAgentStatus.Degraded => ProjectAgentRunStatus.Degraded,
-        _ => throw new InvalidOperationException($"Unsupported agent status '{status}'."),
-    };
-
-    private static ProjectAgentTimelineEntryKind MapEntryKind(ProjectAgentTimelineEntryType entryType) => entryType switch
-    {
-        ProjectAgentTimelineEntryType.Input => ProjectAgentTimelineEntryKind.Input,
-        ProjectAgentTimelineEntryType.Output => ProjectAgentTimelineEntryKind.Output,
-        ProjectAgentTimelineEntryType.Tool => ProjectAgentTimelineEntryKind.Tool,
-        ProjectAgentTimelineEntryType.Compaction => ProjectAgentTimelineEntryKind.Compaction,
-        _ => throw new InvalidOperationException($"Unsupported timeline entry type '{entryType}'."),
-    };
 
     private sealed record ProjectSnapshotRow(Guid ProjectId, ProjectProcessingStatus Status);
 
@@ -262,15 +212,4 @@ public sealed class ProjectAgentStatusSnapshotService(IDbContextFactory<CodeSnif
         Data.Entities.ProjectAgentStatus Status,
         DateTimeOffset CreatedAtUtc);
 
-    private sealed record TimelineEntrySnapshotRow(
-        Guid TimelineEntryId,
-        Guid AgentId,
-        long Sequence,
-        ProjectAgentTimelineEntryType EntryType,
-        DateTimeOffset OccurredAtUtc,
-        string? Message,
-        string? ToolCallId,
-        string? ToolName,
-        string? ToolArguments,
-        string? ToolResult);
 }

@@ -5,6 +5,7 @@ using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
@@ -26,8 +27,12 @@ public sealed class ProjectReviewAnalysisExecutorTests
     {
         ReviewAgentTeamAnalysisResult expectedResult = CreateAnalysisResult();
         TestWorker worker = new(expectedResult);
-        TestWorkerFactory workerFactory = new(worker);
-        using ServiceProvider services = CreateServices(workerFactory, CreateOptions());
+        TestWorkerFactory workerFactory = new(worker)
+        {
+            PublishAgentCreatedEvent = true,
+        };
+        TestAgentStatusEventSubscriberFactory subscriberFactory = new();
+        using ServiceProvider services = CreateServices(workerFactory, CreateOptions(), subscriberFactory);
         ProjectReviewAnalysisExecutor executor = CreateExecutor(services);
         ProjectAnalysisContext context = CreateContext();
         IReadOnlyList<ProjectExecutionRuleDefinition> rules = CreateRules();
@@ -42,6 +47,8 @@ public sealed class ProjectReviewAnalysisExecutorTests
         Assert.AreEqual(OperationalContextCompactionMode.ContextCollapse, workerFactory.ExecutionOptions.ContextCompactionMode);
         Assert.AreSame(NoOpChatClient.Instance, workerFactory.ChatClient);
         Assert.IsTrue(worker.WasDisposed);
+        Assert.AreEqual(context.ProjectId, subscriberFactory.ProjectIds.Single());
+        Assert.AreEqual(2, subscriberFactory.Handlers.Single().HandledCount);
     }
 
     [TestMethod]
@@ -106,13 +113,13 @@ public sealed class ProjectReviewAnalysisExecutorTests
         new(
             services.GetRequiredService<IProjectChatClientProvider>(),
             services.GetRequiredService<IProjectReviewAgentTeamWorkerFactory>(),
-            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-            services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+            services.GetRequiredService<IAgentStatusEventSubscriberFactory>(),
             services.GetRequiredService<IOptions<ProjectExecutionOptions>>());
 
     private static ServiceProvider CreateServices(
         IProjectReviewAgentTeamWorkerFactory workerFactory,
-        ExecutionOptions executionOptions)
+        ExecutionOptions executionOptions,
+        IAgentStatusEventSubscriberFactory? subscriberFactory = null)
     {
         InMemoryDatabaseRoot databaseRoot = new();
         string databaseName = Guid.NewGuid().ToString("N");
@@ -122,6 +129,13 @@ public sealed class ProjectReviewAnalysisExecutorTests
         services.AddSingleton<IProjectChatClientProvider, ReadyChatClientProvider>();
         services.AddSingleton(workerFactory);
         services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, NoOpProjectAgentStatusLiveUpdateNotifier>();
+        services.AddSingleton<IAgentStatusProjectionMapper, AgentStatusProjectionMapper>();
+        services.AddSingleton<IAgentStatusEventSubscriberFactory>(serviceProvider =>
+            subscriberFactory
+            ?? new AgentStatusEventSubscriberFactory(
+                serviceProvider.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
+                serviceProvider.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+                serviceProvider.GetRequiredService<IAgentStatusProjectionMapper>()));
         services.AddSingleton(Options.Create(new ProjectExecutionOptions
         {
             ExecutionOptions = executionOptions,
@@ -275,6 +289,32 @@ public sealed class ProjectReviewAnalysisExecutorTests
     {
         public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class TestAgentStatusEventSubscriberFactory : IAgentStatusEventSubscriberFactory
+    {
+        public List<Guid> ProjectIds { get; } = [];
+
+        public List<TrackingAgentStatusEventHandler> Handlers { get; } = [];
+
+        public ProjectAgentStatusEventSubscriber Create(Guid projectId, IObservable<AgentStatusEvent> events)
+        {
+            ProjectIds.Add(projectId);
+            TrackingAgentStatusEventHandler handler = new();
+            Handlers.Add(handler);
+            return new ProjectAgentStatusEventSubscriber(handler, events);
+        }
+    }
+
+    private sealed class TrackingAgentStatusEventHandler : IAgentStatusEventHandler
+    {
+        public int HandledCount { get; private set; }
+
+        public Task HandleAsync(AgentStatusEvent agentEvent, CancellationToken cancellationToken)
+        {
+            HandledCount++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class NoOpChatClient : IChatClient

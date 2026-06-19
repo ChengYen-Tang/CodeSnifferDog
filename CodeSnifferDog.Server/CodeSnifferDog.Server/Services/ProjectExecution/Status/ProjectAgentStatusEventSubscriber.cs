@@ -1,7 +1,4 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Server.Data;
-using IProjectAgentStatusLiveUpdateNotifier = CodeSnifferDog.Server.Services.ProjectAgentStatus.IProjectAgentStatusLiveUpdateNotifier;
-using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
 
@@ -12,18 +9,6 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
     private readonly object _sync = new();
     private Task _processingTail = Task.CompletedTask;
     private bool _disposed;
-
-    public ProjectAgentStatusEventSubscriber(
-        Guid projectId,
-        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-        IProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier,
-        IObservable<AgentStatusEvent> events)
-        : this(
-            new AgentStatusEventHandler(
-                CreatePersistenceService(projectId, dbContextFactory, liveUpdateNotifier)),
-            events)
-    {
-    }
 
     internal ProjectAgentStatusEventSubscriber(
         IAgentStatusEventHandler eventHandler,
@@ -62,20 +47,5 @@ internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
                     TaskScheduler.Default)
                 .Unwrap();
         }
-    }
-
-    private static AgentStatusPersistenceService CreatePersistenceService(
-        Guid projectId,
-        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-        IProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier)
-    {
-        ArgumentNullException.ThrowIfNull(dbContextFactory);
-        ArgumentNullException.ThrowIfNull(liveUpdateNotifier);
-
-        return new AgentStatusPersistenceService(
-            projectId,
-            dbContextFactory,
-            liveUpdateNotifier,
-            new AgentStatusLiveUpdateFactory());
     }
 }
