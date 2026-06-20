@@ -2,10 +2,10 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Shared.AgentStatus;
-using IProjectAgentStatusLiveUpdateNotifier = CodeSnifferDog.Server.Services.ProjectAgentStatus.IProjectAgentStatusLiveUpdateNotifier;
+using IProjectAgentStatusLiveUpdateNotifier = CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications.IProjectAgentStatusLiveUpdateNotifier;
 using Microsoft.EntityFrameworkCore;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
 internal sealed class AgentStatusPersistenceService(
     Guid projectId,

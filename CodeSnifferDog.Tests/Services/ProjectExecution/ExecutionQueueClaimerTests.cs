@@ -1,6 +1,8 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue;

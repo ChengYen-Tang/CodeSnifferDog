@@ -1,10 +1,11 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 
 internal sealed class ProjectAgentStatusLiveBackfillService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,

@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 
 internal sealed class ProjectAgentStatusEventSubscriber : IAsyncDisposable
 {

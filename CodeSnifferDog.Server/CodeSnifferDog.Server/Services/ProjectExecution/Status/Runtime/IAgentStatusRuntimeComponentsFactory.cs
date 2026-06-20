@@ -1,4 +1,4 @@
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 
 internal interface IAgentStatusRuntimeComponentsFactory
 {

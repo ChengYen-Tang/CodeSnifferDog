@@ -2,7 +2,7 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
 internal interface IAgentTimelinePersistenceService
 {

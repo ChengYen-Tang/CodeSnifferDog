@@ -3,7 +3,7 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
 internal sealed class AgentTimelinePersistenceService : IAgentTimelinePersistenceService
 {

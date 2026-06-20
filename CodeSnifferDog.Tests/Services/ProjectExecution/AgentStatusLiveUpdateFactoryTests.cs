@@ -1,6 +1,9 @@
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
-using CodeSnifferDog.Server.Services.ProjectExecution.Status;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;

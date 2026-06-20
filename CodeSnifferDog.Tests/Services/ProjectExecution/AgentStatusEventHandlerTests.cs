@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectExecution.Status;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 

@@ -1,6 +1,6 @@
 using CodeSnifferDog.Server.Shared.AgentStatus;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 
 public interface IProjectAgentStatusLiveUpdateNotifier
 {

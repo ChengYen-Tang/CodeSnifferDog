@@ -1,4 +1,4 @@
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.AspNetCore.SignalR;

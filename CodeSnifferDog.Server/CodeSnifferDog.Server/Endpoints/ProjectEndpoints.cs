@@ -1,5 +1,5 @@
 using CodeSnifferDog.Server.Services.ProjectIntake;
-using CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;

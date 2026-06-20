@@ -3,7 +3,7 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using PersistedAgentStatus = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 
 internal interface IAgentStatusProjectionMapper
 {

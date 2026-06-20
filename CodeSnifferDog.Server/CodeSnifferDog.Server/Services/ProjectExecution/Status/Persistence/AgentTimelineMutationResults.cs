@@ -1,6 +1,6 @@
 using CodeSnifferDog.Server.Data.Entities;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
 internal sealed record AgentTimelineEntryMutationResult(ProjectAgentTimelineEntryRecord Entry);
 

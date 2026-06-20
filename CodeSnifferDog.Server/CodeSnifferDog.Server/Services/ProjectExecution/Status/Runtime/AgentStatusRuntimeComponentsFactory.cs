@@ -1,9 +1,12 @@
 using CodeSnifferDog.Server.Data;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
-using IProjectAgentStatusLiveUpdateNotifier = CodeSnifferDog.Server.Services.ProjectAgentStatus.IProjectAgentStatusLiveUpdateNotifier;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
+using IProjectAgentStatusLiveUpdateNotifier = CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications.IProjectAgentStatusLiveUpdateNotifier;
 using Microsoft.EntityFrameworkCore;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 
 internal sealed class AgentStatusRuntimeComponentsFactory(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,

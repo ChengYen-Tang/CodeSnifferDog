@@ -1,14 +1,15 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
-using CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CodeSnifferDog.Tests.Services.ProjectAgentSnapshots;
+namespace CodeSnifferDog.Tests.Services.ProjectAgentStatus;
 
 [TestClass]
 public sealed class ProjectAgentStatusSnapshotServiceTests

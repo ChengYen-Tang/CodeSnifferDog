@@ -1,6 +1,6 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Status;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 
 internal interface IAgentStatusEventSubscriberFactory
 {

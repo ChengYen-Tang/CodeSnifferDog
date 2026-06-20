@@ -1,10 +1,12 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 
 internal sealed class ProjectAgentStatusSnapshotService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,

@@ -1,6 +1,6 @@
 using CodeSnifferDog.Server.Shared.AgentStatus;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentSnapshots;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 
 public interface IProjectAgentStatusSnapshotService
 {

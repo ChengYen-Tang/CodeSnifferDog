@@ -1,4 +1,4 @@
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 
 internal enum AgentStatusProjectionExceptionStyle
 {

@@ -1,7 +1,7 @@
 using CodeSnifferDog.Server.Data.Entities;
 using PersistedAgentStatus = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 
 internal sealed record AgentStatusGroupProjection(
     Guid GroupId,

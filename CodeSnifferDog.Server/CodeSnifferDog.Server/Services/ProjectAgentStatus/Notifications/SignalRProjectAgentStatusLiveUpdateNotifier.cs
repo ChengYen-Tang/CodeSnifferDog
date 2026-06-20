@@ -3,7 +3,7 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.AspNetCore.SignalR;
 
-namespace CodeSnifferDog.Server.Services.ProjectAgentStatus;
+namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 
 public sealed class SignalRProjectAgentStatusLiveUpdateNotifier(IHubContext<ProjectUpdatesHub> hubContext) : IProjectAgentStatusLiveUpdateNotifier
 {

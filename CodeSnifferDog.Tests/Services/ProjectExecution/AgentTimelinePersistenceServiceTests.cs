@@ -1,7 +1,8 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectExecution.Status;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
+using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 using Microsoft.EntityFrameworkCore;
 using PersistedAgentStatus = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus;
 
