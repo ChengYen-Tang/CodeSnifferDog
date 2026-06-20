@@ -11,12 +11,14 @@ internal sealed class AgentStatusPersistenceService(
     Guid projectId,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier,
-    AgentStatusLiveUpdateFactory liveUpdateFactory) : IAgentStatusPersistenceService
+    AgentStatusLiveUpdateFactory liveUpdateFactory,
+    IAgentTimelinePersistenceService timelinePersistenceService) : IAgentStatusPersistenceService
 {
     private readonly Guid _projectId = projectId;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectAgentStatusLiveUpdateNotifier _liveUpdateNotifier = liveUpdateNotifier;
     private readonly AgentStatusLiveUpdateFactory _liveUpdateFactory = liveUpdateFactory;
+    private readonly IAgentTimelinePersistenceService _timelinePersistenceService = timelinePersistenceService;
 
     public async Task UpsertGroupAsync(AgentGroupCreatedEvent agentEvent, CancellationToken cancellationToken)
     {
@@ -115,22 +117,23 @@ internal sealed class AgentStatusPersistenceService(
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
         ProjectAgentRecord agent = await GetAgentAsync(dbContext, agentEvent.GroupKey, agentEvent.AgentKey, cancellationToken).ConfigureAwait(false);
-        List<ProjectAgentTimelineEntryRecord> entries = await dbContext.ProjectAgentTimelineEntries
-            .Where(entry =>
-                entry.ProjectAgentId == agent.Id &&
-                entry.EntryType != ProjectAgentTimelineEntryType.Input &&
-                entry.OccurredAtUtc >= agentEvent.ClearAfterUtc)
-            .OrderBy(entry => entry.Sequence)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        AgentTimelineRemovalMutationResult? result = await _timelinePersistenceService.RemoveTranscriptEntriesAsync(
+            dbContext,
+            agent.Id,
+            agentEvent,
+            cancellationToken).ConfigureAwait(false);
 
-        if (entries.Count == 0)
+        if (result is null)
             return;
 
-        Guid[] removedEntryIds = [.. entries.Select(static entry => entry.Id)];
-        dbContext.ProjectAgentTimelineEntries.RemoveRange(entries);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        await NotifyAsync(_liveUpdateFactory.CreateTimelineEntriesRemovedUpdate(_projectId, agent.Id, removedEntryIds, agentEvent.OccurredAtUtc), cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(
+            _liveUpdateFactory.CreateTimelineEntriesRemovedUpdate(
+                _projectId,
+                result.AgentId,
+                result.RemovedEntryIds,
+                result.OccurredAtUtc),
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task AppendToolCallStartedEntryAsync(ToolCallStartedEvent agentEvent, CancellationToken cancellationToken)
@@ -138,18 +141,14 @@ internal sealed class AgentStatusPersistenceService(
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
         ProjectAgentRecord agent = await GetAgentAsync(dbContext, agentEvent.GroupKey, agentEvent.AgentKey, cancellationToken).ConfigureAwait(false);
-        ProjectAgentTimelineEntryRecord entry = await GetOrCreateToolTimelineEntryAsync(
+        AgentTimelineEntryMutationResult result = await _timelinePersistenceService.AppendToolCallStartedEntryAsync(
             dbContext,
             agent.Id,
-            agentEvent.ToolCallId,
-            agentEvent.OccurredAtUtc,
+            agentEvent,
             cancellationToken).ConfigureAwait(false);
 
-        entry.ToolName = agentEvent.ToolName;
-        entry.ToolArguments = agentEvent.Arguments;
-
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, entry), cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, result.Entry), cancellationToken).ConfigureAwait(false);
     }
 
     public async Task CompleteToolCallEntryAsync(ToolCallCompletedEvent agentEvent, CancellationToken cancellationToken)
@@ -157,16 +156,14 @@ internal sealed class AgentStatusPersistenceService(
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
         ProjectAgentRecord agent = await GetAgentAsync(dbContext, agentEvent.GroupKey, agentEvent.AgentKey, cancellationToken).ConfigureAwait(false);
-        ProjectAgentTimelineEntryRecord entry = await GetOrCreateToolTimelineEntryAsync(
+        AgentTimelineEntryMutationResult result = await _timelinePersistenceService.CompleteToolCallEntryAsync(
             dbContext,
             agent.Id,
-            agentEvent.ToolCallId,
-            agentEvent.OccurredAtUtc,
+            agentEvent,
             cancellationToken).ConfigureAwait(false);
 
-        entry.ToolResult = agentEvent.Result;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, entry), cancellationToken).ConfigureAwait(false);
+        await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, result.Entry), cancellationToken).ConfigureAwait(false);
     }
 
     public async Task AppendTimelineEntryAsync(
@@ -180,63 +177,16 @@ internal sealed class AgentStatusPersistenceService(
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
         ProjectAgentRecord agent = await GetAgentAsync(dbContext, groupKey, agentKey, cancellationToken).ConfigureAwait(false);
-        long nextSequence = (await dbContext.ProjectAgentTimelineEntries
-            .Where(entry => entry.ProjectAgentId == agent.Id)
-            .MaxAsync(entry => (long?)entry.Sequence, cancellationToken)
-            .ConfigureAwait(false) ?? 0) + 1;
-
-        ProjectAgentTimelineEntryRecord entry = new()
-        {
-            Id = Guid.NewGuid(),
-            ProjectAgentId = agent.Id,
-            Sequence = nextSequence,
-            EntryType = entryType,
-            Message = message,
-            OccurredAtUtc = occurredAtUtc,
-        };
-
-        dbContext.ProjectAgentTimelineEntries.Add(entry);
+        AgentTimelineEntryMutationResult result = await _timelinePersistenceService.AppendTimelineEntryAsync(
+            dbContext,
+            agent.Id,
+            entryType,
+            message,
+            occurredAtUtc,
+            cancellationToken).ConfigureAwait(false);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, entry), cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<ProjectAgentTimelineEntryRecord> GetOrCreateToolTimelineEntryAsync(
-        CodeSnifferDogServerDbContext dbContext,
-        Guid agentId,
-        string toolCallId,
-        DateTimeOffset occurredAtUtc,
-        CancellationToken cancellationToken)
-    {
-        ProjectAgentTimelineEntryRecord? existingEntry = await dbContext.ProjectAgentTimelineEntries
-            .SingleOrDefaultAsync(
-                candidate =>
-                    candidate.ProjectAgentId == agentId &&
-                    candidate.EntryType == ProjectAgentTimelineEntryType.Tool &&
-                    candidate.ToolCallId == toolCallId,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        if (existingEntry is not null)
-            return existingEntry;
-
-        long nextSequence = (await dbContext.ProjectAgentTimelineEntries
-            .Where(entry => entry.ProjectAgentId == agentId)
-            .MaxAsync(entry => (long?)entry.Sequence, cancellationToken)
-            .ConfigureAwait(false) ?? 0) + 1;
-
-        ProjectAgentTimelineEntryRecord entry = new()
-        {
-            Id = Guid.NewGuid(),
-            ProjectAgentId = agentId,
-            Sequence = nextSequence,
-            EntryType = ProjectAgentTimelineEntryType.Tool,
-            ToolCallId = toolCallId,
-            OccurredAtUtc = occurredAtUtc,
-        };
-
-        dbContext.ProjectAgentTimelineEntries.Add(entry);
-        return entry;
+        await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, result.Entry), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<ProjectAgentRecord> GetAgentAsync(

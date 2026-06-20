@@ -25,10 +25,11 @@ public sealed class AgentStatusRuntimeFactoryTests
         using ServiceProvider services = CreateServices(liveUpdateNotifier);
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
-        AgentStatusRuntimeFactory factory = new(
+        AgentStatusRuntimeFactory factory = new(new AgentStatusRuntimeComponentsFactory(
             dbContextFactory,
             liveUpdateNotifier,
-            new AgentStatusProjectionMapper());
+            new AgentStatusProjectionMapper(),
+            new AgentTimelinePersistenceService()));
         AgentStatusRuntime runtime = factory.Create(projectId);
 
         await runtime.EventHandler.HandleAsync(
@@ -72,10 +73,11 @@ public sealed class AgentStatusRuntimeFactoryTests
         CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
         TrackingProjectionMapper projectionMapper = new();
         using ServiceProvider services = CreateServices(liveUpdateNotifier);
-        AgentStatusRuntimeFactory factory = new(
+        AgentStatusRuntimeFactory factory = new(new AgentStatusRuntimeComponentsFactory(
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
             liveUpdateNotifier,
-            projectionMapper);
+            projectionMapper,
+            new AgentTimelinePersistenceService()));
         AgentStatusRuntime runtime = factory.Create(projectId);
 
         await runtime.EventHandler.HandleAsync(
@@ -100,6 +102,19 @@ public sealed class AgentStatusRuntimeFactoryTests
 
         Assert.AreEqual(1, projectionMapper.MapGroupCallCount);
         Assert.AreEqual(1, projectionMapper.MapAgentCallCount);
+    }
+
+    [TestMethod]
+    public void Create_UsesRuntimeComponentsFactory()
+    {
+        Guid projectId = Guid.NewGuid();
+        CapturingRuntimeComponentsFactory componentsFactory = new();
+        AgentStatusRuntimeFactory factory = new(componentsFactory);
+
+        AgentStatusRuntime runtime = factory.Create(projectId);
+
+        Assert.AreEqual(projectId, componentsFactory.ProjectIds.Single());
+        Assert.AreSame(componentsFactory.EventHandler, runtime.EventHandler);
     }
 
     private static ServiceProvider CreateServices(
@@ -164,5 +179,24 @@ public sealed class AgentStatusRuntimeFactoryTests
             AgentStatusTimelineEntryProjection entry,
             AgentStatusProjectionExceptionStyle exceptionStyle = AgentStatusProjectionExceptionStyle.Persisted) =>
             _inner.MapTimelineEntry(entry, exceptionStyle);
+    }
+
+    private sealed class CapturingRuntimeComponentsFactory : IAgentStatusRuntimeComponentsFactory
+    {
+        public TestAgentStatusEventHandler EventHandler { get; } = new();
+
+        public List<Guid> ProjectIds { get; } = [];
+
+        public AgentStatusRuntimeComponents Create(Guid projectId)
+        {
+            ProjectIds.Add(projectId);
+            return new AgentStatusRuntimeComponents(EventHandler);
+        }
+    }
+
+    private sealed class TestAgentStatusEventHandler : IAgentStatusEventHandler
+    {
+        public Task HandleAsync(AgentStatusEvent agentEvent, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 }

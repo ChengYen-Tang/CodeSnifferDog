@@ -27,36 +27,3 @@ internal interface IAgentStatusProjectionMapper
         AgentStatusTimelineEntryProjection entry,
         AgentStatusProjectionExceptionStyle exceptionStyle = AgentStatusProjectionExceptionStyle.Persisted);
 }
-
-internal enum AgentStatusProjectionExceptionStyle
-{
-    Persisted,
-    Snapshot,
-}
-
-internal sealed record AgentStatusGroupProjection(
-    Guid GroupId,
-    string RuntimeKey,
-    string DisplayName,
-    DateTimeOffset CreatedAtUtc);
-
-internal sealed record AgentStatusAgentProjection(
-    Guid AgentId,
-    Guid GroupId,
-    string RuntimeKey,
-    string DisplayName,
-    string SystemPrompt,
-    PersistedAgentStatus Status,
-    DateTimeOffset CreatedAtUtc);
-
-internal sealed record AgentStatusTimelineEntryProjection(
-    Guid TimelineEntryId,
-    Guid AgentId,
-    long Sequence,
-    ProjectAgentTimelineEntryType EntryType,
-    DateTimeOffset OccurredAtUtc,
-    string? Message,
-    string? ToolCallId,
-    string? ToolName,
-    string? ToolArguments,
-    string? ToolResult);

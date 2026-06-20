@@ -134,9 +134,11 @@ public sealed class ProjectReviewAnalysisExecutorTests
             subscriberFactory
             ?? new AgentStatusEventSubscriberFactory(
                 new AgentStatusRuntimeFactory(
-                    serviceProvider.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-                    serviceProvider.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
-                    serviceProvider.GetRequiredService<IAgentStatusProjectionMapper>())));
+                    new AgentStatusRuntimeComponentsFactory(
+                        serviceProvider.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
+                        serviceProvider.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+                        serviceProvider.GetRequiredService<IAgentStatusProjectionMapper>(),
+                        new AgentTimelinePersistenceService()))));
         services.AddSingleton(Options.Create(new ProjectExecutionOptions
         {
             ExecutionOptions = executionOptions,
