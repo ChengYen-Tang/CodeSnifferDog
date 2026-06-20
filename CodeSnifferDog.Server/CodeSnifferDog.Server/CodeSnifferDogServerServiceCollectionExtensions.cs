@@ -28,6 +28,21 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         IConfiguration configuration,
         Action<DbContextOptionsBuilder>? configureDbContext = null)
     {
+        services
+            .AddDataServices(configuration, configureDbContext)
+            .AddProjectExecutionInfrastructure()
+            .AddProjectReviewPipeline()
+            .AddAgentStatusServices()
+            .AddProjectSurfaceServices();
+
+        return services;
+    }
+
+    private static IServiceCollection AddDataServices(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        Action<DbContextOptionsBuilder>? configureDbContext)
+    {
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
         {
             if (configureDbContext is not null)
@@ -52,6 +67,11 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
                         .GetSection(nameof(OpenAICompatibleInferenceProviderOptions.ExtraBody)));
             });
 
+        return services;
+    }
+
+    private static IServiceCollection AddProjectExecutionInfrastructure(this IServiceCollection services)
+    {
         services.AddSingleton<ProjectTemporaryStoragePaths>();
         services.AddSingleton<IProjectExecutionLeaseRegistry, ProjectExecutionLeaseRegistry>();
         services.AddSingleton<IProjectExecutionQueueLock, ProjectExecutionQueueLock>();
@@ -63,7 +83,13 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         services.AddSingleton<IExecutionQueueClaimer, ExecutionQueueClaimer>();
         services.AddSingleton<IClaimExecutor, ClaimExecutor>();
         services.AddSingleton<IInterruptedProjectRecoveryService, InterruptedProjectRecoveryService>();
+        services.AddHostedService<ProjectExecutionHostedService>();
 
+        return services;
+    }
+
+    private static IServiceCollection AddProjectReviewPipeline(this IServiceCollection services)
+    {
         services.AddScoped<ProjectReviewAgentCompactionOptionsFactory>();
         services.AddScoped<IScanRunnerFactory, ScanRunnerFactory>();
         services.AddScoped<IProjectPlanRunnerFactory, ProjectPlanRunnerFactory>();
@@ -73,7 +99,15 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         services.AddScoped<IProjectReviewWorkflowRunnerFactory, ProjectReviewWorkflowRunnerFactory>();
         services.AddScoped<IProjectReviewAgentTeamDependenciesFactory, ProjectReviewAgentTeamDependenciesFactory>();
         services.AddScoped<IProjectReviewAgentTeamWorkerFactory, ProjectReviewAgentTeamWorkerFactory>();
+        services.AddScoped<IProjectReviewAnalysisExecutor, ProjectReviewAnalysisExecutor>();
+        services.AddScoped<IProjectAnalysisCompletionService, ProjectAnalysisCompletionService>();
+        services.AddScoped<IProjectAnalysisRunner, ProjectAnalysisRunner>();
 
+        return services;
+    }
+
+    private static IServiceCollection AddAgentStatusServices(this IServiceCollection services)
+    {
         services.AddScoped<IAgentTimelinePersistenceService, AgentTimelinePersistenceService>();
         services.AddScoped<IAgentStatusRuntimeComponentsFactory, AgentStatusRuntimeComponentsFactory>();
         services.AddScoped<IAgentStatusRuntimeFactory, AgentStatusRuntimeFactory>();
@@ -81,10 +115,13 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         services.AddScoped<IAgentStatusProjectionMapper, AgentStatusProjectionMapper>();
         services.AddScoped<IProjectAgentStatusSnapshotService, ProjectAgentStatusSnapshotService>();
         services.AddScoped<IProjectAgentStatusLiveBackfillService, ProjectAgentStatusLiveBackfillService>();
+        services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, SignalRProjectAgentStatusLiveUpdateNotifier>();
 
-        services.AddScoped<IProjectReviewAnalysisExecutor, ProjectReviewAnalysisExecutor>();
-        services.AddScoped<IProjectAnalysisCompletionService, ProjectAnalysisCompletionService>();
-        services.AddScoped<IProjectAnalysisRunner, ProjectAnalysisRunner>();
+        return services;
+    }
+
+    private static IServiceCollection AddProjectSurfaceServices(this IServiceCollection services)
+    {
         services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, NoOpProjectAgentStatusLiveSubscriptionClient>();
         services.AddScoped<IProjectSidebarController, ServerPrerenderProjectSidebarController>();
         services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
@@ -93,8 +130,6 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         services.AddScoped<IProjectSidebarSnapshotService, ProjectSidebarSnapshotService>();
 
         services.AddSingleton<IProjectUpdatesNotifier, SignalRProjectUpdatesNotifier>();
-        services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, SignalRProjectAgentStatusLiveUpdateNotifier>();
-        services.AddHostedService<ProjectExecutionHostedService>();
 
         return services;
     }
