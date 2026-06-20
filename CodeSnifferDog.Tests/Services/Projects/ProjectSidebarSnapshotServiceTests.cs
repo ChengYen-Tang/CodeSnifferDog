@@ -1,6 +1,8 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -18,7 +20,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory);
+        ProjectSidebarSnapshotService service = new(dbContextFactory, new ProjectProjectionMapper());
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(
             Guid.Parse("70000000-0000-0000-0000-000000000304"),
@@ -80,7 +82,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory);
+        ProjectSidebarSnapshotService service = new(dbContextFactory, new ProjectProjectionMapper());
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(null, TestContext.CancellationToken);
 
@@ -93,13 +95,39 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory);
+        ProjectSidebarSnapshotService service = new(dbContextFactory, new ProjectProjectionMapper());
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(
             Guid.Parse("79999999-0000-0000-0000-000000000399"),
             TestContext.CancellationToken);
 
         Assert.AreEqual(Guid.Parse("70000000-0000-0000-0000-000000000301"), snapshot.SelectedProjectId);
+    }
+
+    [TestMethod]
+    public async Task GetSnapshotAsync_UsesProjectionMapperForSidebarProjects()
+    {
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
+        Guid projectId = Guid.NewGuid();
+        await using (CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
+        {
+            dbContext.Projects.Add(CreateProject(
+                projectId,
+                "reviewing.zip",
+                ProjectProcessingStatus.Reviewing,
+                createdAtUtc: new DateTimeOffset(2026, 5, 15, 8, 0, 0, TimeSpan.Zero),
+                queueTimestampUtc: new DateTimeOffset(2026, 5, 15, 8, 10, 0, TimeSpan.Zero)));
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        TrackingProjectProjectionMapper mapper = new();
+        ProjectSidebarSnapshotService service = new(dbContextFactory, mapper);
+
+        ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(null, TestContext.CancellationToken);
+
+        Assert.IsTrue(mapper.MapStatusCallCount > 0);
+        Assert.AreEqual(1, mapper.MapSidebarProjectCallCount);
+        Assert.AreEqual(projectId, snapshot.Groups.Single(group => group.GroupKey == "reviewing").Projects.Single().ProjectId);
     }
 
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
@@ -187,4 +215,29 @@ public sealed class ProjectSidebarSnapshotServiceTests
             QueueTimestampUtc = queueTimestampUtc,
             FinishedAtUtc = finishedAtUtc,
         };
+
+    private sealed class TrackingProjectProjectionMapper : IProjectProjectionMapper
+    {
+        private readonly ProjectProjectionMapper _inner = new();
+
+        public int MapStatusCallCount { get; private set; }
+
+        public int MapSidebarProjectCallCount { get; private set; }
+
+        public ProjectStatus MapStatus(ProjectProcessingStatus status)
+        {
+            MapStatusCallCount++;
+            return _inner.MapStatus(status);
+        }
+
+        public ProjectSummaryDto MapSummary(ProjectRecord project) => _inner.MapSummary(project);
+
+        public ProjectListItemDto MapListItem(ProjectRecord project) => _inner.MapListItem(project);
+
+        public ProjectSidebarProjectDto MapSidebarProject(ProjectSidebarProjectProjection project, int sortOrder)
+        {
+            MapSidebarProjectCallCount++;
+            return _inner.MapSidebarProject(project, sortOrder);
+        }
+    }
 }

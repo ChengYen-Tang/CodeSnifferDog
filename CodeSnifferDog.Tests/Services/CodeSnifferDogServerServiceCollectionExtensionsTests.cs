@@ -17,6 +17,12 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
+using CodeSnifferDog.Server.Services.ProjectIntake;
+using CodeSnifferDog.Server.Services.ProjectIntake.Deletion;
+using CodeSnifferDog.Server.Services.ProjectIntake.Queue;
+using CodeSnifferDog.Server.Services.ProjectIntake.Upload;
+using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -134,6 +140,27 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
             services.GetRequiredService<IExecutionArtifactStore>());
         Assert.IsInstanceOfType<InterruptedProjectRecoveryService>(
             services.GetRequiredService<IInterruptedProjectRecoveryService>());
+    }
+
+    [TestMethod]
+    public void RegistersProjectSurfaceServices()
+    {
+        using ServiceProvider serviceProvider = CreateServiceProvider();
+        using IServiceScope scope = serviceProvider.CreateScope();
+        IServiceProvider services = scope.ServiceProvider;
+
+        Assert.IsInstanceOfType<ProjectProjectionMapper>(
+            services.GetRequiredService<IProjectProjectionMapper>());
+        Assert.IsInstanceOfType<ProjectUploadService>(
+            services.GetRequiredService<IProjectUploadService>());
+        Assert.IsInstanceOfType<ProjectQueueService>(
+            services.GetRequiredService<IProjectQueueService>());
+        Assert.IsInstanceOfType<ProjectDeletionService>(
+            services.GetRequiredService<IProjectDeletionService>());
+        Assert.IsInstanceOfType<ProjectIntakeService>(
+            services.GetRequiredService<IProjectIntakeService>());
+        Assert.IsInstanceOfType<ProjectSidebarSnapshotService>(
+            services.GetRequiredService<IProjectSidebarSnapshotService>());
     }
 
     [TestMethod]

@@ -15,9 +15,13 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
+using CodeSnifferDog.Server.Services.ProjectIntake.Deletion;
+using CodeSnifferDog.Server.Services.ProjectIntake.Queue;
+using CodeSnifferDog.Server.Services.ProjectIntake.Upload;
 using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Services.ProjectStorage;
 using Microsoft.EntityFrameworkCore;
 
@@ -126,6 +130,10 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
     {
         services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, NoOpProjectAgentStatusLiveSubscriptionClient>();
         services.AddScoped<IProjectSidebarController, ServerPrerenderProjectSidebarController>();
+        services.AddScoped<IProjectProjectionMapper, ProjectProjectionMapper>();
+        services.AddScoped<IProjectUploadService, ProjectUploadService>();
+        services.AddScoped<IProjectQueueService, ProjectQueueService>();
+        services.AddScoped<IProjectDeletionService, ProjectDeletionService>();
         services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
         services.AddScoped<IProjectReportService, ProjectReportService>();
         services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();
