@@ -22,6 +22,7 @@ using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Services.ProjectReports.Export;
 using CodeSnifferDog.Server.Services.ProjectReports.Projection;
+using CodeSnifferDog.Server.Services.ProjectReports.Queries;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Services.ProjectStorage;
@@ -138,6 +139,7 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         services.AddScoped<IProjectDeletionService, ProjectDeletionService>();
         services.AddScoped<IProjectIntakeService, ProjectIntakeService>();
         services.AddScoped<IProjectReportProjectionMapper, ProjectReportProjectionMapper>();
+        services.AddScoped<IProjectReportQueryService, ProjectReportQueryService>();
         services.AddScoped<IProjectReportExportService, ProjectReportExportService>();
         services.AddScoped<IProjectReportService, ProjectReportService>();
         services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();

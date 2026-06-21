@@ -4,6 +4,7 @@ using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Services.ProjectReports.Projection;
+using CodeSnifferDog.Server.Services.ProjectReports.Queries;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -139,6 +140,7 @@ public sealed class ProjectAnalysisCompletionServiceTests
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
         services.AddScoped<IProjectReportProjectionMapper, ProjectReportProjectionMapper>();
+        services.AddScoped<IProjectReportQueryService, ProjectReportQueryService>();
         services.AddScoped<IProjectReportService, ProjectReportService>();
         return services.BuildServiceProvider();
     }

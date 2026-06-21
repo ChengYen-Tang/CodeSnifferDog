@@ -1,6 +1,7 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectReports.Projection;
+using CodeSnifferDog.Server.Services.ProjectReports.Queries;
 using CodeSnifferDog.Server.Shared.Reports;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
@@ -10,9 +11,11 @@ namespace CodeSnifferDog.Server.Services.ProjectReports;
 
 internal sealed class ProjectReportService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IProjectReportQueryService queryService,
     IProjectReportProjectionMapper projectionMapper) : IProjectReportService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IProjectReportQueryService _queryService = queryService;
     private readonly IProjectReportProjectionMapper _projectionMapper = projectionMapper;
 
     public async Task ReplaceProjectReportsAsync(
@@ -59,44 +62,16 @@ internal sealed class ProjectReportService(
 
     public async Task<ProjectReportBundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
-        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-
-        string? originalFileName = await dbContext.Projects
-            .AsNoTracking()
-            .Where(project => project.Id == projectId)
-            .Select(project => project.OriginalFileName)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (originalFileName is null)
-            return null;
-
-        ProjectReportProjectProjection project = new(
-            originalFileName,
-            await LoadReportProjectionsAsync(dbContext, projectId, cancellationToken));
-
-        return _projectionMapper.MapBundle(SortReports(project));
+        ProjectReportProjectProjection? project = await _queryService.GetProjectReportsAsync(projectId, cancellationToken);
+        return project is null ? null : _projectionMapper.MapBundle(project);
     }
 
     public async Task<ProjectReportListDto?> GetProjectReportListAsync(
         Guid projectId,
         CancellationToken cancellationToken = default)
     {
-        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-
-        string? originalFileName = await dbContext.Projects
-            .AsNoTracking()
-            .Where(project => project.Id == projectId)
-            .Select(project => project.OriginalFileName)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (originalFileName is null)
-            return null;
-
-        ProjectReportProjectProjection project = new(
-            originalFileName,
-            await LoadReportProjectionsAsync(dbContext, projectId, cancellationToken));
-
-        return _projectionMapper.MapList(SortReports(project));
+        ProjectReportProjectProjection? project = await _queryService.GetProjectReportsAsync(projectId, cancellationToken);
+        return project is null ? null : _projectionMapper.MapList(project);
     }
 
     public async Task<ProjectReportContentDto?> GetProjectReportAsync(
@@ -104,40 +79,9 @@ internal sealed class ProjectReportService(
         Guid reportId,
         CancellationToken cancellationToken = default)
     {
-        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-
-        ProjectRuleReportProjection? report = await dbContext.ProjectRuleReports
-            .AsNoTracking()
-            .Where(item => item.ProjectId == projectId && item.Id == reportId)
-            .Select(item => new ProjectRuleReportProjection(
-                item.Id,
-                item.RuleName,
-                item.MarkdownContent))
-            .SingleOrDefaultAsync(cancellationToken);
-
+        ProjectRuleReportProjection? report = await _queryService.GetProjectReportAsync(projectId, reportId, cancellationToken);
         return report is null ? null : _projectionMapper.MapContent(report);
     }
-
-    private static ProjectReportProjectProjection SortReports(ProjectReportProjectProjection project) =>
-        project with
-        {
-            Reports = project.Reports
-                .OrderBy(report => report.RuleName, StringComparer.OrdinalIgnoreCase)
-                .ToList(),
-        };
-
-    private static async Task<List<ProjectRuleReportProjection>> LoadReportProjectionsAsync(
-        CodeSnifferDogServerDbContext dbContext,
-        Guid projectId,
-        CancellationToken cancellationToken) =>
-        await dbContext.ProjectRuleReports
-            .AsNoTracking()
-            .Where(report => report.ProjectId == projectId)
-            .Select(report => new ProjectRuleReportProjection(
-                report.Id,
-                report.RuleName,
-                report.MarkdownContent))
-            .ToListAsync(cancellationToken);
 
     private static string ValidateRequiredText(string? value, string parameterName)
     {

@@ -2,6 +2,8 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Services.ProjectReports.Projection;
+using CodeSnifferDog.Server.Services.ProjectReports.Queries;
+using CodeSnifferDog.Server.Shared.Reports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using System.Security.Cryptography;
@@ -20,7 +22,7 @@ public sealed class ProjectReportServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         Guid projectId = Guid.NewGuid();
         await SeedProjectAsync(dbContextFactory, projectId, seedReports: true);
-        ProjectReportService service = CreateService(dbContextFactory);
+        ProjectReportService service = CreateService(dbContextFactory, new StubProjectReportQueryService());
 
         await service.ReplaceProjectReportsAsync(
             projectId,
@@ -57,7 +59,7 @@ public sealed class ProjectReportServiceTests
     public async Task ReplaceProjectReportsAsync_WhenProjectMissing_ThrowsOriginalException()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        ProjectReportService service = CreateService(dbContextFactory);
+        ProjectReportService service = CreateService(dbContextFactory, new StubProjectReportQueryService());
         Guid projectId = Guid.NewGuid();
 
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
@@ -67,70 +69,81 @@ public sealed class ProjectReportServiceTests
     }
 
     [TestMethod]
-    public async Task GetProjectReportListAsync_ReturnsReportsSortedByRuleName()
+    public async Task GetProjectReportListAsync_UsesQueryServiceAndMapper()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         Guid projectId = Guid.NewGuid();
-        Guid reportAId = Guid.NewGuid();
-        Guid reportBId = Guid.NewGuid();
-        await SeedProjectAsync(dbContextFactory, projectId, seedReports: false);
-        await SeedReportsAsync(dbContextFactory, projectId, reportBId, reportAId);
-        ProjectReportService service = CreateService(dbContextFactory);
+        ProjectReportProjectProjection projectProjection = CreateProjectProjection();
+        StubProjectReportQueryService queryService = new(projectProjection);
+        TrackingProjectReportProjectionMapper mapper = new();
+        ProjectReportService service = CreateService(
+            dbContextFactory,
+            queryService,
+            mapper);
 
         var dto = await service.GetProjectReportListAsync(projectId, TestContext.CancellationToken);
 
         Assert.IsNotNull(dto);
-        Assert.AreEqual("repo.zip", dto.OriginalFileName);
-        Assert.AreEqual(reportAId, dto.Reports[0].ReportId);
-        Assert.AreEqual("Rule A", dto.Reports[0].RuleName);
-        Assert.AreEqual(reportBId, dto.Reports[1].ReportId);
-        Assert.AreEqual("Rule B", dto.Reports[1].RuleName);
+        Assert.AreEqual(projectId, queryService.ProjectReportsProjectId);
+        Assert.AreSame(projectProjection, mapper.ListProjection);
+        Assert.AreEqual(1, mapper.MapListCallCount);
+        Assert.AreEqual(0, mapper.MapBundleCallCount);
+        Assert.AreEqual(0, mapper.MapContentCallCount);
     }
 
     [TestMethod]
-    public async Task GetProjectReportBundleAsync_ReturnsReportsSortedByRuleName()
+    public async Task GetProjectReportBundleAsync_UsesQueryServiceAndMapper()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         Guid projectId = Guid.NewGuid();
-        Guid reportAId = Guid.NewGuid();
-        Guid reportBId = Guid.NewGuid();
-        await SeedProjectAsync(dbContextFactory, projectId, seedReports: false);
-        await SeedReportsAsync(dbContextFactory, projectId, reportBId, reportAId);
-        ProjectReportService service = CreateService(dbContextFactory);
+        ProjectReportProjectProjection projectProjection = CreateProjectProjection();
+        StubProjectReportQueryService queryService = new(projectProjection);
+        TrackingProjectReportProjectionMapper mapper = new();
+        ProjectReportService service = CreateService(
+            dbContextFactory,
+            queryService,
+            mapper);
 
         var dto = await service.GetProjectReportBundleAsync(projectId, TestContext.CancellationToken);
 
         Assert.IsNotNull(dto);
-        Assert.AreEqual("repo.zip", dto.OriginalFileName);
-        Assert.AreEqual(reportAId, dto.Reports[0].ReportId);
-        Assert.AreEqual("Rule A", dto.Reports[0].RuleName);
-        Assert.AreEqual("# Rule A", dto.Reports[0].MarkdownContent);
-        Assert.AreEqual(reportBId, dto.Reports[1].ReportId);
+        Assert.AreEqual(projectId, queryService.ProjectReportsProjectId);
+        Assert.AreSame(projectProjection, mapper.BundleProjection);
+        Assert.AreEqual(1, mapper.MapBundleCallCount);
+        Assert.AreEqual(0, mapper.MapListCallCount);
+        Assert.AreEqual(0, mapper.MapContentCallCount);
     }
 
     [TestMethod]
-    public async Task GetProjectReportAsync_ReturnsReportContentForProject()
+    public async Task GetProjectReportAsync_UsesQueryServiceAndMapper()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         Guid projectId = Guid.NewGuid();
-        Guid otherProjectId = Guid.NewGuid();
         Guid reportId = Guid.NewGuid();
-        await SeedProjectAsync(dbContextFactory, projectId, seedReports: false);
-        await SeedProjectAsync(dbContextFactory, otherProjectId, seedReports: false);
-        await SeedReportAsync(dbContextFactory, projectId, reportId, "Rule A", "# Rule A");
-        await SeedReportAsync(dbContextFactory, otherProjectId, Guid.NewGuid(), "Rule Other", "# Other");
-        ProjectReportService service = CreateService(dbContextFactory);
+        ProjectRuleReportProjection reportProjection = new(reportId, "Rule A", "# Rule A");
+        StubProjectReportQueryService queryService = new(reportProjection: reportProjection);
+        TrackingProjectReportProjectionMapper mapper = new();
+        ProjectReportService service = CreateService(
+            dbContextFactory,
+            queryService,
+            mapper);
 
         var dto = await service.GetProjectReportAsync(projectId, reportId, TestContext.CancellationToken);
 
         Assert.IsNotNull(dto);
-        Assert.AreEqual(reportId, dto.ReportId);
-        Assert.AreEqual("Rule A", dto.RuleName);
-        Assert.AreEqual("# Rule A", dto.MarkdownContent);
+        Assert.AreEqual(projectId, queryService.ProjectReportProjectId);
+        Assert.AreEqual(reportId, queryService.ProjectReportReportId);
+        Assert.AreSame(reportProjection, mapper.ContentProjection);
+        Assert.AreEqual(1, mapper.MapContentCallCount);
+        Assert.AreEqual(0, mapper.MapListCallCount);
+        Assert.AreEqual(0, mapper.MapBundleCallCount);
     }
 
-    private static ProjectReportService CreateService(IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory) =>
-        new(dbContextFactory, new ProjectReportProjectionMapper());
+    private static ProjectReportService CreateService(
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+        IProjectReportQueryService queryService,
+        IProjectReportProjectionMapper? projectionMapper = null) =>
+        new(dbContextFactory, queryService, projectionMapper ?? new ProjectReportProjectionMapper());
 
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
@@ -167,29 +180,6 @@ public sealed class ProjectReportServiceTests
         await dbContext.SaveChangesAsync(TestContext.CancellationToken);
     }
 
-    private async Task SeedReportsAsync(
-        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-        Guid projectId,
-        Guid reportBId,
-        Guid reportAId)
-    {
-        await SeedReportAsync(dbContextFactory, projectId, reportBId, "Rule B", "# Rule B");
-        await SeedReportAsync(dbContextFactory, projectId, reportAId, "Rule A", "# Rule A");
-    }
-
-    private async Task SeedReportAsync(
-        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-        Guid projectId,
-        Guid reportId,
-        string ruleName,
-        string markdownContent)
-    {
-        await using CodeSnifferDogServerDbContext dbContext =
-            await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
-        dbContext.ProjectRuleReports.Add(CreateReport(projectId, reportId, ruleName.ToLowerInvariant(), ruleName, markdownContent));
-        await dbContext.SaveChangesAsync(TestContext.CancellationToken);
-    }
-
     private static ProjectRuleReportRecord CreateReport(
         Guid projectId,
         Guid reportId,
@@ -211,5 +201,75 @@ public sealed class ProjectReportServiceTests
         byte[] bytes = Encoding.UTF8.GetBytes(value);
         byte[] hash = SHA256.HashData(bytes);
         return Convert.ToHexString(hash);
+    }
+
+    private static ProjectReportProjectProjection CreateProjectProjection() =>
+        new("repo.zip", [new ProjectRuleReportProjection(Guid.NewGuid(), "Rule A", "# Rule A")]);
+
+    private sealed class StubProjectReportQueryService(
+        ProjectReportProjectProjection? projectProjection = null,
+        ProjectRuleReportProjection? reportProjection = null) : IProjectReportQueryService
+    {
+        public Guid? ProjectReportsProjectId { get; private set; }
+
+        public Guid? ProjectReportProjectId { get; private set; }
+
+        public Guid? ProjectReportReportId { get; private set; }
+
+        public Task<ProjectReportProjectProjection?> GetProjectReportsAsync(
+            Guid projectId,
+            CancellationToken cancellationToken = default)
+        {
+            ProjectReportsProjectId = projectId;
+            return Task.FromResult(projectProjection);
+        }
+
+        public Task<ProjectRuleReportProjection?> GetProjectReportAsync(
+            Guid projectId,
+            Guid reportId,
+            CancellationToken cancellationToken = default)
+        {
+            ProjectReportProjectId = projectId;
+            ProjectReportReportId = reportId;
+            return Task.FromResult(reportProjection);
+        }
+    }
+
+    private sealed class TrackingProjectReportProjectionMapper : IProjectReportProjectionMapper
+    {
+        private readonly ProjectReportProjectionMapper _inner = new();
+
+        public int MapBundleCallCount { get; private set; }
+
+        public int MapListCallCount { get; private set; }
+
+        public int MapContentCallCount { get; private set; }
+
+        public ProjectReportProjectProjection? BundleProjection { get; private set; }
+
+        public ProjectReportProjectProjection? ListProjection { get; private set; }
+
+        public ProjectRuleReportProjection? ContentProjection { get; private set; }
+
+        public ProjectReportBundleDto MapBundle(ProjectReportProjectProjection project)
+        {
+            MapBundleCallCount++;
+            BundleProjection = project;
+            return _inner.MapBundle(project);
+        }
+
+        public ProjectReportListDto MapList(ProjectReportProjectProjection project)
+        {
+            MapListCallCount++;
+            ListProjection = project;
+            return _inner.MapList(project);
+        }
+
+        public ProjectReportContentDto MapContent(ProjectRuleReportProjection report)
+        {
+            MapContentCallCount++;
+            ContentProjection = report;
+            return _inner.MapContent(report);
+        }
     }
 }
