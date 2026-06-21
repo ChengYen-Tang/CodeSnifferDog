@@ -3,6 +3,7 @@ using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.Projects.Projection;
+using CodeSnifferDog.Server.Services.Projects.Queries;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -20,7 +21,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory, CreateMapper());
+        ProjectSidebarSnapshotService service = CreateService(dbContextFactory);
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(
             Guid.Parse("70000000-0000-0000-0000-000000000304"),
@@ -82,7 +83,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory, CreateMapper());
+        ProjectSidebarSnapshotService service = CreateService(dbContextFactory);
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(null, TestContext.CancellationToken);
 
@@ -95,7 +96,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory, CreateMapper());
+        ProjectSidebarSnapshotService service = CreateService(dbContextFactory);
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(
             Guid.Parse("79999999-0000-0000-0000-000000000399"),
@@ -121,11 +122,10 @@ public sealed class ProjectSidebarSnapshotServiceTests
         }
 
         TrackingProjectProjectionMapper mapper = new();
-        ProjectSidebarSnapshotService service = new(dbContextFactory, mapper);
+        ProjectSidebarSnapshotService service = CreateService(dbContextFactory, mapper);
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(null, TestContext.CancellationToken);
 
-        Assert.AreEqual(1, mapper.MapStatusCallCount);
         Assert.AreEqual(1, mapper.MapSidebarProjectCallCount);
         Assert.AreEqual(projectId, snapshot.Groups.Single(group => group.GroupKey == "reviewing").Projects.Single().ProjectId);
     }
@@ -245,4 +245,11 @@ public sealed class ProjectSidebarSnapshotServiceTests
     }
 
     private static ProjectProjectionMapper CreateMapper() => new(new ProjectStatusMapper());
+
+    private static ProjectSidebarSnapshotService CreateService(
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+        IProjectProjectionMapper? mapper = null) =>
+        new(
+            new ProjectSidebarQueryService(dbContextFactory, new ProjectStatusMapper()),
+            mapper ?? CreateMapper());
 }

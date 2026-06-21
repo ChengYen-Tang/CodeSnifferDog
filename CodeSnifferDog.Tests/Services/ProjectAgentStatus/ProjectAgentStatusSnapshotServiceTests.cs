@@ -3,6 +3,7 @@ using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
@@ -252,6 +253,7 @@ public sealed class ProjectAgentStatusSnapshotServiceTests
             options.UseInMemoryDatabase(databaseName, databaseRoot));
         services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
         services.AddScoped<IAgentStatusProjectionMapper, AgentStatusProjectionMapper>();
+        services.AddScoped<IProjectAgentStatusSnapshotQueryService, ProjectAgentStatusSnapshotQueryService>();
         services.AddScoped<IProjectAgentStatusSnapshotService, ProjectAgentStatusSnapshotService>();
         return services.BuildServiceProvider();
     }

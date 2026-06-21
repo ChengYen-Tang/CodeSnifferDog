@@ -16,27 +16,30 @@ internal sealed class ProjectReportQueryService(
         await using CodeSnifferDogServerDbContext dbContext =
             await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        string? originalFileName = await dbContext.Projects
-            .AsNoTracking()
-            .Where(project => project.Id == projectId)
-            .Select(project => project.OriginalFileName)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (originalFileName is null)
-            return null;
-
-        List<ProjectRuleReportProjection> reports = await dbContext.ProjectRuleReports
-            .AsNoTracking()
-            .Where(report => report.ProjectId == projectId)
-            .Select(report => new ProjectRuleReportProjection(
-                report.Id,
-                report.RuleName,
-                report.MarkdownContent))
+        List<ProjectReportQueryRow> rows = await (
+            from project in dbContext.Projects.AsNoTracking()
+            where project.Id == projectId
+            join report in dbContext.ProjectRuleReports.AsNoTracking()
+                on project.Id equals report.ProjectId into projectReports
+            from report in projectReports.DefaultIfEmpty()
+            select new ProjectReportQueryRow(
+                project.OriginalFileName,
+                report == null ? null : (Guid?)report.Id,
+                report == null ? null : report.RuleName,
+                report == null ? null : report.MarkdownContent))
             .ToListAsync(cancellationToken);
 
+        if (rows.Count == 0)
+            return null;
+
         return new ProjectReportProjectProjection(
-            originalFileName,
-            reports
+            rows[0].OriginalFileName,
+            rows
+                .Where(row => row.ReportId.HasValue)
+                .Select(row => new ProjectRuleReportProjection(
+                    row.ReportId!.Value,
+                    row.RuleName!,
+                    row.MarkdownContent!))
                 .OrderBy(report => report.RuleName, StringComparer.OrdinalIgnoreCase)
                 .ToList());
     }
@@ -58,4 +61,10 @@ internal sealed class ProjectReportQueryService(
                 report.MarkdownContent))
             .SingleOrDefaultAsync(cancellationToken);
     }
+
+    private sealed record ProjectReportQueryRow(
+        string OriginalFileName,
+        Guid? ReportId,
+        string? RuleName,
+        string? MarkdownContent);
 }

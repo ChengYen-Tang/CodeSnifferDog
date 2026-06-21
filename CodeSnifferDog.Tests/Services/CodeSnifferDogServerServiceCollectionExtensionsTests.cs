@@ -6,6 +6,7 @@ using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Artifacts;
@@ -27,6 +28,7 @@ using CodeSnifferDog.Server.Services.ProjectReports.Projection;
 using CodeSnifferDog.Server.Services.ProjectReports.Queries;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.Projects.Projection;
+using CodeSnifferDog.Server.Services.Projects.Queries;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -173,8 +175,27 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
             services.GetRequiredService<IProjectReportExportService>());
         Assert.IsInstanceOfType<ProjectReportService>(
             services.GetRequiredService<IProjectReportService>());
+        Assert.IsInstanceOfType<ProjectSidebarQueryService>(
+            services.GetRequiredService<IProjectSidebarQueryService>());
         Assert.IsInstanceOfType<ProjectSidebarSnapshotService>(
             services.GetRequiredService<IProjectSidebarSnapshotService>());
+    }
+
+    [TestMethod]
+    public void RegistersAgentStatusReadSideServices()
+    {
+        using ServiceProvider serviceProvider = CreateServiceProvider();
+        using IServiceScope scope = serviceProvider.CreateScope();
+        IServiceProvider services = scope.ServiceProvider;
+
+        Assert.IsInstanceOfType<ProjectAgentStatusSnapshotQueryService>(
+            services.GetRequiredService<IProjectAgentStatusSnapshotQueryService>());
+        Assert.IsInstanceOfType<ProjectAgentStatusBackfillQueryService>(
+            services.GetRequiredService<IProjectAgentStatusBackfillQueryService>());
+        Assert.IsInstanceOfType<ProjectAgentStatusSnapshotService>(
+            services.GetRequiredService<IProjectAgentStatusSnapshotService>());
+        Assert.IsInstanceOfType<ProjectAgentStatusLiveBackfillService>(
+            services.GetRequiredService<IProjectAgentStatusLiveBackfillService>());
     }
 
     [TestMethod]

@@ -4,6 +4,7 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Artifacts;
@@ -25,6 +26,7 @@ using CodeSnifferDog.Server.Services.ProjectReports.Projection;
 using CodeSnifferDog.Server.Services.ProjectReports.Queries;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.Projects.Projection;
+using CodeSnifferDog.Server.Services.Projects.Queries;
 using CodeSnifferDog.Server.Services.ProjectStorage;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,10 +41,18 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
     {
         services
             .AddDataServices(configuration, configureDbContext)
+            .AddSharedProjectionServices()
             .AddProjectExecutionInfrastructure()
             .AddProjectReviewPipeline()
             .AddAgentStatusServices()
             .AddProjectSurfaceServices();
+
+        return services;
+    }
+
+    private static IServiceCollection AddSharedProjectionServices(this IServiceCollection services)
+    {
+        services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
 
         return services;
     }
@@ -122,6 +132,8 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         services.AddScoped<IAgentStatusRuntimeFactory, AgentStatusRuntimeFactory>();
         services.AddScoped<IAgentStatusEventSubscriberFactory, AgentStatusEventSubscriberFactory>();
         services.AddScoped<IAgentStatusProjectionMapper, AgentStatusProjectionMapper>();
+        services.AddScoped<IProjectAgentStatusSnapshotQueryService, ProjectAgentStatusSnapshotQueryService>();
+        services.AddScoped<IProjectAgentStatusBackfillQueryService, ProjectAgentStatusBackfillQueryService>();
         services.AddScoped<IProjectAgentStatusSnapshotService, ProjectAgentStatusSnapshotService>();
         services.AddScoped<IProjectAgentStatusLiveBackfillService, ProjectAgentStatusLiveBackfillService>();
         services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, SignalRProjectAgentStatusLiveUpdateNotifier>();
@@ -133,7 +145,6 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
     {
         services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, NoOpProjectAgentStatusLiveSubscriptionClient>();
         services.AddScoped<IProjectSidebarController, ServerPrerenderProjectSidebarController>();
-        services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
         services.AddScoped<IProjectProjectionMapper, ProjectProjectionMapper>();
         services.AddScoped<IProjectUploadService, ProjectUploadService>();
         services.AddScoped<IProjectQueueService, ProjectQueueService>();
@@ -144,6 +155,7 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
         services.AddScoped<IProjectReportExportService, ProjectReportExportService>();
         services.AddScoped<IProjectReportService, ProjectReportService>();
         services.AddScoped<IProjectChangePublisher, ProjectChangePublisher>();
+        services.AddScoped<IProjectSidebarQueryService, ProjectSidebarQueryService>();
         services.AddScoped<IProjectSidebarSnapshotService, ProjectSidebarSnapshotService>();
 
         services.AddSingleton<IProjectUpdatesNotifier, SignalRProjectUpdatesNotifier>();

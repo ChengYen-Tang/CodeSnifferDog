@@ -1,19 +1,15 @@
-using CodeSnifferDog.Server.Data;
-using CodeSnifferDog.Server.Data.Entities;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
-using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 using CodeSnifferDog.Server.Shared.AgentStatus;
-using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 
 internal sealed class ProjectAgentStatusSnapshotService(
-    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IProjectAgentStatusSnapshotQueryService queryService,
     IAgentStatusProjectionMapper projectionMapper)
     : IProjectAgentStatusSnapshotService
 {
-    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IProjectAgentStatusSnapshotQueryService _queryService = queryService;
     private readonly IAgentStatusProjectionMapper _projectionMapper = projectionMapper;
 
     public async Task<ProjectAgentStatusSnapshotDto?> GetSnapshotAsync(
@@ -21,89 +17,20 @@ internal sealed class ProjectAgentStatusSnapshotService(
         Guid? selectedAgentId = null,
         CancellationToken cancellationToken = default)
     {
-        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-
-        ProjectSnapshotRow? project = await dbContext.Projects
-            .AsNoTracking()
-            .Where(candidate => candidate.Id == projectId)
-            .Select(candidate => new ProjectSnapshotRow(
-                candidate.Id,
-                candidate.Status))
-            .SingleOrDefaultAsync(cancellationToken)
+        ProjectAgentStatusSnapshotReadModel? snapshot = await _queryService
+            .GetSnapshotAsync(projectId, selectedAgentId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (project is null)
+        if (snapshot is null)
             return null;
-
-        List<GroupSnapshotRow> groups = await dbContext.ProjectAgentGroups
-            .AsNoTracking()
-            .Where(group => group.ProjectId == projectId)
-            .OrderBy(group => group.CreatedAtUtc)
-            .ThenBy(group => group.DisplayName)
-            .Select(group => new GroupSnapshotRow(
-                group.Id,
-                group.RuntimeKey,
-                group.DisplayName,
-                group.CreatedAtUtc))
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        List<Guid> groupIds = groups.Select(group => group.GroupId).ToList();
-
-        List<AgentSnapshotRow> agents = await dbContext.ProjectAgents
-            .AsNoTracking()
-            .Where(agent => groupIds.Contains(agent.ProjectAgentGroupId))
-            .OrderBy(agent => agent.CreatedAtUtc)
-            .ThenBy(agent => agent.DisplayName)
-            .Select(agent => new AgentSnapshotRow(
-                agent.Id,
-                agent.ProjectAgentGroupId,
-                agent.RuntimeKey,
-                agent.DisplayName,
-                agent.SystemPrompt,
-                agent.Status,
-                agent.CreatedAtUtc))
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        Guid? effectiveSelectedAgentId = ResolveSelectedAgentId(agents, selectedAgentId);
-        List<AgentStatusTimelineEntryProjection> timelineEntries =
-            effectiveSelectedAgentId is Guid selectedHistoryAgentId
-                ? await LoadTimelineEntriesAsync(dbContext, selectedHistoryAgentId, cancellationToken).ConfigureAwait(false)
-                : [];
-
-        IReadOnlyList<ProjectAgentTimelineEntryDto> selectedTimelineEntries = timelineEntries
-            .OrderBy(entry => entry.Sequence)
-            .Select(entry => _projectionMapper.MapTimelineEntry(entry, AgentStatusProjectionExceptionStyle.Snapshot))
-            .ToList();
-
-        Dictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId =
-            effectiveSelectedAgentId is Guid selectedAgentWithHistory
-                ? new Dictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>>
-                {
-                    [selectedAgentWithHistory] = selectedTimelineEntries,
-                }
-                : [];
-
-        Dictionary<Guid, IReadOnlyList<ProjectAgentSnapshotDto>> agentsByGroupId = agents
-            .GroupBy(agent => agent.GroupId)
-            .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<ProjectAgentSnapshotDto>)group
-                    .OrderBy(agent => agent.CreatedAtUtc)
-                    .ThenBy(agent => agent.DisplayName, StringComparer.Ordinal)
-                    .Select(agent => MapAgent(agent, timelineByAgentId, effectiveSelectedAgentId))
-                    .ToList());
 
         return new ProjectAgentStatusSnapshotDto
         {
-            ProjectId = project.ProjectId,
-            ProjectStatus = _projectionMapper.MapProjectStatus(project.Status),
+            ProjectId = snapshot.ProjectId,
+            ProjectStatus = _projectionMapper.MapProjectStatus(snapshot.ProjectStatus),
             SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
-            AgentGroups = groups
-                .OrderBy(group => group.CreatedAtUtc)
-                .ThenBy(group => group.DisplayName, StringComparer.Ordinal)
-                .Select(group => MapGroup(group, agentsByGroupId))
+            AgentGroups = snapshot.Groups
+                .Select(MapGroup)
                 .ToList(),
         };
     }
@@ -113,116 +40,46 @@ internal sealed class ProjectAgentStatusSnapshotService(
         Guid agentId,
         CancellationToken cancellationToken = default)
     {
-        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-
-        bool agentExists = await dbContext.ProjectAgents
-            .AsNoTracking()
-            .Where(agent => agent.Id == agentId)
-            .Join(
-                dbContext.ProjectAgentGroups.AsNoTracking(),
-                agent => agent.ProjectAgentGroupId,
-                group => group.Id,
-                (agent, group) => new { agent.Id, group.ProjectId })
-            .AnyAsync(item => item.Id == agentId && item.ProjectId == projectId, cancellationToken)
+        ProjectAgentHistorySnapshotReadModel? history = await _queryService
+            .GetAgentHistoryAsync(projectId, agentId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (!agentExists)
+        if (history is null)
             return null;
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries = (await LoadTimelineEntriesAsync(
-                dbContext,
-                agentId,
-                cancellationToken)
-            .ConfigureAwait(false))
-            .OrderBy(entry => entry.Sequence)
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries = history.TimelineEntries
             .Select(entry => _projectionMapper.MapTimelineEntry(entry, AgentStatusProjectionExceptionStyle.Snapshot))
             .ToList();
 
         return new ProjectAgentHistorySnapshotDto
         {
-            ProjectId = projectId,
-            AgentId = agentId,
+            ProjectId = history.ProjectId,
+            AgentId = history.AgentId,
             TimelineEntries = timelineEntries,
         };
     }
 
-    private static ProjectAgentGroupSnapshotDto MapGroup(
-        GroupSnapshotRow group,
-        IReadOnlyDictionary<Guid, IReadOnlyList<ProjectAgentSnapshotDto>> agentsByGroupId) => new()
+    private ProjectAgentGroupSnapshotDto MapGroup(ProjectAgentStatusSnapshotGroupRow group) => new()
     {
-        GroupId = group.GroupId,
-        RuntimeKey = group.RuntimeKey,
-        DisplayName = group.DisplayName,
-        CreatedAtUtc = group.CreatedAtUtc,
-        Agents = agentsByGroupId.TryGetValue(group.GroupId, out IReadOnlyList<ProjectAgentSnapshotDto>? agents)
-            ? agents
-            : [],
+        GroupId = group.Group.GroupId,
+        RuntimeKey = group.Group.RuntimeKey,
+        DisplayName = group.Group.DisplayName,
+        CreatedAtUtc = group.Group.CreatedAtUtc,
+        Agents = group.Agents.Select(MapAgent).ToList(),
     };
 
-    private ProjectAgentSnapshotDto MapAgent(
-        AgentSnapshotRow agent,
-        IReadOnlyDictionary<Guid, IReadOnlyList<ProjectAgentTimelineEntryDto>> timelineByAgentId,
-        Guid? selectedAgentId) => new()
+    private ProjectAgentSnapshotDto MapAgent(ProjectAgentStatusSnapshotAgentRow agent) => new()
     {
-        AgentId = agent.AgentId,
-        GroupId = agent.GroupId,
-        RuntimeKey = agent.RuntimeKey,
-        DisplayName = agent.DisplayName,
-        SystemPrompt = agent.SystemPrompt,
-        Status = _projectionMapper.MapAgentStatus(agent.Status, AgentStatusProjectionExceptionStyle.Snapshot),
-        CreatedAtUtc = agent.CreatedAtUtc,
-        HasLoadedHistory = selectedAgentId == agent.AgentId,
-        TimelineEntries = timelineByAgentId.TryGetValue(agent.AgentId, out IReadOnlyList<ProjectAgentTimelineEntryDto>? timeline)
-            ? timeline
-            : [],
+        AgentId = agent.Agent.AgentId,
+        GroupId = agent.Agent.GroupId,
+        RuntimeKey = agent.Agent.RuntimeKey,
+        DisplayName = agent.Agent.DisplayName,
+        SystemPrompt = agent.Agent.SystemPrompt,
+        Status = _projectionMapper.MapAgentStatus(agent.Agent.Status, AgentStatusProjectionExceptionStyle.Snapshot),
+        CreatedAtUtc = agent.Agent.CreatedAtUtc,
+        HasLoadedHistory = agent.HasLoadedHistory,
+        TimelineEntries = agent.TimelineEntries
+            .Select(entry => _projectionMapper.MapTimelineEntry(entry, AgentStatusProjectionExceptionStyle.Snapshot))
+            .ToList(),
     };
-
-    private static Guid? ResolveSelectedAgentId(
-        IReadOnlyList<AgentSnapshotRow> agents,
-        Guid? selectedAgentId)
-    {
-        if (selectedAgentId is Guid requestedAgentId && agents.Any(agent => agent.AgentId == requestedAgentId))
-            return requestedAgentId;
-
-        return agents
-            .OrderBy(agent => agent.CreatedAtUtc)
-            .ThenBy(agent => agent.DisplayName, StringComparer.Ordinal)
-            .Select(agent => (Guid?)agent.AgentId)
-            .FirstOrDefault();
-    }
-
-    private static Task<List<AgentStatusTimelineEntryProjection>> LoadTimelineEntriesAsync(
-        CodeSnifferDogServerDbContext dbContext,
-        Guid agentId,
-        CancellationToken cancellationToken) =>
-        dbContext.ProjectAgentTimelineEntries
-        .AsNoTracking()
-        .Where(entry => entry.ProjectAgentId == agentId)
-        .OrderBy(entry => entry.Sequence)
-        .Select(entry => new AgentStatusTimelineEntryProjection(
-            entry.Id,
-            entry.ProjectAgentId,
-            entry.Sequence,
-            entry.EntryType,
-            entry.OccurredAtUtc,
-            entry.Message,
-            entry.ToolCallId,
-            entry.ToolName,
-            entry.ToolArguments,
-            entry.ToolResult))
-        .ToListAsync(cancellationToken);
-
-    private sealed record ProjectSnapshotRow(Guid ProjectId, ProjectProcessingStatus Status);
-
-    private sealed record GroupSnapshotRow(Guid GroupId, string RuntimeKey, string DisplayName, DateTimeOffset CreatedAtUtc);
-
-    private sealed record AgentSnapshotRow(
-        Guid AgentId,
-        Guid GroupId,
-        string RuntimeKey,
-        string DisplayName,
-        string SystemPrompt,
-        Data.Entities.ProjectAgentStatus Status,
-        DateTimeOffset CreatedAtUtc);
-
 }

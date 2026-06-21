@@ -1,108 +1,38 @@
-using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Services.Projects.Projection;
+using CodeSnifferDog.Server.Services.Projects.Queries;
 using CodeSnifferDog.Server.Shared.Projects;
-using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.Projects;
 
 internal sealed class ProjectSidebarSnapshotService(
-    IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
+    IProjectSidebarQueryService queryService,
     IProjectProjectionMapper projectionMapper) : IProjectSidebarSnapshotService
 {
-    private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
+    private readonly IProjectSidebarQueryService _queryService = queryService;
     private readonly IProjectProjectionMapper _projectionMapper = projectionMapper;
 
     public async Task<ProjectSidebarSnapshotDto> GetSnapshotAsync(Guid? selectedProjectId, CancellationToken cancellationToken = default)
     {
-        await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-
-        List<ProjectSidebarProjectProjection> projectRows = await dbContext.Projects
-            .AsNoTracking()
-            .Select(project => new ProjectSidebarProjectProjection(
-                project.Id,
-                project.OriginalFileName,
-                project.Status,
-                project.CreatedAtUtc,
-                project.QueueTimestampUtc,
-                project.FinishedAtUtc,
-                project.UpdatedAtUtc))
-            .ToListAsync(cancellationToken)
+        ProjectSidebarSnapshotReadModel snapshot = await _queryService
+            .GetSnapshotAsync(selectedProjectId, cancellationToken)
             .ConfigureAwait(false);
-
-        List<ProjectSidebarMappedProject> projects = projectRows
-            .Select(project => new ProjectSidebarMappedProject(
-                project,
-                _projectionMapper.MapStatus(project.Status),
-                project.QueueTimestampUtc,
-                project.FinishedAtUtc,
-                project.UpdatedAtUtc))
-            .ToList();
-
-        List<ProjectSidebarGroupDto> groups = CreateGroupDefinitions()
-            .Select(group => new ProjectSidebarGroupDto
-            {
-                GroupKey = group.GroupKey,
-                DisplayName = group.DisplayName,
-                Status = group.Status,
-                SortOrder = group.SortOrder,
-                Projects = projects
-                    .Where(project => project.Status == group.Status)
-                    .OrderBy(project => GetProjectSortPrimary(project))
-                    .ThenBy(project => project.Project.CreatedAtUtc)
-                    .ThenBy(project => project.Project.ProjectId)
-                    .Select((project, index) => _projectionMapper.MapSidebarProject(project.Project, project.Status, index))
-                    .ToList(),
-            })
-            .OrderBy(group => group.SortOrder)
-            .ToList();
-
-        Guid? resolvedSelectedProjectId = ResolveSelectedProjectId(selectedProjectId, groups);
 
         return new ProjectSidebarSnapshotDto
         {
             GeneratedAtUtc = DateTimeOffset.UtcNow,
-            SelectedProjectId = resolvedSelectedProjectId,
-            Groups = groups,
+            SelectedProjectId = snapshot.SelectedProjectId,
+            Groups = snapshot.Groups.Select(MapGroup).ToList(),
         };
     }
 
-    private static IReadOnlyList<ProjectSidebarGroupDefinition> CreateGroupDefinitions() =>
-    [
-        new("reviewing", "Reviewing", ProjectStatus.Reviewing, 0),
-        new("completed", "Completed", ProjectStatus.Completed, 1),
-        new("queued", "Queued", ProjectStatus.Queued, 2),
-        new("failed", "Failed", ProjectStatus.Failed, 3),
-        new("canceled", "Canceled", ProjectStatus.Canceled, 4),
-    ];
-
-    private static DateTimeOffset GetProjectSortPrimary(ProjectSidebarMappedProject project) =>
-        project.Status switch
-        {
-            ProjectStatus.Queued or ProjectStatus.Reviewing =>
-                project.QueueTimestampUtc,
-            _ => project.FinishedAtUtc ?? project.UpdatedAtUtc,
-        };
-
-    private static Guid? ResolveSelectedProjectId(Guid? requestedSelectedProjectId, IReadOnlyList<ProjectSidebarGroupDto> groups)
+    private ProjectSidebarGroupDto MapGroup(ProjectSidebarGroupReadModel group) => new()
     {
-        HashSet<Guid> projectIds = groups
-            .SelectMany(group => group.Projects)
-            .Select(project => project.ProjectId)
-            .ToHashSet();
-
-        if (requestedSelectedProjectId is Guid selectedProjectId && projectIds.Contains(selectedProjectId))
-            return selectedProjectId;
-
-        return groups
-            .OrderBy(group => group.SortOrder)
-            .SelectMany(group => group.Projects.OrderBy(project => project.SortOrder))
-            .Select(project => (Guid?)project.ProjectId)
-            .FirstOrDefault();
-    }
-
-    private sealed record ProjectSidebarGroupDefinition(
-        string GroupKey,
-        string DisplayName,
-        ProjectStatus Status,
-        int SortOrder);
+        GroupKey = group.GroupKey,
+        DisplayName = group.DisplayName,
+        Status = group.Status,
+        SortOrder = group.SortOrder,
+        Projects = group.Projects
+            .Select(project => _projectionMapper.MapSidebarProject(project.Project, project.Status, project.SortOrder))
+            .ToList(),
+    };
 }
