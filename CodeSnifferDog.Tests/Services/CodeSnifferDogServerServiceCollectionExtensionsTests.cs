@@ -21,6 +21,9 @@ using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.ProjectIntake.Deletion;
 using CodeSnifferDog.Server.Services.ProjectIntake.Queue;
 using CodeSnifferDog.Server.Services.ProjectIntake.Upload;
+using CodeSnifferDog.Server.Services.ProjectReports;
+using CodeSnifferDog.Server.Services.ProjectReports.Export;
+using CodeSnifferDog.Server.Services.ProjectReports.Projection;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
@@ -159,6 +162,12 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
             services.GetRequiredService<IProjectDeletionService>());
         Assert.IsInstanceOfType<ProjectIntakeService>(
             services.GetRequiredService<IProjectIntakeService>());
+        Assert.IsInstanceOfType<ProjectReportProjectionMapper>(
+            services.GetRequiredService<IProjectReportProjectionMapper>());
+        Assert.IsInstanceOfType<ProjectReportExportService>(
+            services.GetRequiredService<IProjectReportExportService>());
+        Assert.IsInstanceOfType<ProjectReportService>(
+            services.GetRequiredService<IProjectReportService>());
         Assert.IsInstanceOfType<ProjectSidebarSnapshotService>(
             services.GetRequiredService<IProjectSidebarSnapshotService>());
     }

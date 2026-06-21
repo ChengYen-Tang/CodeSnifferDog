@@ -35,14 +35,21 @@ public sealed class ProjectProjectionMapperTests
     public void MapSummary_MapsProjectFields()
     {
         ProjectProjectionMapper mapper = new();
-        ProjectRecord project = CreateProject(ProjectProcessingStatus.Failed);
-        project.ProcessingStartedAtUtc = new DateTimeOffset(2026, 5, 15, 9, 0, 0, TimeSpan.Zero);
-        project.FinishedAtUtc = new DateTimeOffset(2026, 5, 15, 10, 0, 0, TimeSpan.Zero);
-        project.FailureReason = "analysis failed";
+        ProjectSummaryProjection project = new(
+            Guid.NewGuid(),
+            "repo.zip",
+            ProjectProcessingStatus.Failed,
+            FileSizeBytes: 123,
+            CreatedAtUtc: new DateTimeOffset(2026, 5, 15, 8, 0, 0, TimeSpan.Zero),
+            UpdatedAtUtc: new DateTimeOffset(2026, 5, 15, 8, 30, 0, TimeSpan.Zero),
+            QueueTimestampUtc: new DateTimeOffset(2026, 5, 15, 8, 10, 0, TimeSpan.Zero),
+            ProcessingStartedAtUtc: new DateTimeOffset(2026, 5, 15, 9, 0, 0, TimeSpan.Zero),
+            FinishedAtUtc: new DateTimeOffset(2026, 5, 15, 10, 0, 0, TimeSpan.Zero),
+            FailureReason: "analysis failed");
 
         ProjectSummaryDto dto = mapper.MapSummary(project);
 
-        Assert.AreEqual(project.Id, dto.ProjectId);
+        Assert.AreEqual(project.ProjectId, dto.ProjectId);
         Assert.AreEqual(project.OriginalFileName, dto.OriginalFileName);
         Assert.AreEqual(ProjectStatus.Failed, dto.Status);
         Assert.AreEqual(project.FileSizeBytes, dto.FileSizeBytes);
@@ -58,11 +65,15 @@ public sealed class ProjectProjectionMapperTests
     public void MapListItem_MapsProjectFields()
     {
         ProjectProjectionMapper mapper = new();
-        ProjectRecord project = CreateProject(ProjectProcessingStatus.Completed);
+        ProjectListItemProjection project = new(
+            Guid.NewGuid(),
+            "repo.zip",
+            ProjectProcessingStatus.Completed,
+            new DateTimeOffset(2026, 5, 15, 8, 0, 0, TimeSpan.Zero));
 
         ProjectListItemDto dto = mapper.MapListItem(project);
 
-        Assert.AreEqual(project.Id, dto.ProjectId);
+        Assert.AreEqual(project.ProjectId, dto.ProjectId);
         Assert.AreEqual(project.OriginalFileName, dto.OriginalFileName);
         Assert.AreEqual(ProjectStatus.Completed, dto.Status);
         Assert.AreEqual(project.CreatedAtUtc, dto.CreatedAtUtc);
@@ -81,7 +92,7 @@ public sealed class ProjectProjectionMapperTests
             null,
             new DateTimeOffset(2026, 5, 15, 8, 30, 0, TimeSpan.Zero));
 
-        ProjectSidebarProjectDto dto = mapper.MapSidebarProject(project, sortOrder: 3);
+        ProjectSidebarProjectDto dto = mapper.MapSidebarProject(project, ProjectStatus.Reviewing, sortOrder: 3);
 
         Assert.AreEqual(project.ProjectId, dto.ProjectId);
         Assert.AreEqual(project.OriginalFileName, dto.OriginalFileName);
@@ -89,16 +100,4 @@ public sealed class ProjectProjectionMapperTests
         Assert.AreEqual(project.CreatedAtUtc, dto.CreatedAtUtc);
         Assert.AreEqual(3, dto.SortOrder);
     }
-
-    private static ProjectRecord CreateProject(ProjectProcessingStatus status) => new()
-    {
-        Id = Guid.NewGuid(),
-        OriginalFileName = "repo.zip",
-        StoredZipRelativePath = "uploads/repo.zip",
-        Status = status,
-        FileSizeBytes = 123,
-        CreatedAtUtc = new DateTimeOffset(2026, 5, 15, 8, 0, 0, TimeSpan.Zero),
-        UpdatedAtUtc = new DateTimeOffset(2026, 5, 15, 8, 30, 0, TimeSpan.Zero),
-        QueueTimestampUtc = new DateTimeOffset(2026, 5, 15, 8, 10, 0, TimeSpan.Zero),
-    };
 }

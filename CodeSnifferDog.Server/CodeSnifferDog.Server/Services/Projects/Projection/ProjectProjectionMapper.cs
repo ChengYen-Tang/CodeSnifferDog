@@ -16,9 +16,9 @@ internal sealed class ProjectProjectionMapper : IProjectProjectionMapper
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unsupported project status."),
     };
 
-    public ProjectSummaryDto MapSummary(ProjectRecord project) => new()
+    public ProjectSummaryDto MapSummary(ProjectSummaryProjection project) => new()
     {
-        ProjectId = project.Id,
+        ProjectId = project.ProjectId,
         OriginalFileName = project.OriginalFileName,
         Status = MapStatus(project.Status),
         FileSizeBytes = project.FileSizeBytes,
@@ -30,19 +30,22 @@ internal sealed class ProjectProjectionMapper : IProjectProjectionMapper
         FailureReason = project.FailureReason,
     };
 
-    public ProjectListItemDto MapListItem(ProjectRecord project) => new()
+    public ProjectListItemDto MapListItem(ProjectListItemProjection project) => new()
     {
-        ProjectId = project.Id,
+        ProjectId = project.ProjectId,
         OriginalFileName = project.OriginalFileName,
         Status = MapStatus(project.Status),
         CreatedAtUtc = project.CreatedAtUtc,
     };
 
-    public ProjectSidebarProjectDto MapSidebarProject(ProjectSidebarProjectProjection project, int sortOrder) => new()
+    public ProjectSidebarProjectDto MapSidebarProject(
+        ProjectSidebarProjectProjection project,
+        ProjectStatus status,
+        int sortOrder) => new()
     {
         ProjectId = project.ProjectId,
         OriginalFileName = project.OriginalFileName,
-        Status = MapStatus(project.Status),
+        Status = status,
         CreatedAtUtc = project.CreatedAtUtc,
         SortOrder = sortOrder,
     };

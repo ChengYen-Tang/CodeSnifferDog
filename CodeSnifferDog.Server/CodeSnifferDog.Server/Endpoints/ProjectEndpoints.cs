@@ -1,12 +1,11 @@
 using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectReports;
+using CodeSnifferDog.Server.Services.ProjectReports.Export;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using CodeSnifferDog.Server.Shared.Reports;
 using Microsoft.AspNetCore.Mvc;
-using System.IO.Compression;
-using System.Text;
 
 namespace CodeSnifferDog.Server.Endpoints;
 
@@ -160,41 +159,29 @@ public static class ProjectEndpoints
         Guid projectId,
         Guid reportId,
         IProjectReportService projectReportService,
+        IProjectReportExportService projectReportExportService,
         CancellationToken cancellationToken)
     {
         ProjectReportContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
         if (report is null)
             return Results.NotFound();
 
-        byte[] bytes = Encoding.UTF8.GetBytes(report.MarkdownContent);
-        return Results.File(bytes, "text/markdown; charset=utf-8", $"{report.RuleName}.md");
+        ProjectReportExportFile export = projectReportExportService.CreateMarkdown(report);
+        return Results.File(export.Bytes, export.ContentType, export.FileName);
     }
 
     private static async Task<IResult> DownloadProjectReportBundleAsync(
         Guid projectId,
         IProjectReportService projectReportService,
+        IProjectReportExportService projectReportExportService,
         CancellationToken cancellationToken)
     {
         ProjectReportBundleDto? bundle = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
         if (bundle is null)
             return Results.NotFound();
 
-        using MemoryStream archiveStream = new();
-        using (ZipArchive archive = new(archiveStream, ZipArchiveMode.Create, leaveOpen: true))
-        {
-            foreach (ProjectRuleReportDto report in bundle.Reports)
-            {
-                ZipArchiveEntry entry = archive.CreateEntry($"{report.RuleName}.md", CompressionLevel.Fastest);
-                await using Stream entryStream = entry.Open();
-                await using StreamWriter writer = new(entryStream, Encoding.UTF8, leaveOpen: false);
-                await writer.WriteAsync(report.MarkdownContent.AsMemory(), cancellationToken);
-            }
-        }
-
-        return Results.File(
-            archiveStream.ToArray(),
-            "application/zip",
-            $"{Path.GetFileNameWithoutExtension(bundle.OriginalFileName)}-reports.zip");
+        ProjectReportExportFile export = await projectReportExportService.CreateBundleZipAsync(bundle, cancellationToken);
+        return Results.File(export.Bytes, export.ContentType, export.FileName);
     }
 
     private static async Task<IResult> DeleteProjectAsync(

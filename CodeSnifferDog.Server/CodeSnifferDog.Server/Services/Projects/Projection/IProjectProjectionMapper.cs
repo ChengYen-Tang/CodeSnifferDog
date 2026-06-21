@@ -8,9 +8,9 @@ internal interface IProjectProjectionMapper
 {
     ProjectStatus MapStatus(ProjectProcessingStatus status);
 
-    ProjectSummaryDto MapSummary(ProjectRecord project);
+    ProjectSummaryDto MapSummary(ProjectSummaryProjection project);
 
-    ProjectListItemDto MapListItem(ProjectRecord project);
+    ProjectListItemDto MapListItem(ProjectListItemProjection project);
 
-    ProjectSidebarProjectDto MapSidebarProject(ProjectSidebarProjectProjection project, int sortOrder);
+    ProjectSidebarProjectDto MapSidebarProject(ProjectSidebarProjectProjection project, ProjectStatus status, int sortOrder);
 }

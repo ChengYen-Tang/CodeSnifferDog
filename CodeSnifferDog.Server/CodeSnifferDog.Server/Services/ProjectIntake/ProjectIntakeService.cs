@@ -66,7 +66,7 @@ internal sealed class ProjectIntakeService(
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        List<ProjectRecord> projects = await dbContext.Projects
+        List<ProjectListItemProjection> projects = await dbContext.Projects
             .AsNoTracking()
             .OrderBy(project =>
                 project.Status == ProjectProcessingStatus.Queued ? 0 :
@@ -79,6 +79,11 @@ internal sealed class ProjectIntakeService(
                     ? project.QueueTimestampUtc
                     : project.FinishedAtUtc ?? project.UpdatedAtUtc)
             .ThenBy(project => project.CreatedAtUtc)
+            .Select(project => new ProjectListItemProjection(
+                project.Id,
+                project.OriginalFileName,
+                project.Status,
+                project.CreatedAtUtc))
             .ToListAsync(cancellationToken);
 
         return projects
@@ -90,9 +95,20 @@ internal sealed class ProjectIntakeService(
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        ProjectRecord? project = await dbContext.Projects
+        ProjectSummaryProjection? project = await dbContext.Projects
             .AsNoTracking()
-            .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
+            .Select(project => new ProjectSummaryProjection(
+                project.Id,
+                project.OriginalFileName,
+                project.Status,
+                project.FileSizeBytes,
+                project.CreatedAtUtc,
+                project.UpdatedAtUtc,
+                project.QueueTimestampUtc,
+                project.ProcessingStartedAtUtc,
+                project.FinishedAtUtc,
+                project.FailureReason))
+            .SingleOrDefaultAsync(project => project.ProjectId == projectId, cancellationToken);
 
         return project is null ? null : _projectionMapper.MapSummary(project);
     }

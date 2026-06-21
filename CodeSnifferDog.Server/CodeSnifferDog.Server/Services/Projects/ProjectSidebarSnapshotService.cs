@@ -1,5 +1,4 @@
 using CodeSnifferDog.Server.Data;
-using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +16,7 @@ internal sealed class ProjectSidebarSnapshotService(
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        List<ProjectSidebarProjectProjection> projects = await dbContext.Projects
+        List<ProjectSidebarProjectProjection> projectRows = await dbContext.Projects
             .AsNoTracking()
             .Select(project => new ProjectSidebarProjectProjection(
                 project.Id,
@@ -30,6 +29,15 @@ internal sealed class ProjectSidebarSnapshotService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        List<ProjectSidebarMappedProject> projects = projectRows
+            .Select(project => new ProjectSidebarMappedProject(
+                project,
+                _projectionMapper.MapStatus(project.Status),
+                project.QueueTimestampUtc,
+                project.FinishedAtUtc,
+                project.UpdatedAtUtc))
+            .ToList();
+
         List<ProjectSidebarGroupDto> groups = CreateGroupDefinitions()
             .Select(group => new ProjectSidebarGroupDto
             {
@@ -38,11 +46,11 @@ internal sealed class ProjectSidebarSnapshotService(
                 Status = group.Status,
                 SortOrder = group.SortOrder,
                 Projects = projects
-                    .Where(project => _projectionMapper.MapStatus(project.Status) == group.Status)
+                    .Where(project => project.Status == group.Status)
                     .OrderBy(project => GetProjectSortPrimary(project))
-                    .ThenBy(project => project.CreatedAtUtc)
-                    .ThenBy(project => project.ProjectId)
-                    .Select((project, index) => _projectionMapper.MapSidebarProject(project, index))
+                    .ThenBy(project => project.Project.CreatedAtUtc)
+                    .ThenBy(project => project.Project.ProjectId)
+                    .Select((project, index) => _projectionMapper.MapSidebarProject(project.Project, project.Status, index))
                     .ToList(),
             })
             .OrderBy(group => group.SortOrder)
@@ -67,10 +75,10 @@ internal sealed class ProjectSidebarSnapshotService(
         new("canceled", "Canceled", ProjectStatus.Canceled, 4),
     ];
 
-    private static DateTimeOffset GetProjectSortPrimary(ProjectSidebarProjectProjection project) =>
+    private static DateTimeOffset GetProjectSortPrimary(ProjectSidebarMappedProject project) =>
         project.Status switch
         {
-            ProjectProcessingStatus.Queued or ProjectProcessingStatus.Reviewing =>
+            ProjectStatus.Queued or ProjectStatus.Reviewing =>
                 project.QueueTimestampUtc,
             _ => project.FinishedAtUtc ?? project.UpdatedAtUtc,
         };

@@ -125,7 +125,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(null, TestContext.CancellationToken);
 
-        Assert.IsTrue(mapper.MapStatusCallCount > 0);
+        Assert.AreEqual(1, mapper.MapStatusCallCount);
         Assert.AreEqual(1, mapper.MapSidebarProjectCallCount);
         Assert.AreEqual(projectId, snapshot.Groups.Single(group => group.GroupKey == "reviewing").Projects.Single().ProjectId);
     }
@@ -230,14 +230,17 @@ public sealed class ProjectSidebarSnapshotServiceTests
             return _inner.MapStatus(status);
         }
 
-        public ProjectSummaryDto MapSummary(ProjectRecord project) => _inner.MapSummary(project);
+        public ProjectSummaryDto MapSummary(ProjectSummaryProjection project) => _inner.MapSummary(project);
 
-        public ProjectListItemDto MapListItem(ProjectRecord project) => _inner.MapListItem(project);
+        public ProjectListItemDto MapListItem(ProjectListItemProjection project) => _inner.MapListItem(project);
 
-        public ProjectSidebarProjectDto MapSidebarProject(ProjectSidebarProjectProjection project, int sortOrder)
+        public ProjectSidebarProjectDto MapSidebarProject(
+            ProjectSidebarProjectProjection project,
+            ProjectStatus status,
+            int sortOrder)
         {
             MapSidebarProjectCallCount++;
-            return _inner.MapSidebarProject(project, sortOrder);
+            return _inner.MapSidebarProject(project, status, sortOrder);
         }
     }
 }
