@@ -153,6 +153,8 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
         using IServiceScope scope = serviceProvider.CreateScope();
         IServiceProvider services = scope.ServiceProvider;
 
+        Assert.IsInstanceOfType<ProjectStatusMapper>(
+            services.GetRequiredService<IProjectStatusMapper>());
         Assert.IsInstanceOfType<ProjectProjectionMapper>(
             services.GetRequiredService<IProjectProjectionMapper>());
         Assert.IsInstanceOfType<ProjectUploadService>(

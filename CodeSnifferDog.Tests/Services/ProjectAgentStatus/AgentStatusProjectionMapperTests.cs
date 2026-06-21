@@ -2,6 +2,7 @@ using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using PersistedAgentStatus = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus;
@@ -14,7 +15,7 @@ public sealed class AgentStatusProjectionMapperTests
     [TestMethod]
     public void MapProjectStatus_MapsPersistedProjectStatus()
     {
-        AgentStatusProjectionMapper mapper = new();
+        AgentStatusProjectionMapper mapper = CreateMapper();
 
         Assert.AreEqual(ProjectStatus.Queued, mapper.MapProjectStatus(ProjectProcessingStatus.Queued));
         Assert.AreEqual(ProjectStatus.Reviewing, mapper.MapProjectStatus(ProjectProcessingStatus.Reviewing));
@@ -26,7 +27,7 @@ public sealed class AgentStatusProjectionMapperTests
     [TestMethod]
     public void MapAgentStatus_MapsPersistedAgentStatus()
     {
-        AgentStatusProjectionMapper mapper = new();
+        AgentStatusProjectionMapper mapper = CreateMapper();
 
         Assert.AreEqual(ProjectAgentRunStatus.Waiting, mapper.MapAgentStatus(PersistedAgentStatus.Waiting));
         Assert.AreEqual(ProjectAgentRunStatus.Running, mapper.MapAgentStatus(PersistedAgentStatus.Running));
@@ -37,7 +38,7 @@ public sealed class AgentStatusProjectionMapperTests
     [TestMethod]
     public void MapTimelineEntryKind_MapsPersistedTimelineEntryType()
     {
-        AgentStatusProjectionMapper mapper = new();
+        AgentStatusProjectionMapper mapper = CreateMapper();
 
         Assert.AreEqual(ProjectAgentTimelineEntryKind.Input, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Input));
         Assert.AreEqual(ProjectAgentTimelineEntryKind.Output, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Output));
@@ -48,7 +49,7 @@ public sealed class AgentStatusProjectionMapperTests
     [TestMethod]
     public void MapDtos_MapsPersistedRecordsToSharedDtos()
     {
-        AgentStatusProjectionMapper mapper = new();
+        AgentStatusProjectionMapper mapper = CreateMapper();
         Guid groupId = Guid.NewGuid();
         Guid agentId = Guid.NewGuid();
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -93,7 +94,7 @@ public sealed class AgentStatusProjectionMapperTests
     [TestMethod]
     public void UnsupportedPersistedValues_ThrowOriginalExceptions()
     {
-        AgentStatusProjectionMapper mapper = new();
+        AgentStatusProjectionMapper mapper = CreateMapper();
 
         InvalidOperationException projectStatusException = Assert.ThrowsExactly<InvalidOperationException>(
             () => mapper.MapProjectStatus((ProjectProcessingStatus)999));
@@ -110,7 +111,7 @@ public sealed class AgentStatusProjectionMapperTests
     [TestMethod]
     public void UnsupportedSnapshotValues_ThrowSnapshotCompatibleExceptions()
     {
-        AgentStatusProjectionMapper mapper = new();
+        AgentStatusProjectionMapper mapper = CreateMapper();
 
         InvalidOperationException agentStatusException = Assert.ThrowsExactly<InvalidOperationException>(
             () => mapper.MapAgentStatus(
@@ -124,4 +125,6 @@ public sealed class AgentStatusProjectionMapperTests
         Assert.AreEqual("Unsupported agent status '999'.", agentStatusException.Message);
         Assert.AreEqual("Unsupported timeline entry type '999'.", timelineKindException.Message);
     }
+
+    private static AgentStatusProjectionMapper CreateMapper() => new(new ProjectStatusMapper());
 }

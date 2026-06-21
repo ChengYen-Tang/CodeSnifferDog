@@ -9,6 +9,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Services.ProjectStorage;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
@@ -157,7 +158,8 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
             new ExecutionStateService(
                 services.GetRequiredService<IServiceScopeFactory>(),
                 services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-                services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>()),
+                services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+                new ProjectStatusMapper()),
             NullLogger<ClaimExecutor>.Instance);
 
     private static ProjectExecutionClaim CreateClaim(

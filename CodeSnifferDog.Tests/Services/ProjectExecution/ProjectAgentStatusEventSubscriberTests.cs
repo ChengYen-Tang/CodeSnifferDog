@@ -13,6 +13,7 @@ using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -540,7 +541,7 @@ public sealed class ProjectAgentStatusEventSubscriberTests
                 new AgentStatusRuntimeComponentsFactory(
                     dbContextFactory,
                     liveUpdateNotifier,
-                    new AgentStatusProjectionMapper(),
+                    new AgentStatusProjectionMapper(new ProjectStatusMapper()),
                     new AgentTimelinePersistenceService())))
             .Create(projectId, events);
 

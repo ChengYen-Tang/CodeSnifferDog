@@ -6,6 +6,7 @@ using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
@@ -31,7 +32,7 @@ public sealed class AgentStatusRuntimeFactoryTests
         AgentStatusRuntimeFactory factory = new(new AgentStatusRuntimeComponentsFactory(
             dbContextFactory,
             liveUpdateNotifier,
-            new AgentStatusProjectionMapper(),
+            new AgentStatusProjectionMapper(new ProjectStatusMapper()),
             new AgentTimelinePersistenceService()));
         AgentStatusRuntime runtime = factory.Create(projectId);
 
@@ -145,7 +146,7 @@ public sealed class AgentStatusRuntimeFactoryTests
 
     private sealed class TrackingProjectionMapper : IAgentStatusProjectionMapper
     {
-        private readonly AgentStatusProjectionMapper _inner = new();
+        private readonly AgentStatusProjectionMapper _inner = new(new ProjectStatusMapper());
 
         public int MapGroupCallCount { get; private set; }
 

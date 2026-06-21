@@ -6,15 +6,14 @@ namespace CodeSnifferDog.Server.Services.Projects.Projection;
 
 internal sealed class ProjectProjectionMapper : IProjectProjectionMapper
 {
-    public ProjectStatus MapStatus(ProjectProcessingStatus status) => status switch
+    private readonly IProjectStatusMapper _statusMapper;
+
+    public ProjectProjectionMapper(IProjectStatusMapper statusMapper)
     {
-        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
-        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
-        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
-        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
-        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unsupported project status."),
-    };
+        _statusMapper = statusMapper;
+    }
+
+    public ProjectStatus MapStatus(ProjectProcessingStatus status) => _statusMapper.Map(status);
 
     public ProjectSummaryDto MapSummary(ProjectSummaryProjection project) => new()
     {

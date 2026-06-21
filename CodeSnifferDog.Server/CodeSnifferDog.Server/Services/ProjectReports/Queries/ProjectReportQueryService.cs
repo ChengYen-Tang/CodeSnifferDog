@@ -1,5 +1,4 @@
 using CodeSnifferDog.Server.Data;
-using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectReports.Projection;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,19 +16,28 @@ internal sealed class ProjectReportQueryService(
         await using CodeSnifferDogServerDbContext dbContext =
             await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        ProjectRecord? project = await dbContext.Projects
+        string? originalFileName = await dbContext.Projects
             .AsNoTracking()
-            .Include(project => project.RuleReports)
-            .SingleOrDefaultAsync(project => project.Id == projectId, cancellationToken);
+            .Where(project => project.Id == projectId)
+            .Select(project => project.OriginalFileName)
+            .SingleOrDefaultAsync(cancellationToken);
 
-        if (project is null)
+        if (originalFileName is null)
             return null;
 
+        List<ProjectRuleReportProjection> reports = await dbContext.ProjectRuleReports
+            .AsNoTracking()
+            .Where(report => report.ProjectId == projectId)
+            .Select(report => new ProjectRuleReportProjection(
+                report.Id,
+                report.RuleName,
+                report.MarkdownContent))
+            .ToListAsync(cancellationToken);
+
         return new ProjectReportProjectProjection(
-            project.OriginalFileName,
-            project.RuleReports
+            originalFileName,
+            reports
                 .OrderBy(report => report.RuleName, StringComparer.OrdinalIgnoreCase)
-                .Select(MapReport)
                 .ToList());
     }
 
@@ -41,15 +49,13 @@ internal sealed class ProjectReportQueryService(
         await using CodeSnifferDogServerDbContext dbContext =
             await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        ProjectRuleReportRecord? report = await dbContext.ProjectRuleReports
+        return await dbContext.ProjectRuleReports
             .AsNoTracking()
-            .SingleOrDefaultAsync(
-                report => report.ProjectId == projectId && report.Id == reportId,
-                cancellationToken);
-
-        return report is null ? null : MapReport(report);
+            .Where(report => report.ProjectId == projectId && report.Id == reportId)
+            .Select(report => new ProjectRuleReportProjection(
+                report.Id,
+                report.RuleName,
+                report.MarkdownContent))
+            .SingleOrDefaultAsync(cancellationToken);
     }
-
-    private static ProjectRuleReportProjection MapReport(ProjectRuleReportRecord report) =>
-        new(report.Id, report.RuleName, report.MarkdownContent);
 }

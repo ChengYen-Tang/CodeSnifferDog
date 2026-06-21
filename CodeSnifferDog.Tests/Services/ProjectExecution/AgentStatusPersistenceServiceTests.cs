@@ -6,6 +6,7 @@ using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -42,7 +43,7 @@ public sealed class AgentStatusPersistenceServiceTests
             projectId,
             dbContextFactory,
             notifier,
-            new AgentStatusLiveUpdateFactory(new AgentStatusProjectionMapper()),
+            new AgentStatusLiveUpdateFactory(new AgentStatusProjectionMapper(new ProjectStatusMapper())),
             timelinePersistenceService);
 
         await service.AppendTimelineEntryAsync(
@@ -78,7 +79,7 @@ public sealed class AgentStatusPersistenceServiceTests
             projectId,
             dbContextFactory,
             notifier,
-            new AgentStatusLiveUpdateFactory(new AgentStatusProjectionMapper()),
+            new AgentStatusLiveUpdateFactory(new AgentStatusProjectionMapper(new ProjectStatusMapper())),
             timelinePersistenceService);
 
         await service.RemoveTranscriptEntriesAsync(

@@ -10,6 +10,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -132,6 +133,7 @@ public sealed class ProjectReviewAnalysisExecutorTests
         services.AddSingleton<IProjectChatClientProvider, ReadyChatClientProvider>();
         services.AddSingleton(workerFactory);
         services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier, NoOpProjectAgentStatusLiveUpdateNotifier>();
+        services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
         services.AddSingleton<IAgentStatusProjectionMapper, AgentStatusProjectionMapper>();
         services.AddSingleton<IAgentStatusEventSubscriberFactory>(serviceProvider =>
             subscriberFactory

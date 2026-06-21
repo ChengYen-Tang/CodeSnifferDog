@@ -1,21 +1,17 @@
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using PersistedAgentStatus = CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 
-internal sealed class AgentStatusProjectionMapper : IAgentStatusProjectionMapper
+internal sealed class AgentStatusProjectionMapper(IProjectStatusMapper projectStatusMapper) : IAgentStatusProjectionMapper
 {
-    public ProjectStatus MapProjectStatus(ProjectProcessingStatus status) => status switch
-    {
-        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
-        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
-        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
-        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
-        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
-        _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
-    };
+    private readonly IProjectStatusMapper _projectStatusMapper = projectStatusMapper;
+
+    public ProjectStatus MapProjectStatus(ProjectProcessingStatus status) =>
+        _projectStatusMapper.Map(status, ProjectStatusMappingExceptionStyle.Persisted);
 
     public ProjectAgentRunStatus MapAgentStatus(
         PersistedAgentStatus status,

@@ -154,7 +154,7 @@ public sealed class ProjectIntakeServiceTests
             uploadService ?? new StubProjectUploadService(),
             queueService ?? new StubProjectQueueService(),
             deletionService ?? new StubProjectDeletionService(),
-            new ProjectProjectionMapper(),
+            new ProjectProjectionMapper(new ProjectStatusMapper()),
             executionLeaseRegistry ?? new StubProjectExecutionLeaseRegistry(Guid.Empty),
             queueLock ?? new TrackingProjectExecutionQueueLock(),
             NullLogger<ProjectIntakeService>.Instance);

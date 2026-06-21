@@ -133,6 +133,7 @@ internal static class CodeSnifferDogServerServiceCollectionExtensions
     {
         services.AddScoped<IProjectAgentStatusLiveSubscriptionClient, NoOpProjectAgentStatusLiveSubscriptionClient>();
         services.AddScoped<IProjectSidebarController, ServerPrerenderProjectSidebarController>();
+        services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
         services.AddScoped<IProjectProjectionMapper, ProjectProjectionMapper>();
         services.AddScoped<IProjectUploadService, ProjectUploadService>();
         services.AddScoped<IProjectQueueService, ProjectQueueService>();

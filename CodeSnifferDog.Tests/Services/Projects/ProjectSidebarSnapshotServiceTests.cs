@@ -20,7 +20,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory, new ProjectProjectionMapper());
+        ProjectSidebarSnapshotService service = new(dbContextFactory, CreateMapper());
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(
             Guid.Parse("70000000-0000-0000-0000-000000000304"),
@@ -82,7 +82,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory, new ProjectProjectionMapper());
+        ProjectSidebarSnapshotService service = new(dbContextFactory, CreateMapper());
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(null, TestContext.CancellationToken);
 
@@ -95,7 +95,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await SeedProjectsAsync(dbContextFactory);
 
-        ProjectSidebarSnapshotService service = new(dbContextFactory, new ProjectProjectionMapper());
+        ProjectSidebarSnapshotService service = new(dbContextFactory, CreateMapper());
 
         ProjectSidebarSnapshotDto snapshot = await service.GetSnapshotAsync(
             Guid.Parse("79999999-0000-0000-0000-000000000399"),
@@ -218,7 +218,7 @@ public sealed class ProjectSidebarSnapshotServiceTests
 
     private sealed class TrackingProjectProjectionMapper : IProjectProjectionMapper
     {
-        private readonly ProjectProjectionMapper _inner = new();
+        private readonly ProjectProjectionMapper _inner = CreateMapper();
 
         public int MapStatusCallCount { get; private set; }
 
@@ -243,4 +243,6 @@ public sealed class ProjectSidebarSnapshotServiceTests
             return _inner.MapSidebarProject(project, status, sortOrder);
         }
     }
+
+    private static ProjectProjectionMapper CreateMapper() => new(new ProjectStatusMapper());
 }

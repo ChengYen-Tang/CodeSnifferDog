@@ -2,8 +2,8 @@ using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
-using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
@@ -11,11 +11,13 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Executi
 internal sealed class ExecutionStateService(
     IServiceScopeFactory serviceScopeFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-    IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier) : IExecutionStateService
+    IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier,
+    IProjectStatusMapper projectStatusMapper) : IExecutionStateService
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectAgentStatusLiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
+    private readonly IProjectStatusMapper _projectStatusMapper = projectStatusMapper;
 
     public async Task<bool> CanStartExecutionAsync(Guid projectId, CancellationToken cancellationToken)
     {
@@ -73,19 +75,9 @@ internal sealed class ExecutionStateService(
                 OccurredAtUtc = DateTimeOffset.UtcNow,
                 ProjectStatus = new ProjectExecutionStatusChangedDto
                 {
-                    Status = MapProjectStatus(status),
+                    Status = _projectStatusMapper.Map(status, ProjectStatusMappingExceptionStyle.Persisted),
                 },
             },
             cancellationToken);
     }
-
-    internal static ProjectStatus MapProjectStatus(ProjectProcessingStatus status) => status switch
-    {
-        ProjectProcessingStatus.Queued => ProjectStatus.Queued,
-        ProjectProcessingStatus.Reviewing => ProjectStatus.Reviewing,
-        ProjectProcessingStatus.Completed => ProjectStatus.Completed,
-        ProjectProcessingStatus.Failed => ProjectStatus.Failed,
-        ProjectProcessingStatus.Canceled => ProjectStatus.Canceled,
-        _ => throw new InvalidOperationException($"Unsupported project status '{status}'."),
-    };
 }

@@ -5,6 +5,7 @@ using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
@@ -52,19 +53,23 @@ public sealed class ExecutionStateServiceTests
     }
 
     [TestMethod]
-    public void MapProjectStatus_WhenStatusIsUnsupported_ThrowsOriginalException()
+    public async Task PublishStatusUpdateAsync_WhenStatusMapperRejectsStatus_ThrowsOriginalException()
     {
-        InvalidOperationException exception = Assert.ThrowsExactly<InvalidOperationException>(
-            () => ExecutionStateService.MapProjectStatus((ProjectProcessingStatus)999));
+        using ServiceProvider services = CreateServices(new TestProjectChangePublisher(), new TestLiveUpdateNotifier());
+        ExecutionStateService service = CreateService(services);
 
-        StringAssert.Contains(exception.Message, "Unsupported project status");
+        InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => service.PublishStatusUpdateAsync(Guid.NewGuid(), (ProjectProcessingStatus)999, CancellationToken.None));
+
+        Assert.AreEqual("Unsupported project status '999'.", exception.Message);
     }
 
     private static ExecutionStateService CreateService(ServiceProvider services) =>
         new(
             services.GetRequiredService<IServiceScopeFactory>(),
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-            services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>());
+            services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+            services.GetRequiredService<IProjectStatusMapper>());
 
     private static ServiceProvider CreateServices(
         TestProjectChangePublisher projectChangePublisher,
@@ -76,6 +81,7 @@ public sealed class ExecutionStateServiceTests
             options.UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot));
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
         services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier>(liveUpdateNotifier);
+        services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
         return services.BuildServiceProvider();
     }
 

@@ -11,7 +11,7 @@ public sealed class ProjectProjectionMapperTests
     [TestMethod]
     public void MapStatus_MapsAllProjectStatuses()
     {
-        ProjectProjectionMapper mapper = new();
+        ProjectProjectionMapper mapper = CreateMapper();
 
         Assert.AreEqual(ProjectStatus.Queued, mapper.MapStatus(ProjectProcessingStatus.Queued));
         Assert.AreEqual(ProjectStatus.Reviewing, mapper.MapStatus(ProjectProcessingStatus.Reviewing));
@@ -23,7 +23,7 @@ public sealed class ProjectProjectionMapperTests
     [TestMethod]
     public void MapStatus_UnsupportedStatusThrowsOriginalException()
     {
-        ProjectProjectionMapper mapper = new();
+        ProjectProjectionMapper mapper = CreateMapper();
 
         ArgumentOutOfRangeException exception = Assert.ThrowsExactly<ArgumentOutOfRangeException>(
             () => mapper.MapStatus((ProjectProcessingStatus)999));
@@ -34,7 +34,7 @@ public sealed class ProjectProjectionMapperTests
     [TestMethod]
     public void MapSummary_MapsProjectFields()
     {
-        ProjectProjectionMapper mapper = new();
+        ProjectProjectionMapper mapper = CreateMapper();
         ProjectSummaryProjection project = new(
             Guid.NewGuid(),
             "repo.zip",
@@ -64,7 +64,7 @@ public sealed class ProjectProjectionMapperTests
     [TestMethod]
     public void MapListItem_MapsProjectFields()
     {
-        ProjectProjectionMapper mapper = new();
+        ProjectProjectionMapper mapper = CreateMapper();
         ProjectListItemProjection project = new(
             Guid.NewGuid(),
             "repo.zip",
@@ -82,7 +82,7 @@ public sealed class ProjectProjectionMapperTests
     [TestMethod]
     public void MapSidebarProject_MapsProjectFieldsAndSortOrder()
     {
-        ProjectProjectionMapper mapper = new();
+        ProjectProjectionMapper mapper = CreateMapper();
         ProjectSidebarProjectProjection project = new(
             Guid.NewGuid(),
             "repo.zip",
@@ -100,4 +100,6 @@ public sealed class ProjectProjectionMapperTests
         Assert.AreEqual(project.CreatedAtUtc, dto.CreatedAtUtc);
         Assert.AreEqual(3, dto.SortOrder);
     }
+
+    private static ProjectProjectionMapper CreateMapper() => new(new ProjectStatusMapper());
 }

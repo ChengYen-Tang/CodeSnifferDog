@@ -4,6 +4,7 @@ using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
+using CodeSnifferDog.Server.Services.Projects.Projection;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
@@ -14,7 +15,7 @@ public sealed class AgentStatusLiveUpdateFactoryTests
     [TestMethod]
     public void CreateUpdates_MapsPersistedRecordsToLiveUpdateDtos()
     {
-        AgentStatusLiveUpdateFactory factory = new(new AgentStatusProjectionMapper());
+        AgentStatusLiveUpdateFactory factory = new(CreateMapper());
         Guid projectId = Guid.NewGuid();
         Guid groupId = Guid.NewGuid();
         Guid agentId = Guid.NewGuid();
@@ -70,7 +71,7 @@ public sealed class AgentStatusLiveUpdateFactoryTests
     public void MapAgentStatus_UnsupportedValueThrowsOriginalException()
     {
         InvalidOperationException exception = Assert.ThrowsExactly<InvalidOperationException>(
-            () => new AgentStatusProjectionMapper().MapAgentStatus((CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus)999));
+            () => CreateMapper().MapAgentStatus((CodeSnifferDog.Server.Data.Entities.ProjectAgentStatus)999));
 
         Assert.AreEqual("Unsupported persisted agent status '999'.", exception.Message);
     }
@@ -79,8 +80,10 @@ public sealed class AgentStatusLiveUpdateFactoryTests
     public void MapTimelineEntryKind_UnsupportedValueThrowsOriginalException()
     {
         InvalidOperationException exception = Assert.ThrowsExactly<InvalidOperationException>(
-            () => new AgentStatusProjectionMapper().MapTimelineEntryKind((ProjectAgentTimelineEntryType)999));
+            () => CreateMapper().MapTimelineEntryKind((ProjectAgentTimelineEntryType)999));
 
         Assert.AreEqual("Unsupported persisted timeline entry type '999'.", exception.Message);
     }
+
+    private static AgentStatusProjectionMapper CreateMapper() => new(new ProjectStatusMapper());
 }
