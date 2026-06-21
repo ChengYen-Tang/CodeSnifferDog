@@ -82,23 +82,21 @@ public sealed class ProjectPlanWorkflow(
         while (true)
         {
             planAttempts++;
-            await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-            (Result runPlanResult, planPublishedMessageCount, projectPlanAgent) = await RunAgentAsync(
+            (Result runPlanResult, planPublishedMessageCount, projectPlanAgent) = await WorkflowAgentRunService.RunAsync(
                 projectPlanAgent,
                 () => _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope).Agent,
+                PrepareAttempt,
+                RestoreAttempt,
                 planMessages,
                 plannerAgentScope,
                 planPublishedMessageCount,
+                _options.AgentRunTimeout,
+                _options.MaxConsecutiveRunFailures,
                 cancellationToken).ConfigureAwait(false);
 
             if (runPlanResult.IsFailed)
-            {
-                await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runPlanResult.ToResult<ProjectPlanWorkflowResult>();
-            }
-
-            await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             IReadOnlyList<StoredProjectPlanTaskItem> taskItems =
                 await _taskItemStore.ListAsync(cancellationToken).ConfigureAwait(false);
@@ -133,7 +131,6 @@ public sealed class ProjectPlanWorkflow(
             missingSubmissionAttempts = 0;
             verifierAttempts++;
             _verdictBuffer.Reset();
-            await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
             List<ChatMessage> verifierMessages =
             [
@@ -141,21 +138,20 @@ public sealed class ProjectPlanWorkflow(
             ];
             int verifierPublishedMessageCount = 0;
 
-            (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await RunAgentAsync(
+            (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await WorkflowAgentRunService.RunAsync(
                 projectVerifierAgent,
                 () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope).Agent,
+                PrepareAttempt,
+                RestoreAttempt,
                 verifierMessages,
                 verifierAgentScope,
                 verifierPublishedMessageCount,
+                _options.AgentRunTimeout,
+                _options.MaxConsecutiveRunFailures,
                 cancellationToken).ConfigureAwait(false);
 
             if (runVerifierResult.IsFailed)
-            {
-                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runVerifierResult.ToResult<ProjectPlanWorkflowResult>();
-            }
-
-            await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             if (_verdictBuffer.Latest is not ReviewVerdict verdict)
             {
@@ -211,25 +207,6 @@ public sealed class ProjectPlanWorkflow(
             VerifierAttempts = verifierAttempts,
             ProjectPlanAgentResetCount = projectPlanAgentResetCount,
         };
-
-    private Task<(Result Result, int PublishedMessageCount, AIAgent Agent)> RunAgentAsync(
-        AIAgent agent,
-        Func<AIAgent> agentFactory,
-        List<ChatMessage> messages,
-        IAgentEventScope eventScope,
-        int publishedMessageCount,
-        CancellationToken cancellationToken) =>
-        AgentRunGuard.RunAsync(
-            agent,
-            agentFactory,
-            PrepareAttempt,
-            RestoreAttempt,
-            messages,
-            eventScope,
-            publishedMessageCount,
-            _options.AgentRunTimeout,
-            _options.MaxConsecutiveRunFailures,
-            cancellationToken);
 
     private AttemptState PrepareAttempt(Guid attemptId)
     {

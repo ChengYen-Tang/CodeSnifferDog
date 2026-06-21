@@ -77,23 +77,21 @@ public sealed class ScanWorkflow(
         while (true)
         {
             scanAttempts++;
-            await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-            (Result runScanResult, scanPublishedMessageCount, scanAgent) = await RunAgentAsync(
+            (Result runScanResult, scanPublishedMessageCount, scanAgent) = await WorkflowAgentRunService.RunAsync(
                 scanAgent,
                 () => _scanAgentFactory(repositoryRootPath, scanAgentScope).Agent,
+                PrepareAttempt,
+                RestoreAttempt,
                 scanMessages,
                 scanAgentScope,
                 scanPublishedMessageCount,
+                _options.AgentRunTimeout,
+                _options.MaxConsecutiveRunFailures,
                 cancellationToken).ConfigureAwait(false);
 
             if (runScanResult.IsFailed)
-            {
-                await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runScanResult.ToResult<ScanWorkflowResult>();
-            }
-
-            await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             IReadOnlyList<StoredScanProject> projects = await _scanProjectStore.ListAsync(cancellationToken).ConfigureAwait(false);
 
@@ -126,7 +124,6 @@ public sealed class ScanWorkflow(
             missingSubmissionAttempts = 0;
             verifierAttempts++;
             _verdictBuffer.Reset();
-            await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
             List<ChatMessage> verifierMessages =
             [
@@ -134,21 +131,20 @@ public sealed class ScanWorkflow(
             ];
             int verifierPublishedMessageCount = 0;
 
-            (Result runVerifierResult, verifierPublishedMessageCount, scanVerifierAgent) = await RunAgentAsync(
+            (Result runVerifierResult, verifierPublishedMessageCount, scanVerifierAgent) = await WorkflowAgentRunService.RunAsync(
                 scanVerifierAgent,
                 () => _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope).Agent,
+                PrepareAttempt,
+                RestoreAttempt,
                 verifierMessages,
                 scanVerifierAgentScope,
                 verifierPublishedMessageCount,
+                _options.AgentRunTimeout,
+                _options.MaxConsecutiveRunFailures,
                 cancellationToken).ConfigureAwait(false);
 
             if (runVerifierResult.IsFailed)
-            {
-                await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                 return runVerifierResult.ToResult<ScanWorkflowResult>();
-            }
-
-            await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
             if (_verdictBuffer.Latest is not ReviewVerdict verdict)
             {
@@ -194,25 +190,6 @@ public sealed class ScanWorkflow(
             VerifierAttempts = verifierAttempts,
             ScanAgentResetCount = scanAgentResetCount,
         };
-
-    private Task<(Result Result, int PublishedMessageCount, AIAgent Agent)> RunAgentAsync(
-        AIAgent agent,
-        Func<AIAgent> agentFactory,
-        List<ChatMessage> messages,
-        IAgentEventScope eventScope,
-        int publishedMessageCount,
-        CancellationToken cancellationToken) =>
-        AgentRunGuard.RunAsync(
-            agent,
-            agentFactory,
-            PrepareAttempt,
-            RestoreAttempt,
-            messages,
-            eventScope,
-            publishedMessageCount,
-            _options.AgentRunTimeout,
-            _options.MaxConsecutiveRunFailures,
-            cancellationToken);
 
     private AttemptState PrepareAttempt(Guid attemptId)
     {

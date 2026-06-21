@@ -69,7 +69,7 @@ public sealed class RuleReviewWorkflow(
             IAgentEventScope reviewAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateRuleReviewAgentKey(taskItem, ruleKey));
             IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReviewVerifierAgentKey(taskItem, ruleKey));
 
-            Result<AgentCreationResult> createRuleReviewAgentResult = TryCreateAgent(
+            Result<AgentCreationResult> createRuleReviewAgentResult = WorkflowAgentCreation.TryCreate(
                 () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope),
                 "Rule Review Agent");
 
@@ -81,7 +81,7 @@ public sealed class RuleReviewWorkflow(
                 AgentStatusCatalog.WaitingStatus,
                 cancellationToken).ConfigureAwait(false);
 
-            Result<AgentCreationResult> createReviewVerifierAgentResult = TryCreateAgent(
+            Result<AgentCreationResult> createReviewVerifierAgentResult = WorkflowAgentCreation.TryCreate(
                 () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope),
                 "Review Verifier Agent");
 
@@ -107,23 +107,21 @@ public sealed class RuleReviewWorkflow(
             while (true)
             {
                 reviewAttempts++;
-                await reviewAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-                (Result runReviewResult, reviewPublishedMessageCount, ruleReviewAgent) = await RunAgentAsync(
+                (Result runReviewResult, reviewPublishedMessageCount, ruleReviewAgent) = await WorkflowAgentRunService.RunAsync(
                     ruleReviewAgent,
                     () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope).Agent,
+                    PrepareAttempt,
+                    RestoreAttempt,
                     reviewMessages,
                     reviewAgentScope,
                     reviewPublishedMessageCount,
+                    _options.AgentRunTimeout,
+                    _options.MaxConsecutiveRunFailures,
                     cancellationToken).ConfigureAwait(false);
 
                 if (runReviewResult.IsFailed)
-                {
-                    await reviewAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runReviewResult.ToResult<RuleReviewWorkflowResult>();
-                }
-
-                await reviewAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 IReadOnlyList<StoredRuleReviewIssue> issues = await _issueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
                 NoIssueConclusion? noIssueConclusion = await _issueStore.GetNoIssueConclusionAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
@@ -159,7 +157,7 @@ public sealed class RuleReviewWorkflow(
                                 stoppedAfterMissingSubmissionLimit: true));
                         }
 
-                        Result<AgentCreationResult> recreateRuleReviewAgentResult = TryCreateAgent(
+                        Result<AgentCreationResult> recreateRuleReviewAgentResult = WorkflowAgentCreation.TryCreate(
                             () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope),
                             "Rule Review Agent");
 
@@ -181,7 +179,6 @@ public sealed class RuleReviewWorkflow(
                 missingSubmissionAttempts = 0;
                 verifierAttempts++;
                 _verdictBuffer.Reset(reviewVerdictScopeKey);
-                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
                 List<ChatMessage> verifierMessages =
                 [
@@ -189,21 +186,20 @@ public sealed class RuleReviewWorkflow(
                 ];
                 int verifierPublishedMessageCount = 0;
 
-                (Result runVerifierResult, verifierPublishedMessageCount, reviewVerifierAgent) = await RunAgentAsync(
+                (Result runVerifierResult, verifierPublishedMessageCount, reviewVerifierAgent) = await WorkflowAgentRunService.RunAsync(
                     reviewVerifierAgent,
                     () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope).Agent,
+                    PrepareAttempt,
+                    RestoreAttempt,
                     verifierMessages,
                     verifierAgentScope,
                     verifierPublishedMessageCount,
+                    _options.AgentRunTimeout,
+                    _options.MaxConsecutiveRunFailures,
                     cancellationToken).ConfigureAwait(false);
 
                 if (runVerifierResult.IsFailed)
-                {
-                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runVerifierResult.ToResult<RuleReviewWorkflowResult>();
-                }
-
-                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 if (_verdictBuffer.GetLatest(reviewVerdictScopeKey) is not ReviewVerdict verdict)
                 {
@@ -282,25 +278,6 @@ public sealed class RuleReviewWorkflow(
             RuleReviewAgentResetCount = ruleReviewAgentResetCount,
         };
 
-    private Task<(Result Result, int PublishedMessageCount, AIAgent Agent)> RunAgentAsync(
-        AIAgent agent,
-        Func<AIAgent> agentFactory,
-        List<ChatMessage> messages,
-        IAgentEventScope eventScope,
-        int publishedMessageCount,
-        CancellationToken cancellationToken) =>
-        AgentRunGuard.RunAsync(
-            agent,
-            agentFactory,
-            PrepareAttempt,
-            RestoreAttempt,
-            messages,
-            eventScope,
-            publishedMessageCount,
-            _options.AgentRunTimeout,
-            _options.MaxConsecutiveRunFailures,
-            cancellationToken);
-
     private AttemptState PrepareAttempt(Guid attemptId)
     {
         return new AttemptState(
@@ -312,21 +289,6 @@ public sealed class RuleReviewWorkflow(
     {
         state.StoreLease.Restore();
         state.VerdictLease.Restore();
-    }
-
-    private static Result<AgentCreationResult> TryCreateAgent(Func<AgentCreationResult> factory, string agentName)
-    {
-        ArgumentNullException.ThrowIfNull(factory);
-        ArgumentException.ThrowIfNullOrWhiteSpace(agentName);
-
-        try
-        {
-            return Result.Ok(factory());
-        }
-        catch (Exception ex)
-        {
-            return Result.Fail(new ExceptionalError($"Failed to create {agentName}: {ex}", ex));
-        }
     }
 
     private List<ChatMessage> CreateReviewMessages()

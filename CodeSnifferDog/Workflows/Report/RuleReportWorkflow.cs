@@ -76,7 +76,7 @@ public sealed class RuleReportWorkflow(
             IAgentEventScope aggregatorAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportAggregatorAgentKey(taskItem, ruleKey));
             IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportVerifierAgentKey(taskItem, ruleKey));
 
-            Result<AgentCreationResult> createAggregatorResult = TryCreateAgent(
+            Result<AgentCreationResult> createAggregatorResult = WorkflowAgentCreation.TryCreate(
                 () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope),
                 "Report Aggregator Agent");
 
@@ -88,7 +88,7 @@ public sealed class RuleReportWorkflow(
                 AgentStatusCatalog.WaitingStatus,
                 cancellationToken).ConfigureAwait(false);
 
-            Result<AgentCreationResult> createVerifierResult = TryCreateAgent(
+            Result<AgentCreationResult> createVerifierResult = WorkflowAgentCreation.TryCreate(
                 () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope),
                 "Report Verifier Agent");
 
@@ -112,29 +112,26 @@ public sealed class RuleReportWorkflow(
             while (true)
             {
                 aggregatorAttempts++;
-                await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
-                (Result runAggregatorResult, aggregatorPublishedMessageCount, reportAggregatorAgent) = await RunAgentAsync(
+                (Result runAggregatorResult, aggregatorPublishedMessageCount, reportAggregatorAgent) = await WorkflowAgentRunService.RunAsync(
                     reportAggregatorAgent,
                     () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope).Agent,
+                    PrepareAttempt,
+                    RestoreAttempt,
                     aggregatorMessages,
                     aggregatorAgentScope,
                     aggregatorPublishedMessageCount,
+                    _options.AgentRunTimeout,
+                    _options.MaxConsecutiveRunFailures,
                     cancellationToken).ConfigureAwait(false);
 
                 if (runAggregatorResult.IsFailed)
-                {
-                    await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runAggregatorResult.ToResult<RuleReportWorkflowResult>();
-                }
-
-                await aggregatorAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 RuleReportDiff diff = await ComputeAndStoreDiffAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
                 verifierAttempts++;
                 _verdictBuffer.Reset(reportVerdictScopeKey);
-                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken).ConfigureAwait(false);
 
                 List<ChatMessage> verifierMessages =
                 [
@@ -142,21 +139,20 @@ public sealed class RuleReportWorkflow(
                 ];
                 int verifierPublishedMessageCount = 0;
 
-                (Result runVerifierResult, verifierPublishedMessageCount, reportVerifierAgent) = await RunAgentAsync(
+                (Result runVerifierResult, verifierPublishedMessageCount, reportVerifierAgent) = await WorkflowAgentRunService.RunAsync(
                     reportVerifierAgent,
                     () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope).Agent,
+                    PrepareAttempt,
+                    RestoreAttempt,
                     verifierMessages,
                     verifierAgentScope,
                     verifierPublishedMessageCount,
+                    _options.AgentRunTimeout,
+                    _options.MaxConsecutiveRunFailures,
                     cancellationToken).ConfigureAwait(false);
 
                 if (runVerifierResult.IsFailed)
-                {
-                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                     return runVerifierResult.ToResult<RuleReportWorkflowResult>();
-                }
-
-                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.CompletedStatus, cancellationToken).ConfigureAwait(false);
 
                 if (_verdictBuffer.GetLatest(reportVerdictScopeKey) is not ReviewVerdict verdict)
                 {
@@ -277,25 +273,6 @@ public sealed class RuleReportWorkflow(
         left.ScopeCoverage == right.ScopeCoverage &&
         left.CrossScopeAnalysis == right.CrossScopeAnalysis;
 
-    private Task<(Result Result, int PublishedMessageCount, AIAgent Agent)> RunAgentAsync(
-        AIAgent agent,
-        Func<AIAgent> agentFactory,
-        List<ChatMessage> messages,
-        IAgentEventScope eventScope,
-        int publishedMessageCount,
-        CancellationToken cancellationToken) =>
-        AgentRunGuard.RunAsync(
-            agent,
-            agentFactory,
-            PrepareAttempt,
-            RestoreAttempt,
-            messages,
-            eventScope,
-            publishedMessageCount,
-            _options.AgentRunTimeout,
-            _options.MaxConsecutiveRunFailures,
-            cancellationToken);
-
     private AttemptState PrepareAttempt(Guid attemptId)
     {
         return new AttemptState(
@@ -307,21 +284,6 @@ public sealed class RuleReportWorkflow(
     {
         state.StoreLease.Restore();
         state.VerdictLease.Restore();
-    }
-
-    private static Result<AgentCreationResult> TryCreateAgent(Func<AgentCreationResult> factory, string agentName)
-    {
-        ArgumentNullException.ThrowIfNull(factory);
-        ArgumentException.ThrowIfNullOrWhiteSpace(agentName);
-
-        try
-        {
-            return Result.Ok(factory());
-        }
-        catch (Exception ex)
-        {
-            return Result.Fail(new ExceptionalError($"Failed to create {agentName}: {ex}", ex));
-        }
     }
 
     private List<ChatMessage> CreateAggregatorMessages(IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
