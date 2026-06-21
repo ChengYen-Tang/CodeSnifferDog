@@ -16,17 +16,7 @@ internal sealed class ProjectReportQueryService(
         await using CodeSnifferDogServerDbContext dbContext =
             await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        List<ProjectReportQueryRow> rows = await (
-            from project in dbContext.Projects.AsNoTracking()
-            where project.Id == projectId
-            join report in dbContext.ProjectRuleReports.AsNoTracking()
-                on project.Id equals report.ProjectId into projectReports
-            from report in projectReports.DefaultIfEmpty()
-            select new ProjectReportQueryRow(
-                project.OriginalFileName,
-                report == null ? null : (Guid?)report.Id,
-                report == null ? null : report.RuleName,
-                report == null ? null : report.MarkdownContent))
+        List<ProjectReportQueryRow> rows = await CreateProjectReportsQuery(dbContext, projectId)
             .ToListAsync(cancellationToken);
 
         if (rows.Count == 0)
@@ -62,7 +52,21 @@ internal sealed class ProjectReportQueryService(
             .SingleOrDefaultAsync(cancellationToken);
     }
 
-    private sealed record ProjectReportQueryRow(
+    internal static IQueryable<ProjectReportQueryRow> CreateProjectReportsQuery(
+        CodeSnifferDogServerDbContext dbContext,
+        Guid projectId) =>
+        from project in dbContext.Projects.AsNoTracking()
+        where project.Id == projectId
+        join report in dbContext.ProjectRuleReports.AsNoTracking()
+            on project.Id equals report.ProjectId into projectReports
+        from report in projectReports.DefaultIfEmpty()
+        select new ProjectReportQueryRow(
+            project.OriginalFileName,
+            report == null ? null : (Guid?)report.Id,
+            report == null ? null : report.RuleName,
+            report == null ? null : report.MarkdownContent);
+
+    internal sealed record ProjectReportQueryRow(
         string OriginalFileName,
         Guid? ReportId,
         string? RuleName,

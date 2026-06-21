@@ -61,7 +61,8 @@ internal sealed class ProjectAgentStatusBackfillQueryService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        IReadOnlyList<AgentStatusTimelineEntryProjection> timelineEntries = request.AgentId is Guid agentId
+        IReadOnlyList<AgentStatusTimelineEntryProjection> timelineEntries =
+            request.AgentId is Guid agentId && agents.Any(agent => agent.AgentId == agentId)
             ? await LoadTimelineEntriesAsync(dbContext, agentId, request.LatestSequence, cancellationToken).ConfigureAwait(false)
             : [];
 

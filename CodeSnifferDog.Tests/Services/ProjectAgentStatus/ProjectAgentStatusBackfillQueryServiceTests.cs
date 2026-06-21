@@ -60,6 +60,35 @@ public sealed class ProjectAgentStatusBackfillQueryServiceTests
         Assert.AreEqual(2L, result.TimelineEntries.Single().Sequence);
     }
 
+    [TestMethod]
+    public async Task GetBackfillAsync_WhenRequestedAgentBelongsToDifferentProject_ReturnsEmptyTimelineTail()
+    {
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
+        Guid projectId = Guid.NewGuid();
+        Guid groupId = Guid.NewGuid();
+        Guid agentId = Guid.NewGuid();
+        Guid otherProjectId = Guid.NewGuid();
+        Guid otherGroupId = Guid.NewGuid();
+        Guid otherAgentId = Guid.NewGuid();
+        await SeedProjectTreeAsync(dbContextFactory, projectId, groupId, agentId);
+        await SeedProjectTreeAsync(dbContextFactory, otherProjectId, otherGroupId, otherAgentId);
+        ProjectAgentStatusBackfillQueryService service = new(dbContextFactory);
+
+        ProjectAgentStatusBackfillReadModel result = await service.GetBackfillAsync(
+            new ProjectAgentLiveSubscriptionRequestDto
+            {
+                ProjectId = projectId,
+                SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
+                AgentId = otherAgentId,
+                LatestSequence = 0,
+            },
+            TestContext.CancellationToken);
+
+        Assert.AreEqual(ProjectProcessingStatus.Reviewing, result.ProjectStatus);
+        Assert.AreEqual(agentId, result.Agents.Single().AgentId);
+        Assert.IsEmpty(result.TimelineEntries);
+    }
+
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
