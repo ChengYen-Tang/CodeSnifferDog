@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
@@ -232,11 +233,14 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
             session,
             TestContext.CancellationToken).AsTask().GetAwaiter().GetResult();
 
-        object? result = typeof(OperationalContextCompactionAgentBuilderExtensions)
-            .GetMethod("CommitStagedCollapsesAndPrepareRetryMessages", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
-            .Invoke(null, [originalMessages, session, options, new HashSet<string>(StringComparer.Ordinal) { "0000000000000001" }]);
-
-        ChatMessage[] retryMessages = [.. (IReadOnlyList<ChatMessage>)result!];
+        ChatMessage[] retryMessages =
+        [
+            .. AgentFrameworkCompactionRuntime.CommitStagedCollapsesAndPrepareRetryMessages(
+                originalMessages,
+                session,
+                options,
+                new HashSet<string>(StringComparer.Ordinal) { "0000000000000001" }),
+        ];
 
         Assert.IsTrue(retryMessages.Any(message =>
             message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString() ==
