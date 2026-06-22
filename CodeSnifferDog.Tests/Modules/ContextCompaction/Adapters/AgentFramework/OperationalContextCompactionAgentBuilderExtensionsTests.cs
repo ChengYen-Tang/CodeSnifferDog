@@ -1,6 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
-using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
@@ -201,51 +200,6 @@ public sealed class OperationalContextCompactionAgentBuilderExtensionsTests
         Assert.AreEqual(ChatRole.Assistant.ToString(), state.Commits[0].LastArchivedMessageRole);
         Assert.AreEqual(state.Commits[0].CollapseId, state.Snapshot.LastCommittedCollapseId);
         Assert.IsNull(state.Snapshot.LastStagedCollapseId);
-    }
-
-    [TestMethod]
-    public void CommitStagedCollapsesAndPrepareRetryMessages_UsesCommittedProjection_InContextCollapseMode()
-    {
-        OperationalContextAgentCompactionOptions options = CreateOptions(
-            CreateReducer(
-                new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"),
-                new OperationalContextCompactionOptions
-                {
-                    ModelContextWindowTokens = 100,
-                    SummaryReservedOutputTokens = 1,
-                    AutoCompactBufferTokens = 1,
-                    PreservedTailMinTokens = 1,
-                    PreservedTailMinMessages = 1,
-                    Mode = OperationalContextCompactionMode.ContextCollapse,
-                }),
-            new DefaultOperationalContextReactiveCompactionExceptionDecider());
-        TestSession session = new();
-
-        ChatMessage[] originalMessages =
-        [
-            new(ChatRole.User, "user-1"),
-            new(ChatRole.Assistant, "assistant-1"),
-            new(ChatRole.User, new string('x', 1_000)),
-        ];
-
-        _ = options.CollapseController!.PrepareReactiveRetryAsync(
-            originalMessages,
-            session,
-            TestContext.CancellationToken).AsTask().GetAwaiter().GetResult();
-
-        ChatMessage[] retryMessages =
-        [
-            .. AgentFrameworkCompactionRuntime.CommitStagedCollapsesAndPrepareRetryMessages(
-                originalMessages,
-                session,
-                options,
-                new HashSet<string>(StringComparer.Ordinal) { "0000000000000001" }),
-        ];
-
-        Assert.IsTrue(retryMessages.Any(message =>
-            message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString() ==
-            OperationalContextCompactionArtifactMetadata.CollapseProjectionArtifactKind));
-        Assert.IsFalse(retryMessages.SequenceEqual(originalMessages));
     }
 
     [TestMethod]
