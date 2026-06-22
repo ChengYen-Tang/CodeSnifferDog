@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Modules.Tools.Issues;
 using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
@@ -17,21 +18,9 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
     {
         ArgumentNullException.ThrowIfNull(issue);
         RuleReviewIssue normalizedIssue = NormalizeIssue(issue);
-        StoredRuleReviewIssue storedIssue = new()
-        {
-            RuleReviewIssueId = Guid.NewGuid().ToString("N"),
-            IssueType = normalizedIssue.IssueType,
-            Severity = normalizedIssue.Severity,
-            FileOrFunction = normalizedIssue.FileOrFunction,
-            RelevantCodePatternOrExpression = normalizedIssue.RelevantCodePatternOrExpression,
-            WhyThisIsAProblem = normalizedIssue.WhyThisIsAProblem,
-            Confidence = normalizedIssue.Confidence,
-            FollowUpFiles = normalizedIssue.FollowUpFiles,
-            SuggestedFixDirection = normalizedIssue.SuggestedFixDirection,
-            ReviewStrategy = normalizedIssue.ReviewStrategy,
-            ScopeCoverage = normalizedIssue.ScopeCoverage,
-            CrossScopeAnalysis = normalizedIssue.CrossScopeAnalysis,
-        };
+        StoredRuleReviewIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(
+            normalizedIssue,
+            Guid.NewGuid().ToString("N"));
 
         lock (_syncRoot)
         {
@@ -40,7 +29,8 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
 
             RuleReviewFlowState state = GetOrCreateState(ruleFlowKey);
             state.NoIssueConclusion = null;
-            StoredRuleReviewIssue? existingIssue = state.Issues.FirstOrDefault(candidate => AreEquivalent(candidate, normalizedIssue));
+            StoredRuleReviewIssue? existingIssue = state.Issues
+                .FirstOrDefault(candidate => RuleIssueStoreMapper.IsEquivalentToNormalizedIssue(candidate, normalizedIssue));
             if (existingIssue is not null)
                 return ValueTask.FromResult(existingIssue);
 
@@ -101,21 +91,9 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
             if (index < 0)
                 throw new KeyNotFoundException($"Rule review issue was not found: {ruleReviewIssueId}");
 
-            StoredRuleReviewIssue storedIssue = new()
-            {
-                RuleReviewIssueId = state.Issues[index].RuleReviewIssueId,
-                IssueType = normalizedIssue.IssueType,
-                Severity = normalizedIssue.Severity,
-                FileOrFunction = normalizedIssue.FileOrFunction,
-                RelevantCodePatternOrExpression = normalizedIssue.RelevantCodePatternOrExpression,
-                WhyThisIsAProblem = normalizedIssue.WhyThisIsAProblem,
-                Confidence = normalizedIssue.Confidence,
-                FollowUpFiles = normalizedIssue.FollowUpFiles,
-                SuggestedFixDirection = normalizedIssue.SuggestedFixDirection,
-                ReviewStrategy = normalizedIssue.ReviewStrategy,
-                ScopeCoverage = normalizedIssue.ScopeCoverage,
-                CrossScopeAnalysis = normalizedIssue.CrossScopeAnalysis,
-            };
+            StoredRuleReviewIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(
+                normalizedIssue,
+                state.Issues[index].RuleReviewIssueId);
             state.Issues[index] = storedIssue;
             return ValueTask.FromResult(storedIssue);
         }
@@ -224,52 +202,8 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
         return state;
     }
 
-    private static RuleReviewIssue NormalizeIssue(RuleReviewIssue issue)
-    {
-        ValidateIssue(issue);
-        return new RuleReviewIssue
-        {
-            IssueType = issue.IssueType.Trim(),
-            Severity = RuleReviewSeverity.Normalize(issue.Severity),
-            FileOrFunction = issue.FileOrFunction.Trim(),
-            RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression.Trim(),
-            WhyThisIsAProblem = issue.WhyThisIsAProblem.Trim(),
-            Confidence = issue.Confidence.Trim(),
-            FollowUpFiles = issue.FollowUpFiles.Trim(),
-            SuggestedFixDirection = issue.SuggestedFixDirection.Trim(),
-            ReviewStrategy = issue.ReviewStrategy.Trim(),
-            ScopeCoverage = issue.ScopeCoverage.Trim(),
-            CrossScopeAnalysis = issue.CrossScopeAnalysis.Trim(),
-        };
-    }
-
-    private static void ValidateIssue(RuleReviewIssue issue)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.IssueType);
-        RuleReviewSeverity.Normalize(issue.Severity);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.FileOrFunction);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.RelevantCodePatternOrExpression);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.WhyThisIsAProblem);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.Confidence);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.FollowUpFiles);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.SuggestedFixDirection);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.ReviewStrategy);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.ScopeCoverage);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.CrossScopeAnalysis);
-    }
-
-    private static bool AreEquivalent(StoredRuleReviewIssue storedIssue, RuleReviewIssue issue) =>
-        string.Equals(storedIssue.IssueType, issue.IssueType, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.Severity, issue.Severity, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.FileOrFunction, issue.FileOrFunction, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.RelevantCodePatternOrExpression, issue.RelevantCodePatternOrExpression, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.WhyThisIsAProblem, issue.WhyThisIsAProblem, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.Confidence, issue.Confidence, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.FollowUpFiles, issue.FollowUpFiles, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.SuggestedFixDirection, issue.SuggestedFixDirection, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.ReviewStrategy, issue.ReviewStrategy, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.ScopeCoverage, issue.ScopeCoverage, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.CrossScopeAnalysis, issue.CrossScopeAnalysis, StringComparison.Ordinal);
+    private static RuleReviewIssue NormalizeIssue(RuleReviewIssue issue) =>
+        RuleIssueNormalizer.Normalize(issue);
 
     private static NoIssueConclusion NormalizeNoIssueConclusion(NoIssueConclusion conclusion)
     {
@@ -316,21 +250,7 @@ public sealed class InMemoryRuleReviewIssueStore : IRuleReviewIssueStore
                     },
             };
 
-            clone.Issues.AddRange(Issues.Select(static issue => new StoredRuleReviewIssue
-            {
-                RuleReviewIssueId = issue.RuleReviewIssueId,
-                IssueType = issue.IssueType,
-                Severity = issue.Severity,
-                FileOrFunction = issue.FileOrFunction,
-                RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression,
-                WhyThisIsAProblem = issue.WhyThisIsAProblem,
-                Confidence = issue.Confidence,
-                FollowUpFiles = issue.FollowUpFiles,
-                SuggestedFixDirection = issue.SuggestedFixDirection,
-                ReviewStrategy = issue.ReviewStrategy,
-                ScopeCoverage = issue.ScopeCoverage,
-                CrossScopeAnalysis = issue.CrossScopeAnalysis,
-            }));
+            clone.Issues.AddRange(Issues.Select(RuleIssueStoreMapper.Clone));
             return clone;
         }
     }

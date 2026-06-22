@@ -110,6 +110,35 @@ public sealed class ReportToolSetTests
     }
 
     [TestMethod]
+    public async Task CreateRuleReportIssueAsync_FailsForMissingRequiredField()
+    {
+        InMemoryRuleReportIssueStore store = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ReportToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.CreateRuleReportIssueAsync(
+            new CreateRuleReportIssueArgs
+            {
+                IssueType = "Performance",
+                Severity = "High",
+                FileOrFunction = " ",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
     public async Task PromoteWorkingReportAsync_PreservesSnapshotForNextFlow()
     {
         InMemoryRuleReportIssueStore store = new();

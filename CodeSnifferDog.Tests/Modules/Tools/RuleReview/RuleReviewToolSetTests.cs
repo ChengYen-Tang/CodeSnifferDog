@@ -147,6 +147,32 @@ public sealed class RuleReviewToolSetTests
     }
 
     [TestMethod]
+    public async Task CreateRuleReviewIssueAsync_FailsForMissingRequiredField()
+    {
+        RuleReviewToolSet toolSet = new(
+            new InMemoryRuleReviewIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.CreateRuleReviewIssueAsync(
+            new CreateRuleReviewIssueArgs
+            {
+                IssueType = "Performance",
+                Severity = "High",
+                FileOrFunction = " ",
+                RelevantCodePatternOrExpression = "Repeated synchronous call",
+                WhyThisIsAProblem = "This blocks the hot path.",
+                Confidence = "High",
+                FollowUpFiles = "Program.cs",
+                SuggestedFixDirection = "Use a cached async path.",
+                ScopeCoverage = "Inspected Program.cs.",
+                CrossScopeAnalysis = "No cross-scope inspection was required.",
+                ReviewStrategy = "Reviewed the hot path first.",
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
     public async Task ListRuleReviewIssuesAsync_IsolatedByRuleFlowKey()
     {
         InMemoryRuleReviewIssueStore store = new();

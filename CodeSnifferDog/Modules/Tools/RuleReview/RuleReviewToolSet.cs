@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Modules.Tools.Issues;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
@@ -288,9 +289,8 @@ public sealed class RuleReviewToolSet(
         return ValueTask.FromResult(true);
     }
 
-    private static RuleReviewIssue CreateIssue(CreateRuleReviewIssueArgs args)
-    {
-        ValidateIssueFields(
+    private static RuleReviewIssue CreateIssue(CreateRuleReviewIssueArgs args) =>
+        RuleIssueNormalizer.Create(
             args.IssueType,
             args.Severity,
             args.FileOrFunction,
@@ -303,25 +303,8 @@ public sealed class RuleReviewToolSet(
             args.CrossScopeAnalysis,
             args.ReviewStrategy);
 
-        return new RuleReviewIssue
-        {
-            IssueType = args.IssueType.Trim(),
-            Severity = RuleReviewSeverity.Normalize(args.Severity),
-            FileOrFunction = args.FileOrFunction.Trim(),
-            RelevantCodePatternOrExpression = args.RelevantCodePatternOrExpression.Trim(),
-            WhyThisIsAProblem = args.WhyThisIsAProblem.Trim(),
-            Confidence = args.Confidence.Trim(),
-            FollowUpFiles = args.FollowUpFiles.Trim(),
-            SuggestedFixDirection = args.SuggestedFixDirection.Trim(),
-            ScopeCoverage = args.ScopeCoverage.Trim(),
-            CrossScopeAnalysis = args.CrossScopeAnalysis.Trim(),
-            ReviewStrategy = args.ReviewStrategy.Trim(),
-        };
-    }
-
-    private static RuleReviewIssue CreateIssue(UpdateRuleReviewIssueArgs args)
-    {
-        ValidateIssueFields(
+    private static RuleReviewIssue CreateIssue(UpdateRuleReviewIssueArgs args) =>
+        RuleIssueNormalizer.Create(
             args.IssueType,
             args.Severity,
             args.FileOrFunction,
@@ -333,46 +316,4 @@ public sealed class RuleReviewToolSet(
             args.ScopeCoverage,
             args.CrossScopeAnalysis,
             args.ReviewStrategy);
-
-        return new RuleReviewIssue
-        {
-            IssueType = args.IssueType.Trim(),
-            Severity = RuleReviewSeverity.Normalize(args.Severity),
-            FileOrFunction = args.FileOrFunction.Trim(),
-            RelevantCodePatternOrExpression = args.RelevantCodePatternOrExpression.Trim(),
-            WhyThisIsAProblem = args.WhyThisIsAProblem.Trim(),
-            Confidence = args.Confidence.Trim(),
-            FollowUpFiles = args.FollowUpFiles.Trim(),
-            SuggestedFixDirection = args.SuggestedFixDirection.Trim(),
-            ScopeCoverage = args.ScopeCoverage.Trim(),
-            CrossScopeAnalysis = args.CrossScopeAnalysis.Trim(),
-            ReviewStrategy = args.ReviewStrategy.Trim(),
-        };
-    }
-
-    private static void ValidateIssueFields(
-        string issueType,
-        string severity,
-        string fileOrFunction,
-        string relevantCodePatternOrExpression,
-        string whyThisIsAProblem,
-        string confidence,
-        string followUpFiles,
-        string suggestedFixDirection,
-        string scopeCoverage,
-        string crossScopeAnalysis,
-        string reviewStrategy)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(issueType);
-        RuleReviewSeverity.Normalize(severity);
-        ArgumentException.ThrowIfNullOrWhiteSpace(fileOrFunction);
-        ArgumentException.ThrowIfNullOrWhiteSpace(relevantCodePatternOrExpression);
-        ArgumentException.ThrowIfNullOrWhiteSpace(whyThisIsAProblem);
-        ArgumentException.ThrowIfNullOrWhiteSpace(confidence);
-        ArgumentException.ThrowIfNullOrWhiteSpace(followUpFiles);
-        ArgumentException.ThrowIfNullOrWhiteSpace(suggestedFixDirection);
-        ArgumentException.ThrowIfNullOrWhiteSpace(scopeCoverage);
-        ArgumentException.ThrowIfNullOrWhiteSpace(crossScopeAnalysis);
-        ArgumentException.ThrowIfNullOrWhiteSpace(reviewStrategy);
-    }
 }

@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Modules.Tools.Issues;
 using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
@@ -30,7 +31,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
             flowState.WorkingIssues.Clear();
 
             foreach (StoredRuleReportIssue issue in latestSnapshot.Issues)
-                flowState.WorkingIssues.Add(CloneIssue(issue));
+                flowState.WorkingIssues.Add(RuleIssueStoreMapper.Clone(issue));
 
             flowState.LatestDiff = CreateEmptyDiff();
         }
@@ -44,7 +45,9 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         CancellationToken _)
     {
         ArgumentNullException.ThrowIfNull(issue);
-        StoredRuleReportIssue storedIssue = CreateStoredIssue(NormalizeIssue(issue), Guid.NewGuid().ToString("N"));
+        StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(
+            NormalizeIssue(issue),
+            Guid.NewGuid().ToString("N"));
 
         lock (_syncRoot)
         {
@@ -52,7 +55,8 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
                 return ValueTask.FromResult(storedIssue);
 
             RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
-            StoredRuleReportIssue? existingIssue = flowState.WorkingIssues.FirstOrDefault(candidate => AreEquivalent(candidate, issue));
+            StoredRuleReportIssue? existingIssue = flowState.WorkingIssues
+                .FirstOrDefault(candidate => RuleIssueStoreMapper.IsEquivalentToIssue(candidate, issue));
             if (existingIssue is not null)
                 return ValueTask.FromResult(existingIssue);
 
@@ -113,7 +117,9 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
             if (index < 0)
                 throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}");
 
-            StoredRuleReportIssue storedIssue = CreateStoredIssue(normalizedIssue, flowState.WorkingIssues[index].RuleReportIssueId);
+            StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(
+                normalizedIssue,
+                flowState.WorkingIssues[index].RuleReportIssueId);
             flowState.WorkingIssues[index] = storedIssue;
             return ValueTask.FromResult(storedIssue);
         }
@@ -192,7 +198,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
             latestSnapshot.Issues.Clear();
 
             foreach (StoredRuleReportIssue issue in flowState.WorkingIssues)
-                latestSnapshot.Issues.Add(CloneIssue(issue));
+                latestSnapshot.Issues.Add(RuleIssueStoreMapper.Clone(issue));
         }
 
         return ValueTask.CompletedTask;
@@ -295,88 +301,8 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
             DeletedIssues = [],
         };
 
-    private static RuleReviewIssue NormalizeIssue(RuleReviewIssue issue)
-    {
-        ValidateIssue(issue);
-        return new RuleReviewIssue
-        {
-            IssueType = issue.IssueType.Trim(),
-            Severity = RuleReviewSeverity.Normalize(issue.Severity),
-            FileOrFunction = issue.FileOrFunction.Trim(),
-            RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression.Trim(),
-            WhyThisIsAProblem = issue.WhyThisIsAProblem.Trim(),
-            Confidence = issue.Confidence.Trim(),
-            FollowUpFiles = issue.FollowUpFiles.Trim(),
-            SuggestedFixDirection = issue.SuggestedFixDirection.Trim(),
-            ReviewStrategy = issue.ReviewStrategy.Trim(),
-            ScopeCoverage = issue.ScopeCoverage.Trim(),
-            CrossScopeAnalysis = issue.CrossScopeAnalysis.Trim(),
-        };
-    }
-
-    private static StoredRuleReportIssue CreateStoredIssue(RuleReviewIssue issue, string id)
-        =>
-        new()
-        {
-            RuleReportIssueId = id,
-            IssueType = issue.IssueType,
-            Severity = issue.Severity,
-            FileOrFunction = issue.FileOrFunction,
-            RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression,
-            WhyThisIsAProblem = issue.WhyThisIsAProblem,
-            Confidence = issue.Confidence,
-            FollowUpFiles = issue.FollowUpFiles,
-            SuggestedFixDirection = issue.SuggestedFixDirection,
-            ReviewStrategy = issue.ReviewStrategy,
-            ScopeCoverage = issue.ScopeCoverage,
-            CrossScopeAnalysis = issue.CrossScopeAnalysis,
-        };
-
-    private static StoredRuleReportIssue CloneIssue(StoredRuleReportIssue issue)
-        =>
-        new()
-        {
-            RuleReportIssueId = issue.RuleReportIssueId,
-            IssueType = issue.IssueType,
-            Severity = issue.Severity,
-            FileOrFunction = issue.FileOrFunction,
-            RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression,
-            WhyThisIsAProblem = issue.WhyThisIsAProblem,
-            Confidence = issue.Confidence,
-            FollowUpFiles = issue.FollowUpFiles,
-            SuggestedFixDirection = issue.SuggestedFixDirection,
-            ReviewStrategy = issue.ReviewStrategy,
-            ScopeCoverage = issue.ScopeCoverage,
-            CrossScopeAnalysis = issue.CrossScopeAnalysis,
-        };
-
-    private static void ValidateIssue(RuleReviewIssue issue)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.IssueType);
-        RuleReviewSeverity.Normalize(issue.Severity);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.FileOrFunction);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.RelevantCodePatternOrExpression);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.WhyThisIsAProblem);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.Confidence);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.FollowUpFiles);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.SuggestedFixDirection);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.ReviewStrategy);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.ScopeCoverage);
-        ArgumentException.ThrowIfNullOrWhiteSpace(issue.CrossScopeAnalysis);
-    }
-
-    private static bool AreEquivalent(StoredRuleReportIssue storedIssue, RuleReviewIssue issue) =>
-        string.Equals(storedIssue.IssueType, issue.IssueType.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.Severity, RuleReviewSeverity.Normalize(issue.Severity), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.FileOrFunction, issue.FileOrFunction.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.RelevantCodePatternOrExpression, issue.RelevantCodePatternOrExpression.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.WhyThisIsAProblem, issue.WhyThisIsAProblem.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.Confidence, issue.Confidence.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.FollowUpFiles, issue.FollowUpFiles.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.SuggestedFixDirection, issue.SuggestedFixDirection.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.ReviewStrategy, issue.ReviewStrategy.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.ScopeCoverage, issue.ScopeCoverage.Trim(), StringComparison.Ordinal) &&
-        string.Equals(storedIssue.CrossScopeAnalysis, issue.CrossScopeAnalysis.Trim(), StringComparison.Ordinal);
+    private static RuleReviewIssue NormalizeIssue(RuleReviewIssue issue) =>
+        RuleIssueNormalizer.Normalize(issue);
 
     private bool CanWrite(RuleFlowKey ruleFlowKey)
     {
@@ -398,12 +324,12 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
             {
                 LatestDiff = new RuleReportDiff
                 {
-                    CreatedIssues = [.. LatestDiff.CreatedIssues.Select(CloneIssue)],
-                    UpdatedIssues = [.. LatestDiff.UpdatedIssues.Select(CloneIssue)],
-                    DeletedIssues = [.. LatestDiff.DeletedIssues.Select(CloneIssue)],
+                    CreatedIssues = [.. LatestDiff.CreatedIssues.Select(RuleIssueStoreMapper.Clone)],
+                    UpdatedIssues = [.. LatestDiff.UpdatedIssues.Select(RuleIssueStoreMapper.Clone)],
+                    DeletedIssues = [.. LatestDiff.DeletedIssues.Select(RuleIssueStoreMapper.Clone)],
                 },
             };
-            clone.WorkingIssues.AddRange(WorkingIssues.Select(CloneIssue));
+            clone.WorkingIssues.AddRange(WorkingIssues.Select(RuleIssueStoreMapper.Clone));
             return clone;
         }
     }
@@ -417,7 +343,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         public RuleReportSnapshotState Clone()
         {
             RuleReportSnapshotState clone = new(RuleKey);
-            clone.Issues.AddRange(Issues.Select(CloneIssue));
+            clone.Issues.AddRange(Issues.Select(RuleIssueStoreMapper.Clone));
             return clone;
         }
     }
