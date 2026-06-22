@@ -38,10 +38,20 @@ public sealed class RuleIssueNormalizerTests
     }
 
     [TestMethod]
+    public void NormalizeToContract_ReturnsNormalizedWrapper()
+    {
+        NormalizedRuleIssue contract = RuleIssueNormalizer.NormalizeToContract(CreateIssue(" high "));
+
+        Assert.AreEqual("Performance", contract.Issue.IssueType);
+        Assert.AreEqual(RuleReviewSeverity.High, contract.Issue.Severity);
+        Assert.AreEqual("Program.cs", contract.Issue.FileOrFunction);
+    }
+
+    [TestMethod]
     public void Create_UsesSameNormalization_ForToolArguments()
     {
-        RuleReviewIssue fromIssue = RuleIssueNormalizer.Normalize(CreateIssue(" high "));
-        RuleReviewIssue fromArguments = RuleIssueNormalizer.Create(
+        NormalizedRuleIssue fromIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue(" high "));
+        NormalizedRuleIssue fromArguments = RuleIssueNormalizer.CreateContract(
             " Performance ",
             " high ",
             " Program.cs ",
@@ -54,17 +64,17 @@ public sealed class RuleIssueNormalizerTests
             " cross ",
             " strategy ");
 
-        Assert.AreEqual(fromIssue.IssueType, fromArguments.IssueType);
-        Assert.AreEqual(fromIssue.Severity, fromArguments.Severity);
-        Assert.AreEqual(fromIssue.FileOrFunction, fromArguments.FileOrFunction);
-        Assert.AreEqual(fromIssue.RelevantCodePatternOrExpression, fromArguments.RelevantCodePatternOrExpression);
-        Assert.AreEqual(fromIssue.WhyThisIsAProblem, fromArguments.WhyThisIsAProblem);
-        Assert.AreEqual(fromIssue.Confidence, fromArguments.Confidence);
-        Assert.AreEqual(fromIssue.FollowUpFiles, fromArguments.FollowUpFiles);
-        Assert.AreEqual(fromIssue.SuggestedFixDirection, fromArguments.SuggestedFixDirection);
-        Assert.AreEqual(fromIssue.ScopeCoverage, fromArguments.ScopeCoverage);
-        Assert.AreEqual(fromIssue.CrossScopeAnalysis, fromArguments.CrossScopeAnalysis);
-        Assert.AreEqual(fromIssue.ReviewStrategy, fromArguments.ReviewStrategy);
+        Assert.AreEqual(fromIssue.Issue.IssueType, fromArguments.Issue.IssueType);
+        Assert.AreEqual(fromIssue.Issue.Severity, fromArguments.Issue.Severity);
+        Assert.AreEqual(fromIssue.Issue.FileOrFunction, fromArguments.Issue.FileOrFunction);
+        Assert.AreEqual(fromIssue.Issue.RelevantCodePatternOrExpression, fromArguments.Issue.RelevantCodePatternOrExpression);
+        Assert.AreEqual(fromIssue.Issue.WhyThisIsAProblem, fromArguments.Issue.WhyThisIsAProblem);
+        Assert.AreEqual(fromIssue.Issue.Confidence, fromArguments.Issue.Confidence);
+        Assert.AreEqual(fromIssue.Issue.FollowUpFiles, fromArguments.Issue.FollowUpFiles);
+        Assert.AreEqual(fromIssue.Issue.SuggestedFixDirection, fromArguments.Issue.SuggestedFixDirection);
+        Assert.AreEqual(fromIssue.Issue.ScopeCoverage, fromArguments.Issue.ScopeCoverage);
+        Assert.AreEqual(fromIssue.Issue.CrossScopeAnalysis, fromArguments.Issue.CrossScopeAnalysis);
+        Assert.AreEqual(fromIssue.Issue.ReviewStrategy, fromArguments.Issue.ReviewStrategy);
     }
 
     [TestMethod]

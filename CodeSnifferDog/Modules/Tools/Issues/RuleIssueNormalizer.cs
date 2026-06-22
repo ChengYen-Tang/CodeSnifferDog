@@ -31,10 +31,41 @@ internal static class RuleIssueNormalizer
             ReviewStrategy = reviewStrategy,
         });
 
+    public static NormalizedRuleIssue CreateContract(
+        string issueType,
+        string severity,
+        string fileOrFunction,
+        string relevantCodePatternOrExpression,
+        string whyThisIsAProblem,
+        string confidence,
+        string followUpFiles,
+        string suggestedFixDirection,
+        string scopeCoverage,
+        string crossScopeAnalysis,
+        string reviewStrategy) =>
+        NormalizeToContract(new RuleReviewIssue
+        {
+            IssueType = issueType,
+            Severity = severity,
+            FileOrFunction = fileOrFunction,
+            RelevantCodePatternOrExpression = relevantCodePatternOrExpression,
+            WhyThisIsAProblem = whyThisIsAProblem,
+            Confidence = confidence,
+            FollowUpFiles = followUpFiles,
+            SuggestedFixDirection = suggestedFixDirection,
+            ScopeCoverage = scopeCoverage,
+            CrossScopeAnalysis = crossScopeAnalysis,
+            ReviewStrategy = reviewStrategy,
+        });
+
     public static RuleReviewIssue Normalize(RuleReviewIssue issue)
+        =>
+        NormalizeToContract(issue).Issue;
+
+    public static NormalizedRuleIssue NormalizeToContract(RuleReviewIssue issue)
     {
         Validate(issue);
-        return new RuleReviewIssue
+        return new NormalizedRuleIssue(new RuleReviewIssue
         {
             IssueType = issue.IssueType.Trim(),
             Severity = RuleReviewSeverity.Normalize(issue.Severity),
@@ -47,7 +78,7 @@ internal static class RuleIssueNormalizer
             ReviewStrategy = issue.ReviewStrategy.Trim(),
             ScopeCoverage = issue.ScopeCoverage.Trim(),
             CrossScopeAnalysis = issue.CrossScopeAnalysis.Trim(),
-        };
+        });
     }
 
     private static void Validate(RuleReviewIssue issue)

@@ -10,42 +10,42 @@ public sealed class RuleIssueStoreMapperTests
     [TestMethod]
     public void CreateReviewIssue_PreservesIdAndFields()
     {
-        RuleReviewIssue issue = RuleIssueNormalizer.Normalize(CreateIssue("High"));
+        NormalizedRuleIssue issue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
 
         StoredRuleReviewIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(issue, "review-id");
 
         Assert.AreEqual("review-id", storedIssue.RuleReviewIssueId);
-        Assert.AreEqual(issue.IssueType, storedIssue.IssueType);
-        Assert.AreEqual(issue.Severity, storedIssue.Severity);
-        Assert.AreEqual(issue.FileOrFunction, storedIssue.FileOrFunction);
-        Assert.AreEqual(issue.RelevantCodePatternOrExpression, storedIssue.RelevantCodePatternOrExpression);
-        Assert.AreEqual(issue.WhyThisIsAProblem, storedIssue.WhyThisIsAProblem);
-        Assert.AreEqual(issue.Confidence, storedIssue.Confidence);
-        Assert.AreEqual(issue.FollowUpFiles, storedIssue.FollowUpFiles);
-        Assert.AreEqual(issue.SuggestedFixDirection, storedIssue.SuggestedFixDirection);
-        Assert.AreEqual(issue.ScopeCoverage, storedIssue.ScopeCoverage);
-        Assert.AreEqual(issue.CrossScopeAnalysis, storedIssue.CrossScopeAnalysis);
-        Assert.AreEqual(issue.ReviewStrategy, storedIssue.ReviewStrategy);
+        Assert.AreEqual(issue.Issue.IssueType, storedIssue.IssueType);
+        Assert.AreEqual(issue.Issue.Severity, storedIssue.Severity);
+        Assert.AreEqual(issue.Issue.FileOrFunction, storedIssue.FileOrFunction);
+        Assert.AreEqual(issue.Issue.RelevantCodePatternOrExpression, storedIssue.RelevantCodePatternOrExpression);
+        Assert.AreEqual(issue.Issue.WhyThisIsAProblem, storedIssue.WhyThisIsAProblem);
+        Assert.AreEqual(issue.Issue.Confidence, storedIssue.Confidence);
+        Assert.AreEqual(issue.Issue.FollowUpFiles, storedIssue.FollowUpFiles);
+        Assert.AreEqual(issue.Issue.SuggestedFixDirection, storedIssue.SuggestedFixDirection);
+        Assert.AreEqual(issue.Issue.ScopeCoverage, storedIssue.ScopeCoverage);
+        Assert.AreEqual(issue.Issue.CrossScopeAnalysis, storedIssue.CrossScopeAnalysis);
+        Assert.AreEqual(issue.Issue.ReviewStrategy, storedIssue.ReviewStrategy);
     }
 
     [TestMethod]
     public void CreateReportIssue_PreservesIdAndFields()
     {
-        RuleReviewIssue issue = RuleIssueNormalizer.Normalize(CreateIssue("High"));
+        NormalizedRuleIssue issue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
 
         StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(issue, "report-id");
 
         Assert.AreEqual("report-id", storedIssue.RuleReportIssueId);
-        Assert.AreEqual(issue.IssueType, storedIssue.IssueType);
-        Assert.AreEqual(issue.Severity, storedIssue.Severity);
-        Assert.AreEqual(issue.FileOrFunction, storedIssue.FileOrFunction);
+        Assert.AreEqual(issue.Issue.IssueType, storedIssue.IssueType);
+        Assert.AreEqual(issue.Issue.Severity, storedIssue.Severity);
+        Assert.AreEqual(issue.Issue.FileOrFunction, storedIssue.FileOrFunction);
     }
 
     [TestMethod]
     public void Clone_CreatesIndependentReportIssue()
     {
         StoredRuleReportIssue original = RuleIssueStoreMapper.CreateReportIssue(
-            RuleIssueNormalizer.Normalize(CreateIssue("High")),
+            RuleIssueNormalizer.NormalizeToContract(CreateIssue("High")),
             "report-id");
 
         StoredRuleReportIssue clone = RuleIssueStoreMapper.Clone(original);
@@ -72,22 +72,22 @@ public sealed class RuleIssueStoreMapperTests
     [TestMethod]
     public void IsEquivalentToNormalizedIssue_UsesExactNormalizedFields()
     {
-        RuleReviewIssue normalizedIssue = RuleIssueNormalizer.Normalize(CreateIssue("High"));
+        NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
         StoredRuleReviewIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(normalizedIssue, "review-id");
-        RuleReviewIssue differentlyCasedIssue = RuleIssueNormalizer.Normalize(CreateIssue("Medium"));
+        NormalizedRuleIssue differentlyCasedIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("Medium"));
 
         Assert.IsTrue(RuleIssueStoreMapper.IsEquivalentToNormalizedIssue(storedIssue, normalizedIssue));
         Assert.IsFalse(RuleIssueStoreMapper.IsEquivalentToNormalizedIssue(storedIssue, differentlyCasedIssue));
     }
 
     [TestMethod]
-    public void IsEquivalentToIssue_UsesNormalizedFieldSemantics()
+    public void IsEquivalentToNormalizedIssue_ForReportIssueUsesExactNormalizedFields()
     {
-        RuleReviewIssue normalizedIssue = RuleIssueNormalizer.Normalize(CreateIssue("High"));
+        NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
         StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(normalizedIssue, "report-id");
-        RuleReviewIssue unnormalizedIssue = CreateIssue(" high ");
+        NormalizedRuleIssue equivalentIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue(" high "));
 
-        Assert.IsTrue(RuleIssueStoreMapper.IsEquivalentToIssue(storedIssue, unnormalizedIssue));
+        Assert.IsTrue(RuleIssueStoreMapper.IsEquivalentToNormalizedIssue(storedIssue, equivalentIssue));
     }
 
     private static RuleReviewIssue CreateIssue(string severity) => new()

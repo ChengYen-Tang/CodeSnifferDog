@@ -5,36 +5,36 @@ namespace CodeSnifferDog.Modules.Tools.Issues;
 
 internal static class RuleIssueStoreMapper
 {
-    public static StoredRuleReviewIssue CreateReviewIssue(RuleReviewIssue normalizedIssue, string id) => new()
+    public static StoredRuleReviewIssue CreateReviewIssue(NormalizedRuleIssue normalizedIssue, string id) => new()
     {
         RuleReviewIssueId = id,
-        IssueType = normalizedIssue.IssueType,
-        Severity = normalizedIssue.Severity,
-        FileOrFunction = normalizedIssue.FileOrFunction,
-        RelevantCodePatternOrExpression = normalizedIssue.RelevantCodePatternOrExpression,
-        WhyThisIsAProblem = normalizedIssue.WhyThisIsAProblem,
-        Confidence = normalizedIssue.Confidence,
-        FollowUpFiles = normalizedIssue.FollowUpFiles,
-        SuggestedFixDirection = normalizedIssue.SuggestedFixDirection,
-        ReviewStrategy = normalizedIssue.ReviewStrategy,
-        ScopeCoverage = normalizedIssue.ScopeCoverage,
-        CrossScopeAnalysis = normalizedIssue.CrossScopeAnalysis,
+        IssueType = normalizedIssue.Issue.IssueType,
+        Severity = normalizedIssue.Issue.Severity,
+        FileOrFunction = normalizedIssue.Issue.FileOrFunction,
+        RelevantCodePatternOrExpression = normalizedIssue.Issue.RelevantCodePatternOrExpression,
+        WhyThisIsAProblem = normalizedIssue.Issue.WhyThisIsAProblem,
+        Confidence = normalizedIssue.Issue.Confidence,
+        FollowUpFiles = normalizedIssue.Issue.FollowUpFiles,
+        SuggestedFixDirection = normalizedIssue.Issue.SuggestedFixDirection,
+        ReviewStrategy = normalizedIssue.Issue.ReviewStrategy,
+        ScopeCoverage = normalizedIssue.Issue.ScopeCoverage,
+        CrossScopeAnalysis = normalizedIssue.Issue.CrossScopeAnalysis,
     };
 
-    public static StoredRuleReportIssue CreateReportIssue(RuleReviewIssue normalizedIssue, string id) => new()
+    public static StoredRuleReportIssue CreateReportIssue(NormalizedRuleIssue normalizedIssue, string id) => new()
     {
         RuleReportIssueId = id,
-        IssueType = normalizedIssue.IssueType,
-        Severity = normalizedIssue.Severity,
-        FileOrFunction = normalizedIssue.FileOrFunction,
-        RelevantCodePatternOrExpression = normalizedIssue.RelevantCodePatternOrExpression,
-        WhyThisIsAProblem = normalizedIssue.WhyThisIsAProblem,
-        Confidence = normalizedIssue.Confidence,
-        FollowUpFiles = normalizedIssue.FollowUpFiles,
-        SuggestedFixDirection = normalizedIssue.SuggestedFixDirection,
-        ReviewStrategy = normalizedIssue.ReviewStrategy,
-        ScopeCoverage = normalizedIssue.ScopeCoverage,
-        CrossScopeAnalysis = normalizedIssue.CrossScopeAnalysis,
+        IssueType = normalizedIssue.Issue.IssueType,
+        Severity = normalizedIssue.Issue.Severity,
+        FileOrFunction = normalizedIssue.Issue.FileOrFunction,
+        RelevantCodePatternOrExpression = normalizedIssue.Issue.RelevantCodePatternOrExpression,
+        WhyThisIsAProblem = normalizedIssue.Issue.WhyThisIsAProblem,
+        Confidence = normalizedIssue.Issue.Confidence,
+        FollowUpFiles = normalizedIssue.Issue.FollowUpFiles,
+        SuggestedFixDirection = normalizedIssue.Issue.SuggestedFixDirection,
+        ReviewStrategy = normalizedIssue.Issue.ReviewStrategy,
+        ScopeCoverage = normalizedIssue.Issue.ScopeCoverage,
+        CrossScopeAnalysis = normalizedIssue.Issue.CrossScopeAnalysis,
     };
 
     public static StoredRuleReviewIssue Clone(StoredRuleReviewIssue issue) => new()
@@ -69,32 +69,29 @@ internal static class RuleIssueStoreMapper
         CrossScopeAnalysis = issue.CrossScopeAnalysis,
     };
 
-    public static bool IsEquivalentToNormalizedIssue(StoredRuleReviewIssue storedIssue, RuleReviewIssue normalizedIssue) =>
-        string.Equals(storedIssue.IssueType, normalizedIssue.IssueType, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.Severity, normalizedIssue.Severity, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.FileOrFunction, normalizedIssue.FileOrFunction, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.RelevantCodePatternOrExpression, normalizedIssue.RelevantCodePatternOrExpression, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.WhyThisIsAProblem, normalizedIssue.WhyThisIsAProblem, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.Confidence, normalizedIssue.Confidence, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.FollowUpFiles, normalizedIssue.FollowUpFiles, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.SuggestedFixDirection, normalizedIssue.SuggestedFixDirection, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.ReviewStrategy, normalizedIssue.ReviewStrategy, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.ScopeCoverage, normalizedIssue.ScopeCoverage, StringComparison.Ordinal) &&
-        string.Equals(storedIssue.CrossScopeAnalysis, normalizedIssue.CrossScopeAnalysis, StringComparison.Ordinal);
+    public static bool IsEquivalentToNormalizedIssue(StoredRuleReviewIssue storedIssue, NormalizedRuleIssue normalizedIssue) =>
+        string.Equals(storedIssue.IssueType, normalizedIssue.Issue.IssueType, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.Severity, normalizedIssue.Issue.Severity, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.FileOrFunction, normalizedIssue.Issue.FileOrFunction, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.RelevantCodePatternOrExpression, normalizedIssue.Issue.RelevantCodePatternOrExpression, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.WhyThisIsAProblem, normalizedIssue.Issue.WhyThisIsAProblem, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.Confidence, normalizedIssue.Issue.Confidence, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.FollowUpFiles, normalizedIssue.Issue.FollowUpFiles, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.SuggestedFixDirection, normalizedIssue.Issue.SuggestedFixDirection, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.ReviewStrategy, normalizedIssue.Issue.ReviewStrategy, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.ScopeCoverage, normalizedIssue.Issue.ScopeCoverage, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.CrossScopeAnalysis, normalizedIssue.Issue.CrossScopeAnalysis, StringComparison.Ordinal);
 
-    public static bool IsEquivalentToIssue(StoredRuleReportIssue storedIssue, RuleReviewIssue issue)
-    {
-        RuleReviewIssue normalizedIssue = RuleIssueNormalizer.Normalize(issue);
-        return string.Equals(storedIssue.IssueType, normalizedIssue.IssueType, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.Severity, normalizedIssue.Severity, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.FileOrFunction, normalizedIssue.FileOrFunction, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.RelevantCodePatternOrExpression, normalizedIssue.RelevantCodePatternOrExpression, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.WhyThisIsAProblem, normalizedIssue.WhyThisIsAProblem, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.Confidence, normalizedIssue.Confidence, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.FollowUpFiles, normalizedIssue.FollowUpFiles, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.SuggestedFixDirection, normalizedIssue.SuggestedFixDirection, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.ReviewStrategy, normalizedIssue.ReviewStrategy, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.ScopeCoverage, normalizedIssue.ScopeCoverage, StringComparison.Ordinal) &&
-            string.Equals(storedIssue.CrossScopeAnalysis, normalizedIssue.CrossScopeAnalysis, StringComparison.Ordinal);
-    }
+    public static bool IsEquivalentToNormalizedIssue(StoredRuleReportIssue storedIssue, NormalizedRuleIssue normalizedIssue) =>
+        string.Equals(storedIssue.IssueType, normalizedIssue.Issue.IssueType, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.Severity, normalizedIssue.Issue.Severity, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.FileOrFunction, normalizedIssue.Issue.FileOrFunction, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.RelevantCodePatternOrExpression, normalizedIssue.Issue.RelevantCodePatternOrExpression, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.WhyThisIsAProblem, normalizedIssue.Issue.WhyThisIsAProblem, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.Confidence, normalizedIssue.Issue.Confidence, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.FollowUpFiles, normalizedIssue.Issue.FollowUpFiles, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.SuggestedFixDirection, normalizedIssue.Issue.SuggestedFixDirection, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.ReviewStrategy, normalizedIssue.Issue.ReviewStrategy, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.ScopeCoverage, normalizedIssue.Issue.ScopeCoverage, StringComparison.Ordinal) &&
+        string.Equals(storedIssue.CrossScopeAnalysis, normalizedIssue.Issue.CrossScopeAnalysis, StringComparison.Ordinal);
 }

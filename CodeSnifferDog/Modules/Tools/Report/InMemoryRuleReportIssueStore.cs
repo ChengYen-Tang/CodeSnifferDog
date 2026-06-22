@@ -1,16 +1,18 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Modules.Tools.Attempts;
 using CodeSnifferDog.Modules.Tools.Issues;
+using CodeSnifferDog.Modules.Tools.Report.State;
 using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
 public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
 {
-    private readonly Dictionary<RuleReportKey, RuleReportSnapshotState> _latestSnapshots = [];
-    private readonly Dictionary<RuleFlowKey, RuleReportFlowState> _flowStates = [];
-    private readonly Dictionary<RuleFlowKey, Guid> _activeAttemptIds = [];
+    private readonly RuleReportSnapshotStore _snapshotStore = new();
+    private readonly RuleReportWorkingStateStore _workingStateStore = new();
+    private readonly ScopedAttemptWriteGuard<RuleFlowKey> _writeGuard = new();
     private readonly Lock _syncRoot = new();
 
     public ValueTask InitializeWorkingReportAsync(
@@ -23,17 +25,13 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
 
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
+            if (!_writeGuard.CanWrite(ruleFlowKey))
                 return ValueTask.CompletedTask;
 
-            RuleReportSnapshotState latestSnapshot = GetOrCreateLatestSnapshot(ruleReportKey, ruleKey.Trim());
-            RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
-            flowState.WorkingIssues.Clear();
-
-            foreach (StoredRuleReportIssue issue in latestSnapshot.Issues)
-                flowState.WorkingIssues.Add(RuleIssueStoreMapper.Clone(issue));
-
-            flowState.LatestDiff = CreateEmptyDiff();
+            IReadOnlyList<StoredRuleReportIssue> snapshotIssues = _snapshotStore.InitializeAndGetSnapshot(
+                ruleReportKey,
+                ruleKey.Trim());
+            _workingStateStore.Initialize(ruleFlowKey, snapshotIssues);
         }
 
         return ValueTask.CompletedTask;
@@ -45,25 +43,21 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         CancellationToken _)
     {
         ArgumentNullException.ThrowIfNull(issue);
-        StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(
-            NormalizeIssue(issue),
+        NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(issue);
+        StoredRuleReportIssue generatedIssue = RuleIssueStoreMapper.CreateReportIssue(
+            normalizedIssue,
             Guid.NewGuid().ToString("N"));
 
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
-                return ValueTask.FromResult(storedIssue);
+            if (!_writeGuard.CanWrite(ruleFlowKey))
+                return ValueTask.FromResult(generatedIssue);
 
-            RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
-            StoredRuleReportIssue? existingIssue = flowState.WorkingIssues
-                .FirstOrDefault(candidate => RuleIssueStoreMapper.IsEquivalentToIssue(candidate, issue));
-            if (existingIssue is not null)
-                return ValueTask.FromResult(existingIssue);
-
-            flowState.WorkingIssues.Add(storedIssue);
+            return ValueTask.FromResult(_workingStateStore.Add(
+                ruleFlowKey,
+                normalizedIssue,
+                generatedIssue.RuleReportIssueId));
         }
-
-        return ValueTask.FromResult(storedIssue);
     }
 
     public ValueTask<StoredRuleReportIssue> GetAsync(
@@ -74,12 +68,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReportIssueId);
 
         lock (_syncRoot)
-        {
-            return ValueTask.FromResult(
-                GetOrCreateFlowState(ruleFlowKey).WorkingIssues
-                    .FirstOrDefault(item => item.RuleReportIssueId == ruleReportIssueId.Trim())
-                ?? throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}"));
-        }
+            return ValueTask.FromResult(_workingStateStore.Get(ruleFlowKey, ruleReportIssueId));
     }
 
     public ValueTask<IReadOnlyList<StoredRuleReportIssue>> ListAsync(
@@ -87,7 +76,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         CancellationToken _)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult<IReadOnlyList<StoredRuleReportIssue>>([.. GetOrCreateFlowState(ruleFlowKey).WorkingIssues]);
+            return ValueTask.FromResult(_workingStateStore.List(ruleFlowKey));
     }
 
     public ValueTask<StoredRuleReportIssue> UpdateAsync(
@@ -98,30 +87,14 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleReportIssueId);
         ArgumentNullException.ThrowIfNull(issue);
-        RuleReviewIssue normalizedIssue = NormalizeIssue(issue);
+        NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(issue);
 
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
-            {
-                RuleReportFlowState existingState = GetOrCreateFlowState(ruleFlowKey);
-                StoredRuleReportIssue existingIssue = existingState.WorkingIssues
-                    .FirstOrDefault(item => item.RuleReportIssueId == ruleReportIssueId.Trim())
-                    ?? throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}");
-                return ValueTask.FromResult(existingIssue);
-            }
+            if (!_writeGuard.CanWrite(ruleFlowKey))
+                return ValueTask.FromResult(_workingStateStore.Get(ruleFlowKey, ruleReportIssueId));
 
-            RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
-            int index = flowState.WorkingIssues.FindIndex(item => item.RuleReportIssueId == ruleReportIssueId.Trim());
-
-            if (index < 0)
-                throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}");
-
-            StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(
-                normalizedIssue,
-                flowState.WorkingIssues[index].RuleReportIssueId);
-            flowState.WorkingIssues[index] = storedIssue;
-            return ValueTask.FromResult(storedIssue);
+            return ValueTask.FromResult(_workingStateStore.Update(ruleFlowKey, ruleReportIssueId, normalizedIssue));
         }
     }
 
@@ -134,17 +107,10 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
 
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
+            if (!_writeGuard.CanWrite(ruleFlowKey))
                 return ValueTask.FromResult(false);
 
-            RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
-            StoredRuleReportIssue? issue = flowState.WorkingIssues.FirstOrDefault(item => item.RuleReportIssueId == ruleReportIssueId.Trim());
-
-            if (issue is null)
-                return ValueTask.FromResult(false);
-
-            flowState.WorkingIssues.Remove(issue);
-            return ValueTask.FromResult(true);
+            return ValueTask.FromResult(_workingStateStore.Delete(ruleFlowKey, ruleReportIssueId));
         }
     }
 
@@ -153,8 +119,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         CancellationToken _)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult<IReadOnlyList<StoredRuleReportIssue>>(
-                _latestSnapshots.TryGetValue(ruleReportKey, out RuleReportSnapshotState? state) ? [.. state.Issues] : []);
+            return ValueTask.FromResult(_snapshotStore.GetLatestSnapshot(ruleReportKey));
     }
 
     public ValueTask<RuleReportDiff> GetLatestDiffAsync(
@@ -162,7 +127,7 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
         CancellationToken _)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult(GetOrCreateFlowState(ruleFlowKey).LatestDiff);
+            return ValueTask.FromResult(_workingStateStore.GetLatestDiff(ruleFlowKey));
     }
 
     public ValueTask SetLatestDiffAsync(
@@ -174,10 +139,10 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
 
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
+            if (!_writeGuard.CanWrite(ruleFlowKey))
                 return ValueTask.CompletedTask;
 
-            GetOrCreateFlowState(ruleFlowKey).LatestDiff = diff;
+            _workingStateStore.SetLatestDiff(ruleFlowKey, diff);
         }
 
         return ValueTask.CompletedTask;
@@ -190,15 +155,10 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     {
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
+            if (!_writeGuard.CanWrite(ruleFlowKey))
                 return ValueTask.CompletedTask;
 
-            RuleReportSnapshotState latestSnapshot = GetOrCreateLatestSnapshot(ruleReportKey, null);
-            RuleReportFlowState flowState = GetOrCreateFlowState(ruleFlowKey);
-            latestSnapshot.Issues.Clear();
-
-            foreach (StoredRuleReportIssue issue in flowState.WorkingIssues)
-                latestSnapshot.Issues.Add(RuleIssueStoreMapper.Clone(issue));
+            _snapshotStore.Promote(ruleReportKey, _workingStateStore.List(ruleFlowKey));
         }
 
         return ValueTask.CompletedTask;
@@ -208,14 +168,10 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     {
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
+            if (!_writeGuard.CanWrite(ruleFlowKey))
                 return ValueTask.CompletedTask;
 
-            if (!_flowStates.TryGetValue(ruleFlowKey, out RuleReportFlowState? flowState))
-                return ValueTask.CompletedTask;
-
-            flowState.WorkingIssues.Clear();
-            flowState.LatestDiff = CreateEmptyDiff();
+            _workingStateStore.Clear(ruleFlowKey);
         }
 
         return ValueTask.CompletedTask;
@@ -228,12 +184,12 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     {
         lock (_syncRoot)
         {
-            if (!CanWrite(ruleFlowKey))
+            if (!_writeGuard.CanWrite(ruleFlowKey))
                 return ValueTask.CompletedTask;
 
-            _latestSnapshots.Remove(ruleReportKey);
-            _flowStates.Remove(ruleFlowKey);
-            _activeAttemptIds.Remove(ruleFlowKey);
+            _snapshotStore.Clear(ruleReportKey);
+            _workingStateStore.Remove(ruleFlowKey);
+            _writeGuard.Clear(ruleFlowKey);
         }
 
         return ValueTask.CompletedTask;
@@ -243,108 +199,11 @@ public sealed class InMemoryRuleReportIssueStore : IRuleReportIssueStore
     {
         lock (_syncRoot)
         {
-            _flowStates.TryGetValue(ruleFlowKey, out RuleReportFlowState? previousFlowState);
-            Guid staleWriteBlockerAttemptId = Guid.NewGuid();
-            RuleReportFlowState? snapshot = previousFlowState?.Clone();
-            _activeAttemptIds[ruleFlowKey] = attemptId;
-
-            return new AgentAttemptLease(() =>
-            {
-                lock (_syncRoot)
-                {
-                    _activeAttemptIds[ruleFlowKey] = staleWriteBlockerAttemptId;
-
-                    if (snapshot is null)
-                        _flowStates.Remove(ruleFlowKey);
-                    else
-                        _flowStates[ruleFlowKey] = snapshot.Clone();
-                }
-            });
-        }
-    }
-
-    private RuleReportSnapshotState GetOrCreateLatestSnapshot(RuleReportKey ruleReportKey, string? ruleKey)
-    {
-        if (_latestSnapshots.TryGetValue(ruleReportKey, out RuleReportSnapshotState? state))
-        {
-            if (!string.IsNullOrWhiteSpace(ruleKey) &&
-                !string.Equals(state.RuleKey, ruleKey.Trim(), StringComparison.Ordinal))
-                throw new InvalidOperationException($"Rule key mismatch for report key '{ruleReportKey}'.");
-
-            return state;
-        }
-
-        if (string.IsNullOrWhiteSpace(ruleKey))
-            throw new KeyNotFoundException($"Rule report snapshot was not initialized: {ruleReportKey}");
-
-        state = new RuleReportSnapshotState(ruleKey.Trim());
-        _latestSnapshots.Add(ruleReportKey, state);
-        return state;
-    }
-
-    private RuleReportFlowState GetOrCreateFlowState(RuleFlowKey ruleFlowKey)
-    {
-        if (_flowStates.TryGetValue(ruleFlowKey, out RuleReportFlowState? state))
-            return state;
-
-        state = new RuleReportFlowState();
-        _flowStates.Add(ruleFlowKey, state);
-        return state;
-    }
-
-    private static RuleReportDiff CreateEmptyDiff()
-        =>
-        new()
-        {
-            CreatedIssues = [],
-            UpdatedIssues = [],
-            DeletedIssues = [],
-        };
-
-    private static RuleReviewIssue NormalizeIssue(RuleReviewIssue issue) =>
-        RuleIssueNormalizer.Normalize(issue);
-
-    private bool CanWrite(RuleFlowKey ruleFlowKey)
-    {
-        Guid? currentAttemptId = AgentRunAttemptContext.CurrentAttemptId;
-        return currentAttemptId is null ||
-            !_activeAttemptIds.TryGetValue(ruleFlowKey, out Guid activeAttemptId) ||
-            currentAttemptId == activeAttemptId;
-    }
-
-    internal sealed class RuleReportFlowState
-    {
-        public List<StoredRuleReportIssue> WorkingIssues { get; } = [];
-
-        public RuleReportDiff LatestDiff { get; set; } = CreateEmptyDiff();
-
-        public RuleReportFlowState Clone()
-        {
-            RuleReportFlowState clone = new()
-            {
-                LatestDiff = new RuleReportDiff
-                {
-                    CreatedIssues = [.. LatestDiff.CreatedIssues.Select(RuleIssueStoreMapper.Clone)],
-                    UpdatedIssues = [.. LatestDiff.UpdatedIssues.Select(RuleIssueStoreMapper.Clone)],
-                    DeletedIssues = [.. LatestDiff.DeletedIssues.Select(RuleIssueStoreMapper.Clone)],
-                },
-            };
-            clone.WorkingIssues.AddRange(WorkingIssues.Select(RuleIssueStoreMapper.Clone));
-            return clone;
-        }
-    }
-
-    internal sealed class RuleReportSnapshotState(string ruleKey)
-    {
-        public string RuleKey { get; } = ruleKey;
-
-        public List<StoredRuleReportIssue> Issues { get; } = [];
-
-        public RuleReportSnapshotState Clone()
-        {
-            RuleReportSnapshotState clone = new(RuleKey);
-            clone.Issues.AddRange(Issues.Select(RuleIssueStoreMapper.Clone));
-            return clone;
+            RuleReportFlowState? snapshot = _workingStateStore.Clone(ruleFlowKey);
+            return _writeGuard.BeginAttempt(
+                ruleFlowKey,
+                attemptId,
+                () => _workingStateStore.Restore(ruleFlowKey, snapshot));
         }
     }
 }
