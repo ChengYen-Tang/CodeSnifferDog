@@ -1,4 +1,6 @@
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Modules.Tools.Attempts;
+using CodeSnifferDog.Modules.Tools.Review.State;
 using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.Tools.Review;
@@ -6,8 +8,8 @@ namespace CodeSnifferDog.Modules.Tools.Review;
 public sealed class ReviewVerdictBuffer
 {
     private const string DefaultScopeKey = "__default__";
-    private readonly Dictionary<string, ReviewVerdict> _latestByScope = [];
-    private readonly Dictionary<string, Guid> _activeAttemptIdsByScope = [];
+    private readonly ReviewVerdictStateStore _stateStore = new();
+    private readonly ScopedAttemptWriteGuard<string> _writeGuard = new();
     private readonly Lock _syncRoot = new();
 
     public ReviewVerdict? Latest => GetLatest(DefaultScopeKey);
@@ -17,7 +19,7 @@ public sealed class ReviewVerdictBuffer
         ArgumentException.ThrowIfNullOrWhiteSpace(scopeKey);
 
         lock (_syncRoot)
-            return _latestByScope.GetValueOrDefault(scopeKey.Trim());
+            return _stateStore.GetLatest(scopeKey);
     }
 
     public void Reset() => Reset(DefaultScopeKey);
@@ -28,10 +30,11 @@ public sealed class ReviewVerdictBuffer
 
         lock (_syncRoot)
         {
-            if (!CanWrite(scopeKey.Trim()))
+            string normalizedScopeKey = scopeKey.Trim();
+            if (!_writeGuard.CanWrite(normalizedScopeKey))
                 return;
 
-            _latestByScope.Remove(scopeKey.Trim());
+            _stateStore.Reset(normalizedScopeKey);
         }
     }
 
@@ -45,14 +48,10 @@ public sealed class ReviewVerdictBuffer
         lock (_syncRoot)
         {
             string normalizedScopeKey = scopeKey.Trim();
-            if (!CanWrite(normalizedScopeKey))
+            if (!_writeGuard.CanWrite(normalizedScopeKey))
                 return;
 
-            _latestByScope[normalizedScopeKey] = new ReviewVerdict
-            {
-                Approved = approved,
-                Message = message,
-            };
+            _stateStore.Submit(normalizedScopeKey, approved, message);
         }
     }
 
@@ -65,51 +64,11 @@ public sealed class ReviewVerdictBuffer
         lock (_syncRoot)
         {
             string normalizedScopeKey = scopeKey.Trim();
-            bool hadVerdict = _latestByScope.TryGetValue(normalizedScopeKey, out ReviewVerdict? previousVerdict);
-            Guid staleWriteBlockerAttemptId = Guid.NewGuid();
-            ReviewVerdict? clonedVerdict = previousVerdict is null
-                ? null
-                : new ReviewVerdict
-                {
-                    Approved = previousVerdict.Approved,
-                    Message = previousVerdict.Message,
-                };
-
-            _activeAttemptIdsByScope[normalizedScopeKey] = attemptId;
-
-            return new AgentAttemptLease(() =>
-            {
-                lock (_syncRoot)
-                {
-                    _activeAttemptIdsByScope[normalizedScopeKey] = staleWriteBlockerAttemptId;
-
-                    if (clonedVerdict is null)
-                        _latestByScope.Remove(normalizedScopeKey);
-                    else
-                        _latestByScope[normalizedScopeKey] = new ReviewVerdict
-                        {
-                            Approved = clonedVerdict.Approved,
-                            Message = clonedVerdict.Message,
-                        };
-                }
-            });
+            ReviewVerdict? snapshot = _stateStore.Clone(normalizedScopeKey);
+            return _writeGuard.BeginAttempt(
+                normalizedScopeKey,
+                attemptId,
+                () => _stateStore.Restore(normalizedScopeKey, snapshot));
         }
-    }
-
-    private bool CanWrite(string scopeKey)
-    {
-        Guid? currentAttemptId = AgentRunAttemptContext.CurrentAttemptId;
-        return currentAttemptId is null ||
-            !_activeAttemptIdsByScope.TryGetValue(scopeKey, out Guid activeAttemptId) ||
-            currentAttemptId == activeAttemptId;
-    }
-
-    internal sealed class Snapshot(
-        IReadOnlyDictionary<string, Guid> activeAttemptIdsByScope,
-        IReadOnlyDictionary<string, ReviewVerdict> latestByScope)
-    {
-        public IReadOnlyDictionary<string, Guid> ActiveAttemptIdsByScope { get; } = activeAttemptIdsByScope;
-
-        public IReadOnlyDictionary<string, ReviewVerdict> LatestByScope { get; } = latestByScope;
     }
 }
