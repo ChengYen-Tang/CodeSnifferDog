@@ -16,6 +16,53 @@ public sealed class ReportToolSetTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
+    public async Task PublicMethods_DelegateToServices()
+    {
+        InMemoryRuleReportIssueStore store = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ReportToolSet toolSet = new(store, verdictBuffer, ruleFlowKey, ruleReportKey);
+
+        CreateRuleReportIssueResult created = await toolSet.CreateRuleReportIssueAsync(
+            CreateIssueArgs(" Program.cs ", "Repeated synchronous call", "Use a cached async path."),
+            TestContext.CancellationToken);
+        StoredRuleReportIssue fetched = await toolSet.GetRuleReportIssueAsync(
+            new GetRuleReportIssueArgs
+            {
+                RuleReportIssueId = $" {created.RuleReportIssueId} ",
+            },
+            TestContext.CancellationToken);
+        IReadOnlyList<StoredRuleReportIssue> issues = await toolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+        bool deleted = await toolSet.DeleteRuleReportIssueAsync(
+            new DeleteRuleReportIssueArgs
+            {
+                RuleReportIssueId = created.RuleReportIssueId,
+            },
+            TestContext.CancellationToken);
+        bool verdictSubmitted = await toolSet.SubmitReviewVerdictAsync(
+            new SubmitReviewVerdictArgs
+            {
+                Approved = true,
+                Message = " approved ",
+            },
+            TestContext.CancellationToken);
+
+        ReviewVerdict? verdict = verdictBuffer.GetLatest(RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey));
+        Assert.AreEqual(created.RuleReportIssueId, fetched.RuleReportIssueId);
+        Assert.AreEqual("Program.cs", fetched.FileOrFunction);
+        Assert.HasCount(1, issues);
+        Assert.IsTrue(deleted);
+        Assert.IsTrue(verdictSubmitted);
+        Assert.IsNull(verdictBuffer.Latest);
+        Assert.IsNotNull(verdict);
+        Assert.AreEqual("approved", verdict.Message);
+    }
+
+    [TestMethod]
     public async Task CreateRuleReportIssueAsync_ReturnsGeneratedId()
     {
         InMemoryRuleReportIssueStore store = new();

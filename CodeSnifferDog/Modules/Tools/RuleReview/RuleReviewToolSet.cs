@@ -1,67 +1,52 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
-using CodeSnifferDog.Modules.Tools.Issues;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
-public sealed class RuleReviewToolSet(
-    IRuleReviewIssueStore issueStore,
-    ReviewVerdictBuffer verdictBuffer,
-    RuleFlowKey ruleFlowKey)
+public sealed class RuleReviewToolSet
 {
-    private readonly IRuleReviewIssueStore _issueStore = issueStore;
-    private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly RuleFlowKey _ruleFlowKey = ruleFlowKey;
-    private readonly string _reviewVerdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
+    private readonly RuleReviewIssueToolService _issueToolService;
+    private readonly ReviewVerdictToolService _verdictToolService;
+    private readonly string _reviewVerdictScopeKey;
+
+    public RuleReviewToolSet(
+        IRuleReviewIssueStore issueStore,
+        ReviewVerdictBuffer verdictBuffer,
+        RuleFlowKey ruleFlowKey)
+        : this(
+            new RuleReviewIssueToolService(issueStore, ruleFlowKey),
+            new ReviewVerdictToolService(verdictBuffer),
+            RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey))
+    {
+    }
+
+    internal RuleReviewToolSet(
+        RuleReviewIssueToolService issueToolService,
+        ReviewVerdictToolService verdictToolService,
+        string reviewVerdictScopeKey)
+    {
+        _issueToolService = issueToolService;
+        _verdictToolService = verdictToolService;
+        _reviewVerdictScopeKey = reviewVerdictScopeKey;
+    }
 
     public IList<AITool> CreateRuleReviewAgentTools()
         =>
-    [
-        AIFunctionFactory.Create(
+        RuleReviewToolFactory.CreateAgentTools(
             CreateRuleReviewIssueToolAsync,
-            "CreateRuleReviewIssue",
-            "Create one new review issue for the current rule review attempt.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             GetRuleReviewIssueToolAsync,
-            "GetRuleReviewIssue",
-            "Get one stored review issue by its id from the current rule review attempt.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             ListRuleReviewIssuesAsync,
-            "ListRuleReviewIssues",
-            "List all stored review issues for the current rule review attempt.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             UpdateRuleReviewIssueToolAsync,
-            "UpdateRuleReviewIssue",
-            "Update one existing review issue by its id for the current rule review attempt.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             DeleteRuleReviewIssueToolAsync,
-            "DeleteRuleReviewIssue",
-            "Delete one existing review issue by its id from the current rule review attempt.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
-            SubmitNoIssueConclusionToolAsync,
-            "SubmitNoIssueConclusion",
-            "Submit a no-issue conclusion for the current rule review attempt when no issues exist.",
-            serializerOptions: null),
-    ];
+            SubmitNoIssueConclusionToolAsync);
 
     public IList<AITool> CreateVerifierTools()
         =>
-    [
-        AIFunctionFactory.Create(
-            SubmitReviewVerdictToolAsync,
-            "SubmitReviewVerdict",
-            "Submit the verifier approval or rejection for the current rule review result.",
-            serializerOptions: null),
-    ];
+        RuleReviewToolFactory.CreateVerifierTools(SubmitReviewVerdictToolAsync);
 
     [Description("Create one new review issue for the current rule review attempt.")]
     private ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueToolAsync(
@@ -210,110 +195,41 @@ public sealed class RuleReviewToolSet(
             },
             cancellationToken);
 
-    public async ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueAsync(
+    public ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueAsync(
         CreateRuleReviewIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        StoredRuleReviewIssue issue = await _issueStore.AddAsync(
-            _ruleFlowKey,
-            CreateIssue(args),
-            cancellationToken).ConfigureAwait(false);
-
-        return new CreateRuleReviewIssueResult
-        {
-            RuleReviewIssueId = issue.RuleReviewIssueId,
-        };
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.CreateRuleReviewIssueAsync(args, cancellationToken);
 
     public ValueTask<StoredRuleReviewIssue> GetRuleReviewIssueAsync(
         GetRuleReviewIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReviewIssueId);
-        return _issueStore.GetAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.GetRuleReviewIssueAsync(args, cancellationToken);
 
     public ValueTask<IReadOnlyList<StoredRuleReviewIssue>> ListRuleReviewIssuesAsync(CancellationToken cancellationToken)
         =>
-        _issueStore.ListAsync(_ruleFlowKey, cancellationToken);
+        _issueToolService.ListRuleReviewIssuesAsync(cancellationToken);
 
     public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(CancellationToken cancellationToken)
         =>
-        _issueStore.GetNoIssueConclusionAsync(_ruleFlowKey, cancellationToken);
+        _issueToolService.GetNoIssueConclusionAsync(cancellationToken);
 
     public ValueTask<StoredRuleReviewIssue> UpdateRuleReviewIssueAsync(
         UpdateRuleReviewIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReviewIssueId);
-        return _issueStore.UpdateAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), CreateIssue(args), cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.UpdateRuleReviewIssueAsync(args, cancellationToken);
 
     public ValueTask<bool> DeleteRuleReviewIssueAsync(
         DeleteRuleReviewIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReviewIssueId);
-        return _issueStore.DeleteAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.DeleteRuleReviewIssueAsync(args, cancellationToken);
 
-    public async ValueTask<bool> SubmitNoIssueConclusionAsync(
+    public ValueTask<bool> SubmitNoIssueConclusionAsync(
         SubmitNoIssueConclusionArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        await _issueStore.SubmitNoIssueConclusionAsync(
-            _ruleFlowKey,
-            new NoIssueConclusion
-            {
-                ReviewStrategy = args.ReviewStrategy,
-                ScopeCoverage = args.ScopeCoverage,
-                CrossScopeAnalysis = args.CrossScopeAnalysis,
-                WhyNoIssueWasFound = args.WhyNoIssueWasFound,
-            },
-            cancellationToken).ConfigureAwait(false);
-        return true;
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.SubmitNoIssueConclusionAsync(args, cancellationToken);
 
     public ValueTask<bool> SubmitReviewVerdictAsync(
         SubmitReviewVerdictArgs args,
-        CancellationToken _)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.Message);
-        _verdictBuffer.Submit(_reviewVerdictScopeKey, args.Approved, args.Message.Trim());
-        return ValueTask.FromResult(true);
-    }
-
-    private static RuleReviewIssue CreateIssue(CreateRuleReviewIssueArgs args) =>
-        RuleIssueNormalizer.Create(
-            args.IssueType,
-            args.Severity,
-            args.FileOrFunction,
-            args.RelevantCodePatternOrExpression,
-            args.WhyThisIsAProblem,
-            args.Confidence,
-            args.FollowUpFiles,
-            args.SuggestedFixDirection,
-            args.ScopeCoverage,
-            args.CrossScopeAnalysis,
-            args.ReviewStrategy);
-
-    private static RuleReviewIssue CreateIssue(UpdateRuleReviewIssueArgs args) =>
-        RuleIssueNormalizer.Create(
-            args.IssueType,
-            args.Severity,
-            args.FileOrFunction,
-            args.RelevantCodePatternOrExpression,
-            args.WhyThisIsAProblem,
-            args.Confidence,
-            args.FollowUpFiles,
-            args.SuggestedFixDirection,
-            args.ScopeCoverage,
-            args.CrossScopeAnalysis,
-            args.ReviewStrategy);
+        CancellationToken _) =>
+        _verdictToolService.SubmitReviewVerdictAsync(_reviewVerdictScopeKey, args);
 }

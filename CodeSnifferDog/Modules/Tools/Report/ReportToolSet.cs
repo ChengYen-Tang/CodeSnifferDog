@@ -2,64 +2,53 @@ using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
-using CodeSnifferDog.Modules.Tools.Issues;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
-public sealed class ReportToolSet(
-    IRuleReportIssueStore reportIssueStore,
-    ReviewVerdictBuffer verdictBuffer,
-    RuleFlowKey ruleFlowKey,
-    RuleReportKey ruleReportKey)
+public sealed class ReportToolSet
 {
-    private readonly IRuleReportIssueStore _reportIssueStore = reportIssueStore;
-    private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly RuleFlowKey _ruleFlowKey = ruleFlowKey;
-    private readonly RuleReportKey _ruleReportKey = ruleReportKey;
-    private readonly string _reportVerdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
+    private readonly RuleReportIssueToolService _issueToolService;
+    private readonly ReviewVerdictToolService _verdictToolService;
+    private readonly string _reportVerdictScopeKey;
+
+    public ReportToolSet(
+        IRuleReportIssueStore reportIssueStore,
+        ReviewVerdictBuffer verdictBuffer,
+        RuleFlowKey ruleFlowKey,
+        RuleReportKey ruleReportKey)
+        : this(
+            new RuleReportIssueToolService(reportIssueStore, ruleFlowKey),
+            new ReviewVerdictToolService(verdictBuffer),
+            RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey))
+    {
+        _ = ruleReportKey;
+    }
+
+    internal ReportToolSet(
+        RuleReportIssueToolService issueToolService,
+        ReviewVerdictToolService verdictToolService,
+        string reportVerdictScopeKey)
+    {
+        _issueToolService = issueToolService;
+        _verdictToolService = verdictToolService;
+        _reportVerdictScopeKey = reportVerdictScopeKey;
+    }
 
     public IList<AITool> CreateReportAggregatorTools()
         =>
-    [
-        AIFunctionFactory.Create(
+        ReportToolFactory.CreateAggregatorTools(
             GetRuleReportIssueToolAsync,
-            "GetRuleReportIssue",
-            "Get one stored repository-level rule report issue by its id.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             ListRuleReportIssuesAsync,
-            "ListRuleReportIssues",
-            "List all repository-level rule report issues for the current rule.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             CreateRuleReportIssueToolAsync,
-            "CreateRuleReportIssue",
-            "Create one new repository-level rule report issue for the current rule.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             UpdateRuleReportIssueToolAsync,
-            "UpdateRuleReportIssue",
-            "Update one existing repository-level rule report issue by its id.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
-            DeleteRuleReportIssueToolAsync,
-            "DeleteRuleReportIssue",
-            "Delete one existing repository-level rule report issue by its id.",
-            serializerOptions: null),
-    ];
+            DeleteRuleReportIssueToolAsync);
 
     public IList<AITool> CreateVerifierTools()
         =>
-    [
-        AIFunctionFactory.Create(
-            SubmitReviewVerdictToolAsync,
-            "SubmitReviewVerdict",
-            "Submit the verifier approval or rejection for the current rule report diff.",
-            serializerOptions: null),
-    ];
+        ReportToolFactory.CreateVerifierTools(SubmitReviewVerdictToolAsync);
 
     [Description("Get one stored repository-level rule report issue by its id.")]
     private ValueTask<StoredRuleReportIssue> GetRuleReportIssueToolAsync(
@@ -189,94 +178,38 @@ public sealed class ReportToolSet(
 
     public ValueTask<StoredRuleReportIssue> GetRuleReportIssueAsync(
         GetRuleReportIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReportIssueId);
-        return _reportIssueStore.GetAsync(_ruleFlowKey, args.RuleReportIssueId.Trim(), cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.GetRuleReportIssueAsync(args, cancellationToken);
 
     public ValueTask<IReadOnlyList<StoredRuleReportIssue>> ListRuleReportIssuesAsync(CancellationToken cancellationToken)
         =>
-        _reportIssueStore.ListAsync(_ruleFlowKey, cancellationToken);
+        _issueToolService.ListRuleReportIssuesAsync(cancellationToken);
 
-    public async ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueAsync(
+    public ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueAsync(
         CreateRuleReportIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        StoredRuleReportIssue issue = await _reportIssueStore.AddAsync(
-            _ruleFlowKey,
-            CreateIssue(args),
-            cancellationToken).ConfigureAwait(false);
-
-        return new CreateRuleReportIssueResult
-        {
-            RuleReportIssueId = issue.RuleReportIssueId,
-        };
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.CreateRuleReportIssueAsync(args, cancellationToken);
 
     public ValueTask<StoredRuleReportIssue> UpdateRuleReportIssueAsync(
         UpdateRuleReportIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReportIssueId);
-        return _reportIssueStore.UpdateAsync(_ruleFlowKey, args.RuleReportIssueId.Trim(), CreateIssue(args), cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.UpdateRuleReportIssueAsync(args, cancellationToken);
 
     public ValueTask<bool> DeleteRuleReportIssueAsync(
         DeleteRuleReportIssueArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.RuleReportIssueId);
-        return _reportIssueStore.DeleteAsync(_ruleFlowKey, args.RuleReportIssueId.Trim(), cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        _issueToolService.DeleteRuleReportIssueAsync(args, cancellationToken);
 
     public ValueTask<RuleReportDiff> GetLatestDiffAsync(CancellationToken cancellationToken)
         =>
-        _reportIssueStore.GetLatestDiffAsync(_ruleFlowKey, cancellationToken);
+        _issueToolService.GetLatestDiffAsync(cancellationToken);
 
     public ValueTask SetLatestDiffAsync(RuleReportDiff diff, CancellationToken cancellationToken)
         =>
-        _reportIssueStore.SetLatestDiffAsync(_ruleFlowKey, diff, cancellationToken);
+        _issueToolService.SetLatestDiffAsync(diff, cancellationToken);
 
     public ValueTask<bool> SubmitReviewVerdictAsync(
         SubmitReviewVerdictArgs args,
-        CancellationToken _)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.Message);
-        _verdictBuffer.Submit(_reportVerdictScopeKey, args.Approved, args.Message.Trim());
-        return ValueTask.FromResult(true);
-    }
-
-    private static RuleReviewIssue CreateIssue(CreateRuleReportIssueArgs args) =>
-        RuleIssueNormalizer.Create(
-            args.IssueType,
-            args.Severity,
-            args.FileOrFunction,
-            args.RelevantCodePatternOrExpression,
-            args.WhyThisIsAProblem,
-            args.Confidence,
-            args.FollowUpFiles,
-            args.SuggestedFixDirection,
-            args.ScopeCoverage,
-            args.CrossScopeAnalysis,
-            args.ReviewStrategy);
-
-    private static RuleReviewIssue CreateIssue(UpdateRuleReportIssueArgs args) =>
-        RuleIssueNormalizer.Create(
-            args.IssueType,
-            args.Severity,
-            args.FileOrFunction,
-            args.RelevantCodePatternOrExpression,
-            args.WhyThisIsAProblem,
-            args.Confidence,
-            args.FollowUpFiles,
-            args.SuggestedFixDirection,
-            args.ScopeCoverage,
-            args.CrossScopeAnalysis,
-            args.ReviewStrategy);
+        CancellationToken _) =>
+        _verdictToolService.SubmitReviewVerdictAsync(_reportVerdictScopeKey, args);
 }

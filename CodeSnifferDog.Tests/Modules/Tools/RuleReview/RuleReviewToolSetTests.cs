@@ -90,6 +90,49 @@ public sealed class RuleReviewToolSetTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
+    public async Task PublicMethods_DelegateToServices()
+    {
+        InMemoryRuleReviewIssueStore store = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName);
+        RuleReviewToolSet toolSet = new(store, verdictBuffer, ruleFlowKey);
+
+        CreateRuleReviewIssueResult created = await toolSet.CreateRuleReviewIssueAsync(
+            CreateIssueArgs(" high ", " Program.cs "),
+            TestContext.CancellationToken);
+        StoredRuleReviewIssue fetched = await toolSet.GetRuleReviewIssueAsync(
+            new GetRuleReviewIssueArgs
+            {
+                RuleReviewIssueId = $" {created.RuleReviewIssueId} ",
+            },
+            TestContext.CancellationToken);
+        IReadOnlyList<StoredRuleReviewIssue> issues = await toolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
+        bool deleted = await toolSet.DeleteRuleReviewIssueAsync(
+            new DeleteRuleReviewIssueArgs
+            {
+                RuleReviewIssueId = created.RuleReviewIssueId,
+            },
+            TestContext.CancellationToken);
+        bool verdictSubmitted = await toolSet.SubmitReviewVerdictAsync(
+            new SubmitReviewVerdictArgs
+            {
+                Approved = true,
+                Message = " approved ",
+            },
+            TestContext.CancellationToken);
+
+        ReviewVerdict? verdict = verdictBuffer.GetLatest(RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey));
+        Assert.AreEqual(created.RuleReviewIssueId, fetched.RuleReviewIssueId);
+        Assert.AreEqual("Program.cs", fetched.FileOrFunction);
+        Assert.HasCount(1, issues);
+        Assert.IsTrue(deleted);
+        Assert.IsTrue(verdictSubmitted);
+        Assert.IsNull(verdictBuffer.Latest);
+        Assert.IsNotNull(verdict);
+        Assert.AreEqual("approved", verdict.Message);
+    }
+
+    [TestMethod]
     public async Task CreateRuleReviewIssueAsync_NormalizesSeverity()
     {
         RuleReviewToolSet toolSet = new(
@@ -211,4 +254,20 @@ public sealed class RuleReviewToolSetTests
         Assert.HasCount(1, firstIssues);
         Assert.IsEmpty(secondIssues);
     }
+
+    private static CreateRuleReviewIssueArgs CreateIssueArgs(string severity, string fileOrFunction) =>
+        new()
+        {
+            IssueType = "Performance",
+            Severity = severity,
+            FileOrFunction = fileOrFunction,
+            RelevantCodePatternOrExpression = "Repeated synchronous call",
+            WhyThisIsAProblem = "This blocks the hot path.",
+            Confidence = "High",
+            FollowUpFiles = fileOrFunction,
+            SuggestedFixDirection = "Use a cached async path.",
+            ScopeCoverage = $"Inspected {fileOrFunction}.",
+            CrossScopeAnalysis = "No cross-scope inspection was required.",
+            ReviewStrategy = "Reviewed the hot path first.",
+        };
 }
