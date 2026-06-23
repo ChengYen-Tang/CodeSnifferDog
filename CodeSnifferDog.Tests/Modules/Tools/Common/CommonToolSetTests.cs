@@ -10,6 +10,46 @@ public sealed class CommonToolSetTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
+    public async Task PublicMethods_DelegateToService()
+    {
+        CommonCommandToolService service = new(
+            CreateTemporaryDirectory(),
+            static (fileName, arguments, workingDirectory, cancellationToken) =>
+                ValueTask.FromResult(new CommandExecutionResult
+                {
+                    ExitCode = 0,
+                    StandardOutput = $"{fileName}:{arguments[0]}",
+                    StandardError = "",
+                }),
+            static (fileName, arguments, workingDirectory, cancellationToken) =>
+                ValueTask.FromResult(new CommandExecutionResult
+                {
+                    ExitCode = 0,
+                    StandardOutput = $"{fileName}:{arguments}",
+                    StandardError = "",
+                }),
+            static () => "rg",
+            static () => false);
+        CommonToolSet toolSet = new(service);
+
+        CommandExecutionResult shellResult = await toolSet.RunShellCommandAsync(
+            new RunShellCommandArgs
+            {
+                Command = "pwd",
+            },
+            TestContext.CancellationToken);
+        CommandExecutionResult ripgrepResult = await toolSet.RunRipgrepCommandAsync(
+            new RunRipgrepCommandArgs
+            {
+                Command = "alpha .",
+            },
+            TestContext.CancellationToken);
+
+        Assert.AreEqual("/bin/bash:-lc", shellResult.StandardOutput);
+        Assert.AreEqual("rg:alpha .", ripgrepResult.StandardOutput);
+    }
+
+    [TestMethod]
     public async Task RunShellCommandAsync_ExecutesInsideRepositoryRootPath()
     {
         string repositoryRootPath = CreateTemporaryDirectory();

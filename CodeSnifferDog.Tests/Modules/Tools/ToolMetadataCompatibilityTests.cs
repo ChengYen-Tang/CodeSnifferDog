@@ -1,3 +1,4 @@
+using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -9,6 +10,19 @@ namespace CodeSnifferDog.Tests.Modules.Tools;
 [TestClass]
 public sealed class ToolMetadataCompatibilityTests
 {
+    [TestMethod]
+    public void CommonTools_PreserveToolNamesAndDescriptions()
+    {
+        CommonToolSet toolSet = new(Environment.CurrentDirectory);
+
+        ToolMetadataAssertions.AssertToolMetadata(
+            toolSet.CreateTools(),
+            [
+                ("RunShellCommand", "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux/macOS. Pass only the command text to execute."),
+                ("RunRipgrepCommand", "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\"."),
+            ]);
+    }
+
     [TestMethod]
     public void ScanTools_PreserveToolNamesAndDescriptions()
     {
@@ -132,6 +146,25 @@ public sealed class ToolMetadataCompatibilityTests
             "Submit the verifier approval or rejection for the current scan result.",
             "True when the current scan result is approved. False when more work is required.",
             "The approval note or the rejection reason that explains what the scan agent should keep or fix.");
+    }
+
+    [TestMethod]
+    public void CommonAdapters_PreserveParameterDescriptions()
+    {
+        ToolMetadataAssertions.AssertAdapterDescription<CommonToolSet>(
+            "RunShellCommandToolAsync",
+            "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux or macOS.",
+            new Dictionary<string, string>
+            {
+                ["Command"] = "The shell command text to execute inside the repository root path.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<CommonToolSet>(
+            "RunRipgrepCommandToolAsync",
+            "Run one ripgrep search command in the repository root path.",
+            new Dictionary<string, string>
+            {
+                ["Command"] = "Arguments after rg. Do not include rg or rg.exe. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\". Full paths are allowed when you need to inspect files outside the repository root path.",
+            });
     }
 
     [TestMethod]

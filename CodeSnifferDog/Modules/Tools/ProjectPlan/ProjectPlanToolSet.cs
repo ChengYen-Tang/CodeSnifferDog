@@ -27,17 +27,17 @@ public sealed class ProjectPlanToolSet
 
     public IList<AITool> CreateProjectPlanAgentTools()
         =>
-        ProjectPlanToolFactory.CreateAgentTools(
+        ProjectPlanToolFactory.CreateAgentTools(new ProjectPlanAgentToolCallbacks(
             AddProjectPlanTaskItemToolAsync,
             AddProjectPlanTaskItemsToolAsync,
             DeleteProjectPlanTaskItemToolAsync,
-            ListProjectPlanTaskItemsAsync);
+            ListProjectPlanTaskItemsAsync));
 
     public IList<AITool> CreateVerifierTools()
         =>
-        ProjectPlanToolFactory.CreateVerifierTools(
+        ProjectPlanToolFactory.CreateVerifierTools(new ProjectPlanVerifierToolCallbacks(
             ListProjectPlanTaskItemsAsync,
-            SubmitReviewVerdictToolAsync);
+            SubmitReviewVerdictToolAsync));
 
     [Description("Add one task item to the current project planning result.")]
     private ValueTask<AddProjectPlanTaskItemResult> AddProjectPlanTaskItemToolAsync(

@@ -27,17 +27,17 @@ public sealed class ScanToolSet
 
     public IList<AITool> CreateScanAgentTools()
         =>
-        ScanToolFactory.CreateAgentTools(
+        ScanToolFactory.CreateAgentTools(new ScanAgentToolCallbacks(
             AddScanProjectToolAsync,
             AddScanProjectsToolAsync,
             DeleteScanProjectToolAsync,
-            ListScanProjectsAsync);
+            ListScanProjectsAsync));
 
     public IList<AITool> CreateVerifierTools()
         =>
-        ScanToolFactory.CreateVerifierTools(
+        ScanToolFactory.CreateVerifierTools(new ScanVerifierToolCallbacks(
             ListScanProjectsAsync,
-            SubmitReviewVerdictToolAsync);
+            SubmitReviewVerdictToolAsync));
 
     [Description("Add one discovered project unit to the current scan result.")]
     private ValueTask<AddScanProjectResult> AddScanProjectToolAsync(

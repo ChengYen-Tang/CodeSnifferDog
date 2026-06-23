@@ -1,52 +1,78 @@
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.ProjectPlan.Tools;
 
 namespace CodeSnifferDog.Modules.Tools.ProjectPlan;
 
 internal static class ProjectPlanToolFactory
 {
-    public static IList<AITool> CreateAgentTools(
-        Delegate addProjectPlanTaskItemTool,
-        Delegate addProjectPlanTaskItemsTool,
-        Delegate deleteProjectPlanTaskItemTool,
-        Delegate listProjectPlanTaskItemsTool)
+    public static IList<AITool> CreateAgentTools(ProjectPlanAgentToolCallbacks callbacks)
         =>
     [
         AIFunctionFactory.Create(
-            addProjectPlanTaskItemTool,
+            callbacks.AddProjectPlanTaskItemTool,
             "AddProjectPlanTaskItem",
             "Add one task item to the current project planning result.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            addProjectPlanTaskItemsTool,
+            callbacks.AddProjectPlanTaskItemsTool,
             "AddProjectPlanTaskItems",
             "Add multiple task items to the current project planning result.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            deleteProjectPlanTaskItemTool,
+            callbacks.DeleteProjectPlanTaskItemTool,
             "DeleteProjectPlanTaskItem",
             "Delete an existing task item from the current project planning result by its id.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            listProjectPlanTaskItemsTool,
+            callbacks.ListProjectPlanTaskItemsTool,
             "ListProjectPlanTaskItems",
             "List all task items currently stored for this project planning attempt.",
             serializerOptions: null),
     ];
 
-    public static IList<AITool> CreateVerifierTools(
-        Delegate listProjectPlanTaskItemsTool,
-        Delegate submitReviewVerdictTool)
+    public static IList<AITool> CreateVerifierTools(ProjectPlanVerifierToolCallbacks callbacks)
         =>
     [
         AIFunctionFactory.Create(
-            listProjectPlanTaskItemsTool,
+            callbacks.ListProjectPlanTaskItemsTool,
             "ListProjectPlanTaskItems",
             "List all task items currently stored for this project planning attempt.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            submitReviewVerdictTool,
+            callbacks.SubmitReviewVerdictTool,
             "SubmitReviewVerdict",
             "Submit the verifier approval or rejection for the current project planning result.",
             serializerOptions: null),
     ];
 }
+
+internal readonly record struct ProjectPlanAgentToolCallbacks(
+    AddProjectPlanTaskItemToolCallback AddProjectPlanTaskItemTool,
+    AddProjectPlanTaskItemsToolCallback AddProjectPlanTaskItemsTool,
+    DeleteProjectPlanTaskItemToolCallback DeleteProjectPlanTaskItemTool,
+    ListProjectPlanTaskItemsToolCallback ListProjectPlanTaskItemsTool);
+
+internal readonly record struct ProjectPlanVerifierToolCallbacks(
+    ListProjectPlanTaskItemsToolCallback ListProjectPlanTaskItemsTool,
+    SubmitReviewVerdictToolCallback SubmitReviewVerdictTool);
+
+internal delegate ValueTask<AddProjectPlanTaskItemResult> AddProjectPlanTaskItemToolCallback(
+    IReadOnlyList<ProjectPlanFile> Files,
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<AddProjectPlanTaskItemsResult> AddProjectPlanTaskItemsToolCallback(
+    IReadOnlyList<AddProjectPlanTaskItemArgs> TaskItems,
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<bool> DeleteProjectPlanTaskItemToolCallback(
+    string ProjectPlanTaskItemId,
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<IReadOnlyList<StoredProjectPlanTaskItem>> ListProjectPlanTaskItemsToolCallback(
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<bool> SubmitReviewVerdictToolCallback(
+    bool Approved,
+    string Message,
+    CancellationToken cancellationToken);

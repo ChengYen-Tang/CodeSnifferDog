@@ -36,17 +36,17 @@ public sealed class RuleReviewToolSet
 
     public IList<AITool> CreateRuleReviewAgentTools()
         =>
-        RuleReviewToolFactory.CreateAgentTools(
+        RuleReviewToolFactory.CreateAgentTools(new RuleReviewAgentToolCallbacks(
             CreateRuleReviewIssueToolAsync,
             GetRuleReviewIssueToolAsync,
             ListRuleReviewIssuesAsync,
             UpdateRuleReviewIssueToolAsync,
             DeleteRuleReviewIssueToolAsync,
-            SubmitNoIssueConclusionToolAsync);
+            SubmitNoIssueConclusionToolAsync));
 
     public IList<AITool> CreateVerifierTools()
         =>
-        RuleReviewToolFactory.CreateVerifierTools(SubmitReviewVerdictToolAsync);
+        RuleReviewToolFactory.CreateVerifierTools(new RuleReviewVerifierToolCallbacks(SubmitReviewVerdictToolAsync));
 
     [Description("Create one new review issue for the current rule review attempt.")]
     private ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueToolAsync(

@@ -1,30 +1,28 @@
 using CodeSnifferDog.Models.Common.Tools;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
-using System.Text;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
 
-public sealed class CommonToolSet(string repositoryRootPath)
+public sealed class CommonToolSet
 {
-    private readonly string _repositoryRootPath = ValidateRepositoryRootPath(repositoryRootPath);
-    private readonly CommandProcessRunner _processRunner = new();
-    private readonly RipgrepAssetLocator _ripgrepAssetLocator = new();
+    private readonly CommonCommandToolService _commandToolService;
+
+    public CommonToolSet(string repositoryRootPath)
+        : this(new CommonCommandToolService(repositoryRootPath))
+    {
+    }
+
+    internal CommonToolSet(CommonCommandToolService commandToolService)
+    {
+        _commandToolService = commandToolService;
+    }
 
     public IList<AITool> CreateTools()
         =>
-    [
-        AIFunctionFactory.Create(
+        CommonToolFactory.CreateTools(new CommonToolCallbacks(
             RunShellCommandToolAsync,
-            "RunShellCommand",
-            "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux/macOS. Pass only the command text to execute.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
-            RunRipgrepCommandToolAsync,
-            "RunRipgrepCommand",
-            "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\".",
-            serializerOptions: null),
-    ];
+            RunRipgrepCommandToolAsync));
 
     [Description("Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux or macOS.")]
     private ValueTask<CommandExecutionResult> RunShellCommandToolAsync(
@@ -52,70 +50,11 @@ public sealed class CommonToolSet(string repositoryRootPath)
 
     public ValueTask<CommandExecutionResult> RunShellCommandAsync(
         RunShellCommandArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.Command);
-
-        return OperatingSystem.IsWindows()
-            ? CommandProcessRunner.RunAsync("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(args.Command)], _repositoryRootPath, cancellationToken)
-            : CommandProcessRunner.RunAsync("/bin/bash", ["-lc", args.Command], _repositoryRootPath, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        _commandToolService.RunShellCommandAsync(args, cancellationToken);
 
     public ValueTask<CommandExecutionResult> RunRipgrepCommandAsync(
         RunRipgrepCommandArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.Command);
-
-        string trimmedCommand = args.Command.Trim();
-
-        if (StartsWithRipgrepExecutable(trimmedCommand))
-            throw new ArgumentException("Command must not include the rg executable name.", nameof(args));
-
-        return CommandProcessRunner.RunAsync(
-            _ripgrepAssetLocator.GetExecutablePath(),
-            trimmedCommand,
-            _repositoryRootPath,
-            cancellationToken);
-    }
-
-    private static string ValidateRepositoryRootPath(string repositoryRootPath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
-        string fullPath = Path.GetFullPath(repositoryRootPath.Trim());
-
-        if (!Directory.Exists(fullPath))
-            throw new DirectoryNotFoundException($"Repository root path does not exist: {fullPath}");
-
-        return fullPath;
-    }
-
-    private static string EncodePowerShellCommand(string command)
-        =>
-        Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-
-    internal static bool StartsWithRipgrepExecutable(string command)
-    {
-        ReadOnlySpan<char> remaining = command.AsSpan().TrimStart();
-
-        if (remaining.IsEmpty)
-            return false;
-
-        if (!TryConsumeToken(ref remaining, "rg"))
-            return false;
-
-        TryConsumeToken(ref remaining, ".exe");
-        return remaining.IsEmpty || char.IsWhiteSpace(remaining[0]);
-    }
-
-    private static bool TryConsumeToken(ref ReadOnlySpan<char> remaining, string token)
-    {
-        if (!remaining.StartsWith(token, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        remaining = remaining[token.Length..];
-        return true;
-    }
+        CancellationToken cancellationToken) =>
+        _commandToolService.RunRipgrepCommandAsync(args, cancellationToken);
 }

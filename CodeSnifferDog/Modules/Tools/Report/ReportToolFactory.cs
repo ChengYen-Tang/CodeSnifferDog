@@ -1,51 +1,103 @@
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.Report;
+using CodeSnifferDog.Models.Report.Tools;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
 internal static class ReportToolFactory
 {
-    public static IList<AITool> CreateAggregatorTools(
-        Delegate getRuleReportIssueTool,
-        Delegate listRuleReportIssuesTool,
-        Delegate createRuleReportIssueTool,
-        Delegate updateRuleReportIssueTool,
-        Delegate deleteRuleReportIssueTool)
+    public static IList<AITool> CreateAggregatorTools(ReportAggregatorToolCallbacks callbacks)
         =>
     [
         AIFunctionFactory.Create(
-            getRuleReportIssueTool,
+            callbacks.GetRuleReportIssueTool,
             "GetRuleReportIssue",
             "Get one stored repository-level rule report issue by its id.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            listRuleReportIssuesTool,
+            callbacks.ListRuleReportIssuesTool,
             "ListRuleReportIssues",
             "List all repository-level rule report issues for the current rule.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            createRuleReportIssueTool,
+            callbacks.CreateRuleReportIssueTool,
             "CreateRuleReportIssue",
             "Create one new repository-level rule report issue for the current rule.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            updateRuleReportIssueTool,
+            callbacks.UpdateRuleReportIssueTool,
             "UpdateRuleReportIssue",
             "Update one existing repository-level rule report issue by its id.",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            deleteRuleReportIssueTool,
+            callbacks.DeleteRuleReportIssueTool,
             "DeleteRuleReportIssue",
             "Delete one existing repository-level rule report issue by its id.",
             serializerOptions: null),
     ];
 
-    public static IList<AITool> CreateVerifierTools(Delegate submitReviewVerdictTool)
+    public static IList<AITool> CreateVerifierTools(ReportVerifierToolCallbacks callbacks)
         =>
     [
         AIFunctionFactory.Create(
-            submitReviewVerdictTool,
+            callbacks.SubmitReviewVerdictTool,
             "SubmitReviewVerdict",
             "Submit the verifier approval or rejection for the current rule report diff.",
             serializerOptions: null),
     ];
 }
+
+internal readonly record struct ReportAggregatorToolCallbacks(
+    GetRuleReportIssueToolCallback GetRuleReportIssueTool,
+    ListRuleReportIssuesToolCallback ListRuleReportIssuesTool,
+    CreateRuleReportIssueToolCallback CreateRuleReportIssueTool,
+    UpdateRuleReportIssueToolCallback UpdateRuleReportIssueTool,
+    DeleteRuleReportIssueToolCallback DeleteRuleReportIssueTool);
+
+internal readonly record struct ReportVerifierToolCallbacks(
+    SubmitReviewVerdictToolCallback SubmitReviewVerdictTool);
+
+internal delegate ValueTask<StoredRuleReportIssue> GetRuleReportIssueToolCallback(
+    string RuleReportIssueId,
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<IReadOnlyList<StoredRuleReportIssue>> ListRuleReportIssuesToolCallback(
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueToolCallback(
+    string IssueType,
+    string Severity,
+    string FileOrFunction,
+    string RelevantCodePatternOrExpression,
+    string WhyThisIsAProblem,
+    string Confidence,
+    string FollowUpFiles,
+    string SuggestedFixDirection,
+    string ScopeCoverage,
+    string CrossScopeAnalysis,
+    string ReviewStrategy,
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<StoredRuleReportIssue> UpdateRuleReportIssueToolCallback(
+    string RuleReportIssueId,
+    string IssueType,
+    string Severity,
+    string FileOrFunction,
+    string RelevantCodePatternOrExpression,
+    string WhyThisIsAProblem,
+    string Confidence,
+    string FollowUpFiles,
+    string SuggestedFixDirection,
+    string ScopeCoverage,
+    string CrossScopeAnalysis,
+    string ReviewStrategy,
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<bool> DeleteRuleReportIssueToolCallback(
+    string RuleReportIssueId,
+    CancellationToken cancellationToken);
+
+internal delegate ValueTask<bool> SubmitReviewVerdictToolCallback(
+    bool Approved,
+    string Message,
+    CancellationToken cancellationToken);

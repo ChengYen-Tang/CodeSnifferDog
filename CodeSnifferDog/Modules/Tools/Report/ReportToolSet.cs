@@ -24,6 +24,7 @@ public sealed class ReportToolSet
             new ReviewVerdictToolService(verdictBuffer),
             RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey))
     {
+        // Kept for workflow constructor compatibility; working report state remains scoped by RuleFlowKey.
         _ = ruleReportKey;
     }
 
@@ -39,16 +40,16 @@ public sealed class ReportToolSet
 
     public IList<AITool> CreateReportAggregatorTools()
         =>
-        ReportToolFactory.CreateAggregatorTools(
+        ReportToolFactory.CreateAggregatorTools(new ReportAggregatorToolCallbacks(
             GetRuleReportIssueToolAsync,
             ListRuleReportIssuesAsync,
             CreateRuleReportIssueToolAsync,
             UpdateRuleReportIssueToolAsync,
-            DeleteRuleReportIssueToolAsync);
+            DeleteRuleReportIssueToolAsync));
 
     public IList<AITool> CreateVerifierTools()
         =>
-        ReportToolFactory.CreateVerifierTools(SubmitReviewVerdictToolAsync);
+        ReportToolFactory.CreateVerifierTools(new ReportVerifierToolCallbacks(SubmitReviewVerdictToolAsync));
 
     [Description("Get one stored repository-level rule report issue by its id.")]
     private ValueTask<StoredRuleReportIssue> GetRuleReportIssueToolAsync(
