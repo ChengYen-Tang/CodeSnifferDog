@@ -7,50 +7,37 @@ using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.Scan;
 
-public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdictBuffer verdictBuffer)
+public sealed class ScanToolSet
 {
-    private readonly IScanProjectStore _scanProjectStore = scanProjectStore;
-    private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
+    private readonly ScanProjectToolService _projectToolService;
+    private readonly ReviewVerdictToolService _verdictToolService;
+
+    public ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdictBuffer verdictBuffer)
+        : this(new ScanProjectToolService(scanProjectStore), new ReviewVerdictToolService(verdictBuffer))
+    {
+    }
+
+    internal ScanToolSet(
+        ScanProjectToolService projectToolService,
+        ReviewVerdictToolService verdictToolService)
+    {
+        _projectToolService = projectToolService;
+        _verdictToolService = verdictToolService;
+    }
 
     public IList<AITool> CreateScanAgentTools()
         =>
-    [
-        AIFunctionFactory.Create(
+        ScanToolFactory.CreateAgentTools(
             AddScanProjectToolAsync,
-            "AddScanProject",
-            "Add one discovered project unit to the current scan result.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             AddScanProjectsToolAsync,
-            "AddScanProjects",
-            "Add multiple discovered project units to the current scan result.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
             DeleteScanProjectToolAsync,
-            "DeleteScanProject",
-            "Delete an existing scan project from the current scan result by its id.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
-            ListScanProjectsAsync,
-            "ListScanProjects",
-            "List all scan projects currently stored for this scan attempt.",
-            serializerOptions: null),
-    ];
+            ListScanProjectsAsync);
 
     public IList<AITool> CreateVerifierTools()
         =>
-    [
-        AIFunctionFactory.Create(
+        ScanToolFactory.CreateVerifierTools(
             ListScanProjectsAsync,
-            "ListScanProjects",
-            "List all scan projects currently stored for this scan attempt.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
-            SubmitReviewVerdictToolAsync,
-            "SubmitReviewVerdict",
-            "Submit the verifier approval or rejection for the current scan result.",
-            serializerOptions: null),
-    ];
+            SubmitReviewVerdictToolAsync);
 
     [Description("Add one discovered project unit to the current scan result.")]
     private ValueTask<AddScanProjectResult> AddScanProjectToolAsync(
@@ -112,83 +99,25 @@ public sealed class ScanToolSet(IScanProjectStore scanProjectStore, ReviewVerdic
             },
             cancellationToken);
 
-    public async ValueTask<AddScanProjectResult> AddScanProjectAsync(
+    public ValueTask<AddScanProjectResult> AddScanProjectAsync(
         AddScanProjectArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ValidateAddScanProjectArgs(args);
+        CancellationToken cancellationToken) =>
+        _projectToolService.AddScanProjectAsync(args, cancellationToken);
 
-        StoredScanProject storedProject = await _scanProjectStore.AddAsync(
-            new ScanProject
-            {
-                ProjectName = args.ProjectName.Trim(),
-                ProjectPath = args.ProjectPath.Trim(),
-                ProjectType = args.ProjectType.Trim(),
-                Reason = args.Reason.Trim(),
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        return new AddScanProjectResult
-        {
-            ScanProjectId = storedProject.ScanProjectId,
-        };
-    }
-
-    public async ValueTask<AddScanProjectsResult> AddScanProjectsAsync(
+    public ValueTask<AddScanProjectsResult> AddScanProjectsAsync(
         AddScanProjectsArgs args,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
+        CancellationToken cancellationToken) =>
+        _projectToolService.AddScanProjectsAsync(args, cancellationToken);
 
-        if (args.Projects.Count == 0)
-            throw new ArgumentException("At least one scan project is required.", nameof(args));
-
-        foreach (AddScanProjectArgs project in args.Projects)
-            ValidateAddScanProjectArgs(project);
-
-        IReadOnlyList<StoredScanProject> storedProjects = await _scanProjectStore.AddRangeAsync(
-            [.. args.Projects.Select(project => new ScanProject
-            {
-                ProjectName = project.ProjectName.Trim(),
-                ProjectPath = project.ProjectPath.Trim(),
-                ProjectType = project.ProjectType.Trim(),
-                Reason = project.Reason.Trim(),
-            })],
-            cancellationToken).ConfigureAwait(false);
-
-        return new AddScanProjectsResult
-        {
-            ScanProjectIds = [.. storedProjects.Select(project => project.ScanProjectId)],
-        };
-    }
-
-    public ValueTask<bool> DeleteScanProjectAsync(DeleteScanProjectArgs args, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.ScanProjectId);
-        return _scanProjectStore.DeleteAsync(args.ScanProjectId.Trim(), cancellationToken);
-    }
+    public ValueTask<bool> DeleteScanProjectAsync(DeleteScanProjectArgs args, CancellationToken cancellationToken) =>
+        _projectToolService.DeleteScanProjectAsync(args, cancellationToken);
 
     public ValueTask<IReadOnlyList<StoredScanProject>> ListScanProjectsAsync(CancellationToken cancellationToken)
         =>
-        _scanProjectStore.ListAsync(cancellationToken);
+        _projectToolService.ListScanProjectsAsync(cancellationToken);
 
     public ValueTask<bool> SubmitReviewVerdictAsync(
         SubmitReviewVerdictArgs args,
-        CancellationToken _)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.Message);
-        _verdictBuffer.Submit(args.Approved, args.Message.Trim());
-        return ValueTask.FromResult(true);
-    }
-
-    private static void ValidateAddScanProjectArgs(AddScanProjectArgs args)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.ProjectName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.ProjectPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.ProjectType);
-        ArgumentException.ThrowIfNullOrWhiteSpace(args.Reason);
-    }
+        CancellationToken _) =>
+        _verdictToolService.SubmitReviewVerdictAsync(args);
 }
