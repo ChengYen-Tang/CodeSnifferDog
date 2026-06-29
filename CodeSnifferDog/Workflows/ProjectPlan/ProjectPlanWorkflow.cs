@@ -87,7 +87,7 @@ public sealed class ProjectPlanWorkflow(
                 projectPlanAgent,
                 () => _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope).Agent,
                 PrepareAttempt,
-                RestoreAttempt,
+                static state => state.Restore(),
                 planMessages,
                 plannerAgentScope,
                 planPublishedMessageCount,
@@ -142,7 +142,7 @@ public sealed class ProjectPlanWorkflow(
                 projectVerifierAgent,
                 () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope).Agent,
                 PrepareAttempt,
-                RestoreAttempt,
+                static state => state.Restore(),
                 verifierMessages,
                 verifierAgentScope,
                 verifierPublishedMessageCount,
@@ -208,17 +208,11 @@ public sealed class ProjectPlanWorkflow(
             ProjectPlanAgentResetCount = projectPlanAgentResetCount,
         };
 
-    private AttemptState PrepareAttempt(Guid attemptId)
+    private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
-        return new AttemptState(
+        return new WorkflowAttemptLeasePair(
             _taskItemStore.BeginAttempt(attemptId),
             _verdictBuffer.BeginAttempt(attemptId));
-    }
-
-    private void RestoreAttempt(AttemptState state)
-    {
-        state.StoreLease.Restore();
-        state.VerdictLease.Restore();
     }
 
     private static List<ChatMessage> CreatePlanMessages(
@@ -240,13 +234,4 @@ public sealed class ProjectPlanWorkflow(
         IReadOnlyList<StoredProjectPlanTaskItem> taskItems)
         =>
         $"{messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItems)}";
-
-    private sealed class AttemptState(
-        IAgentAttemptLease storeLease,
-        IAgentAttemptLease verdictLease)
-    {
-        public IAgentAttemptLease StoreLease { get; } = storeLease;
-
-        public IAgentAttemptLease VerdictLease { get; } = verdictLease;
-    }
 }

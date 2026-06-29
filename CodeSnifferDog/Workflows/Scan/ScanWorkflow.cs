@@ -82,7 +82,7 @@ public sealed class ScanWorkflow(
                 scanAgent,
                 () => _scanAgentFactory(repositoryRootPath, scanAgentScope).Agent,
                 PrepareAttempt,
-                RestoreAttempt,
+                static state => state.Restore(),
                 scanMessages,
                 scanAgentScope,
                 scanPublishedMessageCount,
@@ -135,7 +135,7 @@ public sealed class ScanWorkflow(
                 scanVerifierAgent,
                 () => _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope).Agent,
                 PrepareAttempt,
-                RestoreAttempt,
+                static state => state.Restore(),
                 verifierMessages,
                 scanVerifierAgentScope,
                 verifierPublishedMessageCount,
@@ -191,17 +191,11 @@ public sealed class ScanWorkflow(
             ScanAgentResetCount = scanAgentResetCount,
         };
 
-    private AttemptState PrepareAttempt(Guid attemptId)
+    private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
-        return new AttemptState(
+        return new WorkflowAttemptLeasePair(
             _scanProjectStore.BeginAttempt(attemptId),
             _verdictBuffer.BeginAttempt(attemptId));
-    }
-
-    private void RestoreAttempt(AttemptState state)
-    {
-        state.StoreLease.Restore();
-        state.VerdictLease.Restore();
     }
 
     private string BuildScanInput(string repositoryRootPath)
@@ -217,13 +211,4 @@ public sealed class ScanWorkflow(
     private string BuildVerifierInput(IReadOnlyList<StoredScanProject> projects)
         =>
         $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projects)}";
-
-    private sealed class AttemptState(
-        IAgentAttemptLease storeLease,
-        IAgentAttemptLease verdictLease)
-    {
-        public IAgentAttemptLease StoreLease { get; } = storeLease;
-
-        public IAgentAttemptLease VerdictLease { get; } = verdictLease;
-    }
 }

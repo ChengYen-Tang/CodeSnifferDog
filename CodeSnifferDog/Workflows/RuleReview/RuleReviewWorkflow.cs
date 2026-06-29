@@ -69,29 +69,25 @@ public sealed class RuleReviewWorkflow(
             IAgentEventScope reviewAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateRuleReviewAgentKey(taskItem, ruleKey));
             IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReviewVerifierAgentKey(taskItem, ruleKey));
 
-            Result<AgentCreationResult> createRuleReviewAgentResult = WorkflowAgentCreation.TryCreate(
+            Result<AgentCreationResult> createRuleReviewAgentResult = await WorkflowAgentLifecycle.CreateAndPublishAsync(
                 () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope),
-                "Rule Review Agent");
+                "Rule Review Agent",
+                reviewAgentScope,
+                AgentStatusCatalog.CreateRuleReviewAgentDisplayName(ruleKey),
+                cancellationToken).ConfigureAwait(false);
 
             if (createRuleReviewAgentResult.IsFailed)
                 return createRuleReviewAgentResult.ToResult<RuleReviewWorkflowResult>();
-            await reviewAgentScope.PublishCreatedAsync(
-                AgentStatusCatalog.CreateRuleReviewAgentDisplayName(ruleKey),
-                createRuleReviewAgentResult.Value.SystemPrompt,
-                AgentStatusCatalog.WaitingStatus,
-                cancellationToken).ConfigureAwait(false);
 
-            Result<AgentCreationResult> createReviewVerifierAgentResult = WorkflowAgentCreation.TryCreate(
+            Result<AgentCreationResult> createReviewVerifierAgentResult = await WorkflowAgentLifecycle.CreateAndPublishAsync(
                 () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope),
-                "Review Verifier Agent");
+                "Review Verifier Agent",
+                verifierAgentScope,
+                AgentStatusCatalog.CreateReviewVerifierAgentDisplayName(ruleKey),
+                cancellationToken).ConfigureAwait(false);
 
             if (createReviewVerifierAgentResult.IsFailed)
                 return createReviewVerifierAgentResult.ToResult<RuleReviewWorkflowResult>();
-            await verifierAgentScope.PublishCreatedAsync(
-                AgentStatusCatalog.CreateReviewVerifierAgentDisplayName(ruleKey),
-                createReviewVerifierAgentResult.Value.SystemPrompt,
-                AgentStatusCatalog.WaitingStatus,
-                cancellationToken).ConfigureAwait(false);
 
             AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value.Agent;
             AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value.Agent;
@@ -112,7 +108,7 @@ public sealed class RuleReviewWorkflow(
                     ruleReviewAgent,
                     () => _ruleReviewAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, reviewAgentScope).Agent,
                     PrepareAttempt,
-                    RestoreAttempt,
+                    static state => state.Restore(),
                     reviewMessages,
                     reviewAgentScope,
                     reviewPublishedMessageCount,
@@ -190,7 +186,7 @@ public sealed class RuleReviewWorkflow(
                     reviewVerifierAgent,
                     () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope).Agent,
                     PrepareAttempt,
-                    RestoreAttempt,
+                    static state => state.Restore(),
                     verifierMessages,
                     verifierAgentScope,
                     verifierPublishedMessageCount,
@@ -278,17 +274,11 @@ public sealed class RuleReviewWorkflow(
             RuleReviewAgentResetCount = ruleReviewAgentResetCount,
         };
 
-    private AttemptState PrepareAttempt(Guid attemptId)
+    private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
-        return new AttemptState(
+        return new WorkflowAttemptLeasePair(
             _issueStore.BeginAttempt(_ruleFlowKey, attemptId),
             _verdictBuffer.BeginAttempt(_reviewVerdictScopeKey, attemptId));
-    }
-
-    private void RestoreAttempt(AttemptState state)
-    {
-        state.StoreLease.Restore();
-        state.VerdictLease.Restore();
     }
 
     private List<ChatMessage> CreateReviewMessages()
@@ -306,14 +296,5 @@ public sealed class RuleReviewWorkflow(
             : CodeSnifferDogJson.Serialize(noIssueConclusion ?? throw new InvalidOperationException("A review result is required for verification."));
 
         return $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{payload}";
-    }
-
-    private sealed class AttemptState(
-        IAgentAttemptLease storeLease,
-        IAgentAttemptLease verdictLease)
-    {
-        public IAgentAttemptLease StoreLease { get; } = storeLease;
-
-        public IAgentAttemptLease VerdictLease { get; } = verdictLease;
     }
 }

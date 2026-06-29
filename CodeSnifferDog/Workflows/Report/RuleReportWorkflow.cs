@@ -76,29 +76,25 @@ public sealed class RuleReportWorkflow(
             IAgentEventScope aggregatorAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportAggregatorAgentKey(taskItem, ruleKey));
             IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportVerifierAgentKey(taskItem, ruleKey));
 
-            Result<AgentCreationResult> createAggregatorResult = WorkflowAgentCreation.TryCreate(
+            Result<AgentCreationResult> createAggregatorResult = await WorkflowAgentLifecycle.CreateAndPublishAsync(
                 () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope),
-                "Report Aggregator Agent");
+                "Report Aggregator Agent",
+                aggregatorAgentScope,
+                AgentStatusCatalog.CreateReportAggregatorAgentDisplayName(ruleKey),
+                cancellationToken).ConfigureAwait(false);
 
             if (createAggregatorResult.IsFailed)
                 return createAggregatorResult.ToResult<RuleReportWorkflowResult>();
-            await aggregatorAgentScope.PublishCreatedAsync(
-                AgentStatusCatalog.CreateReportAggregatorAgentDisplayName(ruleKey),
-                createAggregatorResult.Value.SystemPrompt,
-                AgentStatusCatalog.WaitingStatus,
-                cancellationToken).ConfigureAwait(false);
 
-            Result<AgentCreationResult> createVerifierResult = WorkflowAgentCreation.TryCreate(
+            Result<AgentCreationResult> createVerifierResult = await WorkflowAgentLifecycle.CreateAndPublishAsync(
                 () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope),
-                "Report Verifier Agent");
+                "Report Verifier Agent",
+                verifierAgentScope,
+                AgentStatusCatalog.CreateReportVerifierAgentDisplayName(ruleKey),
+                cancellationToken).ConfigureAwait(false);
 
             if (createVerifierResult.IsFailed)
                 return createVerifierResult.ToResult<RuleReportWorkflowResult>();
-            await verifierAgentScope.PublishCreatedAsync(
-                AgentStatusCatalog.CreateReportVerifierAgentDisplayName(ruleKey),
-                createVerifierResult.Value.SystemPrompt,
-                AgentStatusCatalog.WaitingStatus,
-                cancellationToken).ConfigureAwait(false);
 
             AIAgent reportAggregatorAgent = createAggregatorResult.Value.Agent;
             AIAgent reportVerifierAgent = createVerifierResult.Value.Agent;
@@ -117,7 +113,7 @@ public sealed class RuleReportWorkflow(
                     reportAggregatorAgent,
                     () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope).Agent,
                     PrepareAttempt,
-                    RestoreAttempt,
+                    static state => state.Restore(),
                     aggregatorMessages,
                     aggregatorAgentScope,
                     aggregatorPublishedMessageCount,
@@ -143,7 +139,7 @@ public sealed class RuleReportWorkflow(
                     reportVerifierAgent,
                     () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope).Agent,
                     PrepareAttempt,
-                    RestoreAttempt,
+                    static state => state.Restore(),
                     verifierMessages,
                     verifierAgentScope,
                     verifierPublishedMessageCount,
@@ -273,17 +269,11 @@ public sealed class RuleReportWorkflow(
         left.ScopeCoverage == right.ScopeCoverage &&
         left.CrossScopeAnalysis == right.CrossScopeAnalysis;
 
-    private AttemptState PrepareAttempt(Guid attemptId)
+    private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
-        return new AttemptState(
+        return new WorkflowAttemptLeasePair(
             _reportIssueStore.BeginAttempt(_ruleFlowKey, attemptId),
             _verdictBuffer.BeginAttempt(_reportVerdictScopeKey, attemptId));
-    }
-
-    private void RestoreAttempt(AttemptState state)
-    {
-        state.StoreLease.Restore();
-        state.VerdictLease.Restore();
     }
 
     private List<ChatMessage> CreateAggregatorMessages(IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
@@ -299,13 +289,4 @@ public sealed class RuleReportWorkflow(
     private string BuildVerifierInput(RuleReportDiff diff)
         =>
         $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(diff)}";
-
-    private sealed class AttemptState(
-        IAgentAttemptLease storeLease,
-        IAgentAttemptLease verdictLease)
-    {
-        public IAgentAttemptLease StoreLease { get; } = storeLease;
-
-        public IAgentAttemptLease VerdictLease { get; } = verdictLease;
-    }
 }
