@@ -19,6 +19,8 @@ namespace CodeSnifferDog.Tests.Modules.Tools;
 [TestClass]
 public sealed class ToolFactoryTypedSeamTests
 {
+    public required TestContext TestContext { get; init; }
+
     [TestMethod]
     public void CommonToolFactory_UsesTypedCallbacks()
     {
@@ -27,6 +29,33 @@ public sealed class ToolFactoryTypedSeamTests
             RunRipgrepCommandTool));
 
         CollectionAssert.AreEqual(new[] { "RunShellCommand", "RunRipgrepCommand" }, tools.Select(tool => tool.Name).ToArray());
+    }
+
+    [TestMethod]
+    public async Task CommonToolFactory_InvokesMatchingTypedCallbacks()
+    {
+        List<string> invokedCallbacks = [];
+        IList<AITool> tools = CommonToolFactory.CreateTools(new CommonToolCallbacks(
+            (Command, cancellationToken) =>
+            {
+                invokedCallbacks.Add($"shell:{Command}");
+                return ValueTask.FromResult(Succeeded());
+            },
+            (Command, cancellationToken) =>
+            {
+                invokedCallbacks.Add($"ripgrep:{Command}");
+                return ValueTask.FromResult(Succeeded());
+            }));
+
+        AIFunction shellFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "RunShellCommand"));
+        AIFunction ripgrepFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "RunRipgrepCommand"));
+
+        await shellFunction.InvokeAsync(new AIFunctionArguments { ["Command"] = "Get-ChildItem" }, TestContext.CancellationToken);
+        await ripgrepFunction.InvokeAsync(new AIFunctionArguments { ["Command"] = "-n \"SystemPrompt\" ." }, TestContext.CancellationToken);
+
+        CollectionAssert.AreEqual(
+            new[] { "shell:Get-ChildItem", "ripgrep:-n \"SystemPrompt\" ." },
+            invokedCallbacks.ToArray());
     }
 
     [TestMethod]

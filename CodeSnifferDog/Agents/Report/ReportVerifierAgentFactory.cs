@@ -1,16 +1,12 @@
-using CodeSnifferDog.Json;
+using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
-using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -23,11 +19,9 @@ public sealed class ReportVerifierAgentFactory(
     ILoggerFactory? loggerFactory = null,
     IServiceProvider? serviceProvider = null)
 {
-    private readonly OperationalContextAgentCompactionOptions _compactionOptions = compactionOptions;
-    private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
-    private readonly PromptTemplateRenderer _promptTemplateRenderer = promptTemplateRenderer ?? new();
-    private readonly ILoggerFactory? _loggerFactory = loggerFactory;
-    private readonly IServiceProvider? _serviceProvider = serviceProvider;
+    private readonly AgentPromptRenderer _promptRenderer = new(promptAssetReader, promptTemplateRenderer);
+    private readonly AgentToolComposer _toolComposer = new();
+    private readonly AgentBuilderService _agentBuilderService = new(compactionOptions, loggerFactory, serviceProvider);
 
     public AgentCreationResult Create(
         IChatClient chatClient,
@@ -41,7 +35,7 @@ public sealed class ReportVerifierAgentFactory(
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptAssetReader.ReadRequiredPrompt(ReportPromptAssetPaths.ReportVerifierAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(ReportPromptAssetPaths.ReportVerifierAgentPrompt),
             repositoryRootPath,
             ruleKey,
             ruleMarkdown,
@@ -73,41 +67,23 @@ public sealed class ReportVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(reportIssueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
-        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, currentFlowIssues);
-        CommonToolSet commonToolSet = new(repositoryRootPath);
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
-        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
-        ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
-        AIAgent agent = chatClient.AsAIAgent(
-            systemPrompt,
-            "Report Verifier Agent",
-            "Verifies whether the current repository-level aggregation diff is acceptable.",
-            [.. commonToolSet.CreateTools(), .. toolSet.CreateVerifierTools()],
-            _loggerFactory,
-            _serviceProvider);
-
-        return new AgentCreationResult
-        {
-            Agent = new AIAgentBuilder(agent)
-                .UseOperationalContextCompaction(_compactionOptions)
-                .UseAgentTranscriptEventsIfAvailable(eventScope)
-                .Build(_serviceProvider),
-            SystemPrompt = systemPrompt,
-        };
-    }
-
-    private string RenderPrompt(
-        string promptTemplate,
-        string repositoryRootPath,
-        string ruleMarkdown,
-        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
-        =>
-        _promptTemplateRenderer.Render(
+        string systemPrompt = _promptRenderer.Render(
             promptTemplate,
             new Dictionary<string, string>
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["CurrentFlowIssuesJson"] = CodeSnifferDogJson.Serialize(currentFlowIssues),
+                ["CurrentFlowIssuesJson"] = AgentPromptRenderer.JsonValue(currentFlowIssues),
             });
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
+        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
+        ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
+        return _agentBuilderService.Create(new AgentBuildRequest(
+            chatClient,
+            systemPrompt,
+            "Report Verifier Agent",
+            "Verifies whether the current repository-level aggregation diff is acceptable.",
+            _toolComposer.Compose(repositoryRootPath, toolSet.CreateVerifierTools()),
+            eventScope));
+    }
 }

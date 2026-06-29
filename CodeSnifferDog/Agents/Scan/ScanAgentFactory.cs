@@ -1,12 +1,9 @@
+using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -18,10 +15,9 @@ public sealed class ScanAgentFactory(
     ILoggerFactory? loggerFactory = null,
     IServiceProvider? serviceProvider = null)
 {
-    private readonly OperationalContextAgentCompactionOptions _compactionOptions = compactionOptions;
-    private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
-    private readonly ILoggerFactory? _loggerFactory = loggerFactory;
-    private readonly IServiceProvider? _serviceProvider = serviceProvider;
+    private readonly AgentPromptRenderer _promptRenderer = new(promptAssetReader);
+    private readonly AgentToolComposer _toolComposer = new();
+    private readonly AgentBuilderService _agentBuilderService = new(compactionOptions, loggerFactory, serviceProvider);
 
     public AgentCreationResult Create(
         IChatClient chatClient,
@@ -31,7 +27,7 @@ public sealed class ScanAgentFactory(
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptAssetReader.ReadRequiredPrompt(ScanPromptAssetPaths.ScanAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(ScanPromptAssetPaths.ScanAgentPrompt),
             repositoryRootPath,
             scanProjectStore,
             verdictBuffer,
@@ -52,23 +48,13 @@ public sealed class ScanAgentFactory(
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
         string systemPrompt = promptTemplate;
-        CommonToolSet commonToolSet = new(repositoryRootPath);
         ScanToolSet toolSet = new(scanProjectStore, verdictBuffer);
-        AIAgent agent = chatClient.AsAIAgent(
+        return _agentBuilderService.Create(new AgentBuildRequest(
+            chatClient,
             systemPrompt,
             "Scan Agent",
             "Scans a repository and records project units for the planning stage.",
-            [.. commonToolSet.CreateTools(), .. toolSet.CreateScanAgentTools()],
-            _loggerFactory,
-            _serviceProvider);
-
-        return new AgentCreationResult
-        {
-            Agent = new AIAgentBuilder(agent)
-                .UseOperationalContextCompaction(_compactionOptions)
-                .UseAgentTranscriptEventsIfAvailable(eventScope)
-                .Build(_serviceProvider),
-            SystemPrompt = systemPrompt,
-        };
+            _toolComposer.Compose(repositoryRootPath, toolSet.CreateScanAgentTools()),
+            eventScope));
     }
 }

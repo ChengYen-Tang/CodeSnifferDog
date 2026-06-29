@@ -1,15 +1,11 @@
-using CodeSnifferDog.Json;
+using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -22,11 +18,9 @@ public sealed class ReportAggregatorAgentFactory(
     ILoggerFactory? loggerFactory = null,
     IServiceProvider? serviceProvider = null)
 {
-    private readonly OperationalContextAgentCompactionOptions _compactionOptions = compactionOptions;
-    private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
-    private readonly PromptTemplateRenderer _promptTemplateRenderer = promptTemplateRenderer ?? new();
-    private readonly ILoggerFactory? _loggerFactory = loggerFactory;
-    private readonly IServiceProvider? _serviceProvider = serviceProvider;
+    private readonly AgentPromptRenderer _promptRenderer = new(promptAssetReader, promptTemplateRenderer);
+    private readonly AgentToolComposer _toolComposer = new();
+    private readonly AgentBuilderService _agentBuilderService = new(compactionOptions, loggerFactory, serviceProvider);
 
     public AgentCreationResult Create(
         IChatClient chatClient,
@@ -39,7 +33,7 @@ public sealed class ReportAggregatorAgentFactory(
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptAssetReader.ReadRequiredPrompt(ReportPromptAssetPaths.ReportAggregatorAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(ReportPromptAssetPaths.ReportAggregatorAgentPrompt),
             repositoryRootPath,
             ruleKey,
             ruleMarkdown,
@@ -68,41 +62,23 @@ public sealed class ReportAggregatorAgentFactory(
         ArgumentNullException.ThrowIfNull(reportIssueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
-        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, taskItem);
-        CommonToolSet commonToolSet = new(repositoryRootPath);
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
-        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
-        ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
-        AIAgent agent = chatClient.AsAIAgent(
-            systemPrompt,
-            "Report Aggregator Agent",
-            "Merges verified flow issues into the repository-level issue set for one rule.",
-            [.. commonToolSet.CreateTools(), .. toolSet.CreateReportAggregatorTools()],
-            _loggerFactory,
-            _serviceProvider);
-
-        return new AgentCreationResult
-        {
-            Agent = new AIAgentBuilder(agent)
-                .UseOperationalContextCompaction(_compactionOptions)
-                .UseAgentTranscriptEventsIfAvailable(eventScope)
-                .Build(_serviceProvider),
-            SystemPrompt = systemPrompt,
-        };
-    }
-
-    private string RenderPrompt(
-        string promptTemplate,
-        string repositoryRootPath,
-        string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem)
-        =>
-        _promptTemplateRenderer.Render(
+        string systemPrompt = _promptRenderer.Render(
             promptTemplate,
             new Dictionary<string, string>
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["ScopeFilesJson"] = CodeSnifferDogJson.Serialize(taskItem.Files),
+                ["ScopeFilesJson"] = AgentPromptRenderer.JsonValue(taskItem.Files),
             });
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
+        RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
+        ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
+        return _agentBuilderService.Create(new AgentBuildRequest(
+            chatClient,
+            systemPrompt,
+            "Report Aggregator Agent",
+            "Merges verified flow issues into the repository-level issue set for one rule.",
+            _toolComposer.Compose(repositoryRootPath, toolSet.CreateReportAggregatorTools()),
+            eventScope));
+    }
 }

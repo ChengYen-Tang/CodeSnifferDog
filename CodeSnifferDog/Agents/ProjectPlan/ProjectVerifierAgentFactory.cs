@@ -1,14 +1,10 @@
-using CodeSnifferDog.Json;
+using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
-using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Modules.Tools.Review;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -21,11 +17,9 @@ public sealed class ProjectVerifierAgentFactory(
     ILoggerFactory? loggerFactory = null,
     IServiceProvider? serviceProvider = null)
 {
-    private readonly OperationalContextAgentCompactionOptions _compactionOptions = compactionOptions;
-    private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
-    private readonly PromptTemplateRenderer _promptTemplateRenderer = promptTemplateRenderer ?? new();
-    private readonly ILoggerFactory? _loggerFactory = loggerFactory;
-    private readonly IServiceProvider? _serviceProvider = serviceProvider;
+    private readonly AgentPromptRenderer _promptRenderer = new(promptAssetReader, promptTemplateRenderer);
+    private readonly AgentToolComposer _toolComposer = new();
+    private readonly AgentBuilderService _agentBuilderService = new(compactionOptions, loggerFactory, serviceProvider);
 
     public AgentCreationResult Create(
         IChatClient chatClient,
@@ -36,7 +30,7 @@ public sealed class ProjectVerifierAgentFactory(
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptAssetReader.ReadRequiredPrompt(ProjectPlanPromptAssetPaths.ProjectVerifierAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(ProjectPlanPromptAssetPaths.ProjectVerifierAgentPrompt),
             repositoryRootPath,
             scanProject,
             taskItemStore,
@@ -59,34 +53,20 @@ public sealed class ProjectVerifierAgentFactory(
         ArgumentNullException.ThrowIfNull(taskItemStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
-        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath, scanProject);
-        CommonToolSet commonToolSet = new(repositoryRootPath);
-        ProjectPlanToolSet toolSet = new(taskItemStore, verdictBuffer);
-        AIAgent agent = chatClient.AsAIAgent(
-            systemPrompt,
-            "Project Verifier Agent",
-            "Verifies whether the current project plan result is acceptable.",
-            [.. commonToolSet.CreateTools(), .. toolSet.CreateVerifierTools()],
-            _loggerFactory,
-            _serviceProvider);
-
-        return new AgentCreationResult
-        {
-            Agent = new AIAgentBuilder(agent)
-                .UseOperationalContextCompaction(_compactionOptions)
-                .UseAgentTranscriptEventsIfAvailable(eventScope)
-                .Build(_serviceProvider),
-            SystemPrompt = systemPrompt,
-        };
-    }
-
-    private string RenderPrompt(string promptTemplate, string repositoryRootPath, StoredScanProject scanProject)
-        =>
-        _promptTemplateRenderer.Render(
+        string systemPrompt = _promptRenderer.Render(
             promptTemplate,
             new Dictionary<string, string>
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
-                ["ScanProjectJson"] = CodeSnifferDogJson.Serialize(scanProject),
+                ["ScanProjectJson"] = AgentPromptRenderer.JsonValue(scanProject),
             });
+        ProjectPlanToolSet toolSet = new(taskItemStore, verdictBuffer);
+        return _agentBuilderService.Create(new AgentBuildRequest(
+            chatClient,
+            systemPrompt,
+            "Project Verifier Agent",
+            "Verifies whether the current project plan result is acceptable.",
+            _toolComposer.Compose(repositoryRootPath, toolSet.CreateVerifierTools()),
+            eventScope));
+    }
 }

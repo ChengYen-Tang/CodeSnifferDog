@@ -4,7 +4,7 @@ namespace CodeSnifferDog.Tests.Agents;
 public sealed class AgentFactoryConventionsTests
 {
     [TestMethod]
-    public void AllImplementedAgentFactories_UseCommonTools_AndOperationalContextCompaction()
+    public void AllImplementedAgentFactories_UseSharedComposerAndBuilderServices()
     {
         string repositoryRootPath = GetRepositoryRootPath();
         string[] relativePaths =
@@ -24,9 +24,36 @@ public sealed class AgentFactoryConventionsTests
             string absolutePath = Path.Combine(repositoryRootPath, relativePath);
             string source = File.ReadAllText(absolutePath);
 
-            Assert.Contains("commonToolSet.CreateTools()", source);
-            Assert.Contains(".UseOperationalContextCompaction(_compactionOptions)", source);
-            Assert.Contains(".UseAgentTranscriptEventsIfAvailable(eventScope)", source);
+            Assert.Contains("AgentPromptRenderer", source);
+            Assert.Contains("AgentToolComposer", source);
+            Assert.Contains("AgentBuilderService", source);
+            Assert.Contains("_toolComposer.Compose(repositoryRootPath", source);
+            Assert.Contains("_agentBuilderService.Create(new AgentBuildRequest(", source);
+        }
+    }
+
+    [TestMethod]
+    public void AllImplementedAgentFactories_KeepSinglePublicCreateSurface()
+    {
+        Type[] factoryTypes =
+        [
+            typeof(CodeSnifferDog.Agents.Scan.ScanAgentFactory),
+            typeof(CodeSnifferDog.Agents.Scan.ScanVerifierAgentFactory),
+            typeof(CodeSnifferDog.Agents.ProjectPlan.ProjectPlanAgentFactory),
+            typeof(CodeSnifferDog.Agents.ProjectPlan.ProjectVerifierAgentFactory),
+            typeof(CodeSnifferDog.Agents.RuleReview.RuleReviewAgentFactory),
+            typeof(CodeSnifferDog.Agents.RuleReview.ReviewVerifierAgentFactory),
+            typeof(CodeSnifferDog.Agents.Report.ReportAggregatorAgentFactory),
+            typeof(CodeSnifferDog.Agents.Report.ReportVerifierAgentFactory),
+        ];
+
+        foreach (Type factoryType in factoryTypes)
+        {
+            Assert.AreEqual(
+                1,
+                factoryType.GetMethods()
+                    .Count(method => method.IsPublic && string.Equals(method.Name, "Create", StringComparison.Ordinal)),
+                $"{factoryType.Name} should expose exactly one public Create method.");
         }
     }
 

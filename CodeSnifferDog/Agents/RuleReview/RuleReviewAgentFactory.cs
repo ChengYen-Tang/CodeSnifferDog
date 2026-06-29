@@ -1,15 +1,11 @@
-using CodeSnifferDog.Json;
+using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.Prompts;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
-using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
-using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -22,11 +18,9 @@ public sealed class RuleReviewAgentFactory(
     ILoggerFactory? loggerFactory = null,
     IServiceProvider? serviceProvider = null)
 {
-    private readonly OperationalContextAgentCompactionOptions _compactionOptions = compactionOptions;
-    private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
-    private readonly PromptTemplateRenderer _promptTemplateRenderer = promptTemplateRenderer ?? new();
-    private readonly ILoggerFactory? _loggerFactory = loggerFactory;
-    private readonly IServiceProvider? _serviceProvider = serviceProvider;
+    private readonly AgentPromptRenderer _promptRenderer = new(promptAssetReader, promptTemplateRenderer);
+    private readonly AgentToolComposer _toolComposer = new();
+    private readonly AgentBuilderService _agentBuilderService = new(compactionOptions, loggerFactory, serviceProvider);
 
     public AgentCreationResult Create(
         IChatClient chatClient,
@@ -39,7 +33,7 @@ public sealed class RuleReviewAgentFactory(
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptAssetReader.ReadRequiredPrompt(RuleReviewPromptAssetPaths.RuleReviewAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(RuleReviewPromptAssetPaths.RuleReviewAgentPrompt),
             repositoryRootPath,
             ruleKey,
             ruleMarkdown,
@@ -68,40 +62,22 @@ public sealed class RuleReviewAgentFactory(
         ArgumentNullException.ThrowIfNull(issueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
-        string systemPrompt = RenderPrompt(promptTemplate, repositoryRootPath, ruleMarkdown, taskItem);
-        CommonToolSet commonToolSet = new(repositoryRootPath);
-        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
-        RuleReviewToolSet toolSet = new(issueStore, verdictBuffer, ruleFlowKey);
-        AIAgent agent = chatClient.AsAIAgent(
-            systemPrompt,
-            "Rule Review Agent",
-            "Reviews one task-item scope under one rule and maintains discovered issues.",
-            [.. commonToolSet.CreateTools(), .. toolSet.CreateRuleReviewAgentTools()],
-            _loggerFactory,
-            _serviceProvider);
-
-        return new AgentCreationResult
-        {
-            Agent = new AIAgentBuilder(agent)
-                .UseOperationalContextCompaction(_compactionOptions)
-                .UseAgentTranscriptEventsIfAvailable(eventScope)
-                .Build(_serviceProvider),
-            SystemPrompt = systemPrompt,
-        };
-    }
-
-    private string RenderPrompt(
-        string promptTemplate,
-        string repositoryRootPath,
-        string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem)
-        =>
-        _promptTemplateRenderer.Render(
+        string systemPrompt = _promptRenderer.Render(
             promptTemplate,
             new Dictionary<string, string>
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["ScopeFilesJson"] = CodeSnifferDogJson.Serialize(taskItem.Files),
+                ["ScopeFilesJson"] = AgentPromptRenderer.JsonValue(taskItem.Files),
             });
+        RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
+        RuleReviewToolSet toolSet = new(issueStore, verdictBuffer, ruleFlowKey);
+        return _agentBuilderService.Create(new AgentBuildRequest(
+            chatClient,
+            systemPrompt,
+            "Rule Review Agent",
+            "Reviews one task-item scope under one rule and maintains discovered issues.",
+            _toolComposer.Compose(repositoryRootPath, toolSet.CreateRuleReviewAgentTools()),
+            eventScope));
+    }
 }
