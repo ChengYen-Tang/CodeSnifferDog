@@ -1,4 +1,3 @@
-using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
@@ -45,6 +44,7 @@ public sealed class ProjectPlanWorkflow(
         await _taskItemStore.ClearAsync(cancellationToken).ConfigureAwait(false);
 
         ProjectPlanWorkflowMessageTemplates messageTemplates = new(_promptAssetReader);
+        ProjectPlanWorkflowMessageBuilder messageBuilder = new(messageTemplates);
         string groupKey = AgentStatusCatalog.CreateProjectPlanGroupKey(scanProject);
         IAgentEventScope plannerAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateProjectPlannerAgentKey(scanProject));
         IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateProjectVerifierAgentKey(scanProject));
@@ -70,7 +70,7 @@ public sealed class ProjectPlanWorkflow(
             AgentStatusCatalog.WaitingStatus,
             cancellationToken).ConfigureAwait(false);
 
-        List<ChatMessage> planMessages = CreatePlanMessages(messageTemplates, scanProject);
+        List<ChatMessage> planMessages = messageBuilder.CreatePlanMessages(scanProject);
         int planPublishedMessageCount = 0;
 
         int planAttempts = 0;
@@ -118,13 +118,13 @@ public sealed class ProjectPlanWorkflow(
 
                     projectPlanAgent = _projectPlanAgentFactory(repositoryRootPath, plannerAgentScope).Agent;
                     await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
-                    planMessages = CreatePlanMessages(messageTemplates, scanProject);
+                    planMessages = messageBuilder.CreatePlanMessages(scanProject);
                     planPublishedMessageCount = 0;
                     missingSubmissionAttempts = 0;
                     continue;
                 }
 
-                planMessages.Add(new ChatMessage(ChatRole.User, messageTemplates.MissingProjectPlanSubmissionMessage));
+                planMessages.Add(messageBuilder.CreateMissingSubmissionMessage());
                 continue;
             }
 
@@ -132,10 +132,7 @@ public sealed class ProjectPlanWorkflow(
             verifierAttempts++;
             _verdictBuffer.Reset();
 
-            List<ChatMessage> verifierMessages =
-            [
-                new(ChatRole.User, BuildVerifierInput(messageTemplates, taskItems)),
-            ];
+            List<ChatMessage> verifierMessages = messageBuilder.CreateVerifierMessages(taskItems);
             int verifierPublishedMessageCount = 0;
 
             (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await WorkflowAgentRunService.RunAsync(
@@ -161,7 +158,7 @@ public sealed class ProjectPlanWorkflow(
 
             if (verdict.Approved)
             {
-                return Result.Ok(CreateResult(
+                return Result.Ok(ProjectPlanWorkflowResultFactory.Create(
                     scanProject,
                     taskItems,
                     verdict,
@@ -176,7 +173,7 @@ public sealed class ProjectPlanWorkflow(
             if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
             {
                 await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Ok(CreateResult(
+                return Result.Ok(ProjectPlanWorkflowResultFactory.Create(
                     scanProject,
                     taskItems,
                     verdict,
@@ -190,24 +187,6 @@ public sealed class ProjectPlanWorkflow(
         }
     }
 
-    private static ProjectPlanWorkflowResult CreateResult(
-        StoredScanProject scanProject,
-        IReadOnlyList<StoredProjectPlanTaskItem> taskItems,
-        ReviewVerdict verdict,
-        int planAttempts,
-        int verifierAttempts,
-        int projectPlanAgentResetCount,
-        bool continuedAfterVerifierRejectionLimit) => new()
-        {
-            ScanProject = scanProject,
-            TaskItems = taskItems,
-            Verdict = verdict,
-            ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
-            PlanAttempts = planAttempts,
-            VerifierAttempts = verifierAttempts,
-            ProjectPlanAgentResetCount = projectPlanAgentResetCount,
-        };
-
     private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
         return new WorkflowAttemptLeasePair(
@@ -215,23 +194,4 @@ public sealed class ProjectPlanWorkflow(
             _verdictBuffer.BeginAttempt(attemptId));
     }
 
-    private static List<ChatMessage> CreatePlanMessages(
-        ProjectPlanWorkflowMessageTemplates messageTemplates,
-        StoredScanProject scanProject)
-        =>
-    [
-        new(ChatRole.User, BuildPlanInput(messageTemplates, scanProject)),
-    ];
-
-    private static string BuildPlanInput(
-        ProjectPlanWorkflowMessageTemplates messageTemplates,
-        StoredScanProject scanProject)
-        =>
-        $"{messageTemplates.PlanInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(scanProject)}";
-
-    private static string BuildVerifierInput(
-        ProjectPlanWorkflowMessageTemplates messageTemplates,
-        IReadOnlyList<StoredProjectPlanTaskItem> taskItems)
-        =>
-        $"{messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItems)}";
 }

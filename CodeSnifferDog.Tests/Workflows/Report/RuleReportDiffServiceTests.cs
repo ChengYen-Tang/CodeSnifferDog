@@ -83,6 +83,41 @@ public sealed class RuleReportDiffServiceTests
     }
 
     [TestMethod]
+    [DataRow(nameof(StoredRuleReportIssue.IssueType))]
+    [DataRow(nameof(StoredRuleReportIssue.Severity))]
+    [DataRow(nameof(StoredRuleReportIssue.FileOrFunction))]
+    [DataRow(nameof(StoredRuleReportIssue.RelevantCodePatternOrExpression))]
+    [DataRow(nameof(StoredRuleReportIssue.WhyThisIsAProblem))]
+    [DataRow(nameof(StoredRuleReportIssue.Confidence))]
+    [DataRow(nameof(StoredRuleReportIssue.FollowUpFiles))]
+    [DataRow(nameof(StoredRuleReportIssue.SuggestedFixDirection))]
+    [DataRow(nameof(StoredRuleReportIssue.ReviewStrategy))]
+    [DataRow(nameof(StoredRuleReportIssue.ScopeCoverage))]
+    [DataRow(nameof(StoredRuleReportIssue.CrossScopeAnalysis))]
+    public async Task ComputeAndStoreDiffAsync_WhenAnySameIdEquivalenceFieldChanges_AddsCurrentIssueToUpdated(
+        string changedField)
+    {
+        StoredRuleReportIssue previousIssue = CreateIssue("issue-1");
+        StoredRuleReportIssue currentIssue = CreateIssueWithChangedField(changedField);
+        FakeRuleReportIssueStore store = new()
+        {
+            PreviousSnapshot = [previousIssue],
+            CurrentIssues = [currentIssue],
+        };
+        RuleReportDiffService service = new(store);
+
+        RuleReportDiff diff = await service.ComputeAndStoreDiffAsync(
+            RuleReportKey,
+            RuleFlowKey,
+            TestContext.CancellationToken);
+
+        Assert.IsEmpty(diff.CreatedIssues);
+        Assert.HasCount(1, diff.UpdatedIssues);
+        Assert.AreSame(currentIssue, diff.UpdatedIssues[0]);
+        Assert.IsEmpty(diff.DeletedIssues);
+    }
+
+    [TestMethod]
     public async Task ComputeAndStoreDiffAsync_WhenSameIdHasIdenticalFields_DoesNotUpdateIssue()
     {
         StoredRuleReportIssue previousIssue = CreateIssue("issue-1");
@@ -129,23 +164,58 @@ public sealed class RuleReportDiffServiceTests
 
     private static StoredRuleReportIssue CreateIssue(
         string ruleReportIssueId,
-        string suggestedFixDirection = "Use a cached async path.")
+        string issueType = "Performance",
+        string severity = "High",
+        string fileOrFunction = "Program.cs",
+        string relevantCodePatternOrExpression = "Repeated synchronous call",
+        string whyThisIsAProblem = "This blocks the hot path.",
+        string confidence = "High",
+        string followUpFiles = "Program.cs",
+        string suggestedFixDirection = "Use a cached async path.",
+        string reviewStrategy = "Reviewed the hot path first.",
+        string scopeCoverage = "Inspected Program.cs.",
+        string crossScopeAnalysis = "No cross-scope inspection was required.")
         =>
         new()
         {
             RuleReportIssueId = ruleReportIssueId,
-            IssueType = "Performance",
-            Severity = "High",
-            FileOrFunction = "Program.cs",
-            RelevantCodePatternOrExpression = "Repeated synchronous call",
-            WhyThisIsAProblem = "This blocks the hot path.",
-            Confidence = "High",
-            FollowUpFiles = "Program.cs",
+            IssueType = issueType,
+            Severity = severity,
+            FileOrFunction = fileOrFunction,
+            RelevantCodePatternOrExpression = relevantCodePatternOrExpression,
+            WhyThisIsAProblem = whyThisIsAProblem,
+            Confidence = confidence,
+            FollowUpFiles = followUpFiles,
             SuggestedFixDirection = suggestedFixDirection,
-            ReviewStrategy = "Reviewed the hot path first.",
-            ScopeCoverage = "Inspected Program.cs.",
-            CrossScopeAnalysis = "No cross-scope inspection was required.",
+            ReviewStrategy = reviewStrategy,
+            ScopeCoverage = scopeCoverage,
+            CrossScopeAnalysis = crossScopeAnalysis,
         };
+
+    private static StoredRuleReportIssue CreateIssueWithChangedField(string changedField)
+    {
+        return changedField switch
+        {
+            nameof(StoredRuleReportIssue.IssueType) => CreateIssue("issue-1", issueType: "Reliability"),
+            nameof(StoredRuleReportIssue.Severity) => CreateIssue("issue-1", severity: "Medium"),
+            nameof(StoredRuleReportIssue.FileOrFunction) => CreateIssue("issue-1", fileOrFunction: "Cache.cs"),
+            nameof(StoredRuleReportIssue.RelevantCodePatternOrExpression) => CreateIssue("issue-1", relevantCodePatternOrExpression: "Repeated cache miss"),
+            nameof(StoredRuleReportIssue.WhyThisIsAProblem) => CreateIssue("issue-1", whyThisIsAProblem: "This repeatedly misses the cache."),
+            nameof(StoredRuleReportIssue.Confidence) => CreateIssue("issue-1", confidence: "Medium"),
+            nameof(StoredRuleReportIssue.FollowUpFiles) => CreateIssue("issue-1", followUpFiles: "Program.cs;Cache.cs"),
+            nameof(StoredRuleReportIssue.SuggestedFixDirection) => CreateIssue("issue-1", suggestedFixDirection: "Investigate the hot path."),
+            nameof(StoredRuleReportIssue.ReviewStrategy) => CreateIssue(
+                "issue-1",
+                reviewStrategy: "Reviewed the cache path first."),
+            nameof(StoredRuleReportIssue.ScopeCoverage) => CreateIssue(
+                "issue-1",
+                scopeCoverage: "Inspected Program.cs and Cache.cs."),
+            nameof(StoredRuleReportIssue.CrossScopeAnalysis) => CreateIssue(
+                "issue-1",
+                crossScopeAnalysis: "Compared Program.cs with Cache.cs."),
+            _ => throw new ArgumentOutOfRangeException(nameof(changedField), changedField, "Unsupported changed field."),
+        };
+    }
 
     private sealed class FakeRuleReportIssueStore : IRuleReportIssueStore
     {

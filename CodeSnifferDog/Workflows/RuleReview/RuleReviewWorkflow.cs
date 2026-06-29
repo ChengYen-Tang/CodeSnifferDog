@@ -1,4 +1,3 @@
-using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
@@ -27,8 +26,8 @@ public sealed class RuleReviewWorkflow(
     private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> _reviewVerifierAgentFactory = reviewVerifierAgentFactory;
     private readonly IRuleReviewIssueStore _issueStore = issueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly RuleReviewWorkflowMessageTemplates _messageTemplates =
-        new(promptAssetReader ?? new PromptAssetReader());
+    private readonly RuleReviewWorkflowMessageBuilder _messageBuilder =
+        new(new RuleReviewWorkflowMessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly RuleReviewWorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
     private RuleFlowKey _ruleFlowKey = default!;
@@ -91,7 +90,7 @@ public sealed class RuleReviewWorkflow(
 
             AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value.Agent;
             AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value.Agent;
-            List<ChatMessage> reviewMessages = CreateReviewMessages();
+            List<ChatMessage> reviewMessages = _messageBuilder.CreateReviewMessages();
             int reviewPublishedMessageCount = 0;
 
             int reviewAttempts = 0;
@@ -139,10 +138,9 @@ public sealed class RuleReviewWorkflow(
                                 Message = "Rule Review Agent did not submit any issues or a no-issue conclusion after the allowed reset limit.",
                             };
 
-                            return Result.Ok(CreateResult(
+                            return Result.Ok(RuleReviewWorkflowResultFactory.Create(
                                 taskItem,
                                 ruleKey,
-                                ruleMarkdown,
                                 issues,
                                 noIssueConclusion,
                                 missingSubmissionVerdict,
@@ -162,13 +160,13 @@ public sealed class RuleReviewWorkflow(
 
                         ruleReviewAgent = recreateRuleReviewAgentResult.Value.Agent;
                         await reviewAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
-                        reviewMessages = CreateReviewMessages();
+                        reviewMessages = _messageBuilder.CreateReviewMessages();
                         reviewPublishedMessageCount = 0;
                         missingSubmissionAttempts = 0;
                         continue;
                     }
 
-                    reviewMessages.Add(new ChatMessage(ChatRole.User, _messageTemplates.MissingRuleReviewSubmissionMessage));
+                    reviewMessages.Add(_messageBuilder.CreateMissingSubmissionMessage());
                     continue;
                 }
 
@@ -176,10 +174,7 @@ public sealed class RuleReviewWorkflow(
                 verifierAttempts++;
                 _verdictBuffer.Reset(reviewVerdictScopeKey);
 
-                List<ChatMessage> verifierMessages =
-                [
-                    new(ChatRole.User, BuildVerifierInput(issues, noIssueConclusion)),
-                ];
+                List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(issues, noIssueConclusion);
                 int verifierPublishedMessageCount = 0;
 
                 (Result runVerifierResult, verifierPublishedMessageCount, reviewVerifierAgent) = await WorkflowAgentRunService.RunAsync(
@@ -205,10 +200,9 @@ public sealed class RuleReviewWorkflow(
 
                 if (verdict.Approved)
                 {
-                    return Result.Ok(CreateResult(
+                    return Result.Ok(RuleReviewWorkflowResultFactory.Create(
                         taskItem,
                         ruleKey,
-                        ruleMarkdown,
                         issues,
                         noIssueConclusion,
                         verdict,
@@ -224,10 +218,9 @@ public sealed class RuleReviewWorkflow(
                 if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
                 {
                     await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    return Result.Ok(CreateResult(
+                    return Result.Ok(RuleReviewWorkflowResultFactory.Create(
                         taskItem,
                         ruleKey,
-                        ruleMarkdown,
                         issues,
                         noIssueConclusion,
                         verdict,
@@ -248,32 +241,6 @@ public sealed class RuleReviewWorkflow(
         }
     }
 
-    private static RuleReviewWorkflowResult CreateResult(
-        StoredProjectPlanTaskItem taskItem,
-        string ruleKey,
-        string _,
-        IReadOnlyList<StoredRuleReviewIssue> issues,
-        NoIssueConclusion? noIssueConclusion,
-        ReviewVerdict verdict,
-        int reviewAttempts,
-        int verifierAttempts,
-        int ruleReviewAgentResetCount,
-        bool continuedAfterVerifierRejectionLimit,
-        bool stoppedAfterMissingSubmissionLimit) =>
-        new()
-        {
-            TaskItem = taskItem,
-            RuleKey = ruleKey,
-            Issues = issues,
-            NoIssueConclusion = noIssueConclusion,
-            Verdict = verdict,
-            ContinuedAfterVerifierRejectionLimit = continuedAfterVerifierRejectionLimit,
-            StoppedAfterMissingSubmissionLimit = stoppedAfterMissingSubmissionLimit,
-            ReviewAttempts = reviewAttempts,
-            VerifierAttempts = verifierAttempts,
-            RuleReviewAgentResetCount = ruleReviewAgentResetCount,
-        };
-
     private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
         return new WorkflowAttemptLeasePair(
@@ -281,20 +248,4 @@ public sealed class RuleReviewWorkflow(
             _verdictBuffer.BeginAttempt(_reviewVerdictScopeKey, attemptId));
     }
 
-    private List<ChatMessage> CreateReviewMessages()
-        =>
-    [
-        new(ChatRole.User, _messageTemplates.RuleReviewStartMessage),
-    ];
-
-    private string BuildVerifierInput(
-        IReadOnlyList<StoredRuleReviewIssue> issues,
-        NoIssueConclusion? noIssueConclusion)
-    {
-        string payload = issues.Count > 0
-            ? CodeSnifferDogJson.Serialize(issues)
-            : CodeSnifferDogJson.Serialize(noIssueConclusion ?? throw new InvalidOperationException("A review result is required for verification."));
-
-        return $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{payload}";
-    }
 }

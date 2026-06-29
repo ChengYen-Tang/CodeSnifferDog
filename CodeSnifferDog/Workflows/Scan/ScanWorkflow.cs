@@ -1,4 +1,3 @@
-using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ReviewAgentTeam;
@@ -26,8 +25,8 @@ public sealed class ScanWorkflow(
     private readonly Func<string, IAgentEventScope, AgentCreationResult> _scanVerifierAgentFactory = scanVerifierAgentFactory;
     private readonly IScanProjectStore _scanProjectStore = scanProjectStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly ScanWorkflowMessageTemplates _messageTemplates =
-        new(promptAssetReader ?? new PromptAssetReader());
+    private readonly ScanWorkflowMessageBuilder _messageBuilder =
+        new(new ScanWorkflowMessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly ScanWorkflowOptions _options = options ?? new ScanWorkflowOptions();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
@@ -65,7 +64,7 @@ public sealed class ScanWorkflow(
             AgentStatusCatalog.WaitingStatus,
             cancellationToken).ConfigureAwait(false);
 
-        List<ChatMessage> scanMessages = CreateScanMessages(repositoryRootPath);
+        List<ChatMessage> scanMessages = _messageBuilder.CreateScanMessages(repositoryRootPath);
         int scanPublishedMessageCount = 0;
 
         int scanAttempts = 0;
@@ -111,13 +110,13 @@ public sealed class ScanWorkflow(
 
                     scanAgent = _scanAgentFactory(repositoryRootPath, scanAgentScope).Agent;
                     await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
-                    scanMessages = CreateScanMessages(repositoryRootPath);
+                    scanMessages = _messageBuilder.CreateScanMessages(repositoryRootPath);
                     scanPublishedMessageCount = 0;
                     missingSubmissionAttempts = 0;
                     continue;
                 }
 
-                scanMessages.Add(new ChatMessage(ChatRole.User, _messageTemplates.MissingScanSubmissionMessage));
+                scanMessages.Add(_messageBuilder.CreateMissingSubmissionMessage());
                 continue;
             }
 
@@ -125,10 +124,7 @@ public sealed class ScanWorkflow(
             verifierAttempts++;
             _verdictBuffer.Reset();
 
-            List<ChatMessage> verifierMessages =
-            [
-                new(ChatRole.User, BuildVerifierInput(projects)),
-            ];
+            List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(projects);
             int verifierPublishedMessageCount = 0;
 
             (Result runVerifierResult, verifierPublishedMessageCount, scanVerifierAgent) = await WorkflowAgentRunService.RunAsync(
@@ -153,7 +149,7 @@ public sealed class ScanWorkflow(
             }
 
             if (verdict.Approved)
-                return Result.Ok(CreateResult(
+                return Result.Ok(ScanWorkflowResultFactory.Create(
                     projects,
                     verdict,
                     scanAttempts,
@@ -165,7 +161,7 @@ public sealed class ScanWorkflow(
             if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
             {
                 await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Ok(CreateResult(
+                return Result.Ok(ScanWorkflowResultFactory.Create(
                     projects,
                     verdict,
                     scanAttempts,
@@ -177,20 +173,6 @@ public sealed class ScanWorkflow(
         }
     }
 
-    private static ScanWorkflowResult CreateResult(
-        IReadOnlyList<StoredScanProject> projects,
-        ReviewVerdict verdict,
-        int scanAttempts,
-        int verifierAttempts,
-        int scanAgentResetCount) => new()
-        {
-            Projects = projects,
-            Verdict = verdict,
-            ScanAttempts = scanAttempts,
-            VerifierAttempts = verifierAttempts,
-            ScanAgentResetCount = scanAgentResetCount,
-        };
-
     private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
         return new WorkflowAttemptLeasePair(
@@ -198,17 +180,4 @@ public sealed class ScanWorkflow(
             _verdictBuffer.BeginAttempt(attemptId));
     }
 
-    private string BuildScanInput(string repositoryRootPath)
-        =>
-        $"{_messageTemplates.ScanInputPrefix}{Environment.NewLine}{Environment.NewLine}{repositoryRootPath}";
-
-    private List<ChatMessage> CreateScanMessages(string repositoryRootPath)
-        =>
-    [
-        new(ChatRole.User, BuildScanInput(repositoryRootPath)),
-    ];
-
-    private string BuildVerifierInput(IReadOnlyList<StoredScanProject> projects)
-        =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projects)}";
 }

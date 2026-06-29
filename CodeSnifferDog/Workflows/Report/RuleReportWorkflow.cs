@@ -1,4 +1,3 @@
-using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
@@ -29,8 +28,8 @@ public sealed class RuleReportWorkflow(
     private readonly IRuleReportIssueStore _reportIssueStore = reportIssueStore;
     private readonly RuleReportDiffService _diffService = new(reportIssueStore);
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly RuleReportWorkflowMessageTemplates _messageTemplates =
-        new(promptAssetReader ?? new PromptAssetReader());
+    private readonly RuleReportWorkflowMessageBuilder _messageBuilder =
+        new(new RuleReportWorkflowMessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly RuleReportWorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
     private RuleFlowKey _ruleFlowKey = default!;
@@ -99,7 +98,7 @@ public sealed class RuleReportWorkflow(
 
             AIAgent reportAggregatorAgent = createAggregatorResult.Value.Agent;
             AIAgent reportVerifierAgent = createVerifierResult.Value.Agent;
-            List<ChatMessage> aggregatorMessages = CreateAggregatorMessages(currentFlowIssues);
+            List<ChatMessage> aggregatorMessages = _messageBuilder.CreateAggregatorMessages(currentFlowIssues);
             int aggregatorPublishedMessageCount = 0;
 
             int aggregatorAttempts = 0;
@@ -130,10 +129,7 @@ public sealed class RuleReportWorkflow(
                 verifierAttempts++;
                 _verdictBuffer.Reset(reportVerdictScopeKey);
 
-                List<ChatMessage> verifierMessages =
-                [
-                    new(ChatRole.User, BuildVerifierInput(diff)),
-                ];
+                List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(diff);
                 int verifierPublishedMessageCount = 0;
 
                 (Result runVerifierResult, verifierPublishedMessageCount, reportVerifierAgent) = await WorkflowAgentRunService.RunAsync(
@@ -163,17 +159,15 @@ public sealed class RuleReportWorkflow(
                     IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
                         await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
 
-                    return Result.Ok(new RuleReportWorkflowResult
-                    {
-                        RuleKey = ruleKey,
-                        TaskItem = taskItem,
-                        Diff = diff,
-                        RepositoryIssues = repositoryIssues,
-                        Verdict = verdict,
-                        ContinuedAfterVerifierRejectionLimit = false,
-                        AggregatorAttempts = aggregatorAttempts,
-                        VerifierAttempts = verifierAttempts,
-                    });
+                    return Result.Ok(RuleReportWorkflowResultFactory.Create(
+                        ruleKey,
+                        taskItem,
+                        diff,
+                        repositoryIssues,
+                        verdict,
+                        continuedAfterVerifierRejectionLimit: false,
+                        aggregatorAttempts,
+                        verifierAttempts));
                 }
 
                 verifierRejectionAttempts++;
@@ -185,17 +179,15 @@ public sealed class RuleReportWorkflow(
                     IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
                         await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
 
-                    return Result.Ok(new RuleReportWorkflowResult
-                    {
-                        RuleKey = ruleKey,
-                        TaskItem = taskItem,
-                        Diff = diff,
-                        RepositoryIssues = repositoryIssues,
-                        Verdict = verdict,
-                        ContinuedAfterVerifierRejectionLimit = true,
-                        AggregatorAttempts = aggregatorAttempts,
-                        VerifierAttempts = verifierAttempts,
-                    });
+                    return Result.Ok(RuleReportWorkflowResultFactory.Create(
+                        ruleKey,
+                        taskItem,
+                        diff,
+                        repositoryIssues,
+                        verdict,
+                        continuedAfterVerifierRejectionLimit: true,
+                        aggregatorAttempts,
+                        verifierAttempts));
                 }
 
                 aggregatorMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
@@ -215,17 +207,4 @@ public sealed class RuleReportWorkflow(
             _verdictBuffer.BeginAttempt(_reportVerdictScopeKey, attemptId));
     }
 
-    private List<ChatMessage> CreateAggregatorMessages(IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
-        =>
-    [
-        new(ChatRole.User, BuildAggregatorInput(currentFlowIssues)),
-    ];
-
-    private string BuildAggregatorInput(IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
-        =>
-        $"{_messageTemplates.AggregatorInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(currentFlowIssues)}";
-
-    private string BuildVerifierInput(RuleReportDiff diff)
-        =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(diff)}";
 }
