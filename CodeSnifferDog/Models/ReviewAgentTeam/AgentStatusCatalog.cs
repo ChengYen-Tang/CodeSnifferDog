@@ -26,7 +26,7 @@ public static class AgentStatusCatalog
         $"project-plan:{scanProject.ScanProjectId}";
 
     public static string CreateProjectPlanGroupDisplayName(StoredScanProject scanProject) =>
-        scanProject.ProjectName;
+        $"Project Plan: {scanProject.ProjectName}";
 
     public static string CreateProjectPlannerAgentKey(StoredScanProject scanProject) =>
         $"project-plan:{scanProject.ScanProjectId}:planner";
@@ -41,8 +41,8 @@ public static class AgentStatusCatalog
     public static string CreateReviewTaskGroupKey(StoredProjectPlanTaskItem taskItem) =>
         $"review-task:{taskItem.ProjectPlanTaskItemId}";
 
-    public static string CreateReviewTaskGroupDisplayName(StoredProjectPlanTaskItem taskItem) =>
-        taskItem.ProjectPlanTaskItemId;
+    public static string CreateReviewTaskGroupDisplayName(int reviewNumber) =>
+        $"Review: {reviewNumber}";
 
     public static string CreateRuleReviewAgentKey(StoredProjectPlanTaskItem taskItem, string ruleKey) =>
         $"{CreateReviewTaskGroupKey(taskItem)}:{ruleKey}:rule-review";

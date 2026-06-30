@@ -260,6 +260,33 @@ public sealed class ReviewStageWorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_PublishesSequentialReviewGroupDisplayNames()
+    {
+        RecordingAgentEventBus eventBus = new();
+        RepositoryPreparationWorkflowResult preparationResult = CreatePreparationResult(
+            [
+                CreateProjectPlanResult("scan-1", "ProjectOne", "task-1", "task-2"),
+                CreateProjectPlanResult("scan-2", "ProjectTwo", "task-3"),
+            ]);
+        ReviewStageWorkflow workflow = CreateWorkflow(
+            (repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken) =>
+                Task.FromResult(Result.Ok(CreateRuleFlowResult(taskItem, ruleKey, ruleMarkdown, RuleFlowCompletionState.ApprovedNoIssue))),
+            new ReviewAgentConcurrencyGate(4),
+            eventBus);
+
+        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+            @"Z:\GitHub\CodeSnifferDog",
+            preparationResult,
+            CreateRuleDefinitions(("rule-a", "- Rule A")),
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        CollectionAssert.AreEqual(
+            new[] { "Review: 1", "Review: 2", "Review: 3" },
+            eventBus.GroupCreatedDisplayNames.ToArray());
+    }
+
+    [TestMethod]
     public async Task RunAsync_FailsWhenAnyRuleFlowFails()
     {
         RepositoryPreparationWorkflowResult preparationResult = CreatePreparationResult(
@@ -286,10 +313,12 @@ public sealed class ReviewStageWorkflowTests
 
     private static ReviewStageWorkflow CreateWorkflow(
         Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
-        ReviewAgentConcurrencyGate concurrencyGate) =>
+        ReviewAgentConcurrencyGate concurrencyGate,
+        IAgentEventBus? agentEventBus = null) =>
         new(
             new ReviewStageRuleLaneScheduler(ruleFlowWorkflowRunner, concurrencyGate),
-            (taskItem, ruleDefinitions, flowResults) => Result.Ok(CreateReviewGroupResult(taskItem, ruleDefinitions, flowResults)));
+            (taskItem, ruleDefinitions, flowResults) => Result.Ok(CreateReviewGroupResult(taskItem, ruleDefinitions, flowResults)),
+            agentEventBus);
 
     private static ReviewAgentRuleDefinition[] CreateRuleDefinitions(params (string RuleKey, string RuleMarkdown)[] definitions) =>
         [.. definitions.Select(definition => new ReviewAgentRuleDefinition
@@ -466,4 +495,21 @@ public sealed class ReviewStageWorkflowTests
             ScopeCoverage = "Inspected Program.cs.",
             CrossScopeAnalysis = "Followed the call into Service.cs.",
         };
+
+    private sealed class RecordingAgentEventBus : IAgentEventBus
+    {
+        public List<string> GroupCreatedDisplayNames { get; } = [];
+
+        public IAgentEventScope CreateScope(string groupKey, string agentKey) =>
+            throw new NotSupportedException();
+
+        public ValueTask PublishGroupCreatedAsync(
+            string groupKey,
+            string displayName,
+            CancellationToken cancellationToken = default)
+        {
+            GroupCreatedDisplayNames.Add(displayName);
+            return ValueTask.CompletedTask;
+        }
+    }
 }

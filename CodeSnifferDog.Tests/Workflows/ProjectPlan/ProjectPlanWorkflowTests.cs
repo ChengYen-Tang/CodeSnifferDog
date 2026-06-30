@@ -23,6 +23,7 @@ namespace CodeSnifferDog.Tests.Workflows.ProjectPlan;
 public sealed class ProjectPlanWorkflowTests
 {
     public required TestContext TestContext { get; init; }
+    private static readonly string TestRepositoryRootPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 
     [TestMethod]
     public async Task RunAsync_CompletesProjectPlanWorkflow_ThroughRealToolCalls()
@@ -31,7 +32,7 @@ public sealed class ProjectPlanWorkflowTests
             HandlePlanInvocation,
             HandleVerifierInvocation);
 
-        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+        var result = await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, result.Value.PlanAttempts);
@@ -85,7 +86,7 @@ public sealed class ProjectPlanWorkflowTests
                 MaxProjectPlanAgentResets = 1,
             });
 
-        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+        var result = await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(1, result.Value.ProjectPlanAgentResetCount);
@@ -150,7 +151,7 @@ public sealed class ProjectPlanWorkflowTests
             });
 
         Result<ProjectPlanWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+            await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(2, createdPlanAgents);
@@ -208,7 +209,7 @@ public sealed class ProjectPlanWorkflowTests
             });
 
         Result<ProjectPlanWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+            await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(4, timedOutAttempts);
@@ -243,7 +244,7 @@ public sealed class ProjectPlanWorkflowTests
             });
 
         Result<ProjectPlanWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+            await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error =>
@@ -308,7 +309,7 @@ public sealed class ProjectPlanWorkflowTests
                 MaxVerifierRejectionAttempts = 3,
             });
 
-        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+        var result = await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(3, result.Value.PlanAttempts);
@@ -329,7 +330,7 @@ public sealed class ProjectPlanWorkflowTests
                 MaxProjectPlanAgentResets = 1,
             });
 
-        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+        var result = await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error =>
@@ -360,7 +361,7 @@ public sealed class ProjectPlanWorkflowTests
                 return HandleVerifierInvocation(invocation);
             });
 
-        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+        var result = await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsTrue(planPrefixObserved);
@@ -412,12 +413,38 @@ public sealed class ProjectPlanWorkflowTests
             promptAssetReader);
 
         Result<ProjectPlanWorkflowResult> result =
-            await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", scanProject, TestContext.CancellationToken);
+            await workflow.RunAsync(TestRepositoryRootPath, scanProject, TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsNotNull(verifierPrompt);
         Assert.IsTrue(verifierPrompt.Contains("RuntimeProject", StringComparison.Ordinal));
         Assert.IsTrue(verifierPrompt.Contains("scan-project-runtime", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PublishesProjectPlanGroupDisplayName_WithProjectName()
+    {
+        RecordingGroupCreatedAgentEventBus eventBus = new();
+        StoredScanProject scanProject = new()
+        {
+            ScanProjectId = "scan-project-runtime",
+            ProjectName = "RuntimeProject",
+            ProjectPath = "src/RuntimeProject/RuntimeProject.csproj",
+            ProjectType = ".csproj",
+            Reason = "Runtime-selected project.",
+        };
+        ProjectPlanWorkflow workflow = CreateWorkflow(
+            HandlePlanInvocation,
+            HandleVerifierInvocation,
+            agentEventBus: eventBus);
+
+        Result<ProjectPlanWorkflowResult> result =
+            await workflow.RunAsync(TestRepositoryRootPath, scanProject, TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        CollectionAssert.AreEqual(
+            new[] { "Project Plan: RuntimeProject" },
+            eventBus.GroupCreatedDisplayNames.ToArray());
     }
 
     [TestMethod]
@@ -459,7 +486,7 @@ public sealed class ProjectPlanWorkflowTests
             verdictBuffer,
             promptAssetReader);
 
-        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+        var result = await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.IsGreaterThan(0, summarizer.CallCount);
@@ -481,7 +508,7 @@ public sealed class ProjectPlanWorkflowTests
             HandlePlanInvocation,
             _ => CreateAssistantResponse("No verdict submitted."));
 
-        var result = await workflow.RunAsync(@"Z:\GitHub\CodeSnifferDog", CreateScanProject(), TestContext.CancellationToken);
+        var result = await workflow.RunAsync(TestRepositoryRootPath, CreateScanProject(), TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error =>
@@ -538,7 +565,8 @@ public sealed class ProjectPlanWorkflowTests
     private static ProjectPlanWorkflow CreateWorkflow(
         Func<ChatInvocation, ChatResponse> planResponseFactory,
         Func<ChatInvocation, ChatResponse> verifierResponseFactory,
-        ProjectPlanWorkflowOptions? options = null)
+        ProjectPlanWorkflowOptions? options = null,
+        IAgentEventBus? agentEventBus = null)
     {
         ScriptedChatClient planChatClient = new(planResponseFactory);
         ScriptedChatClient verifierChatClient = new(verifierResponseFactory);
@@ -553,7 +581,8 @@ public sealed class ProjectPlanWorkflowTests
             taskItemStore,
             verdictBuffer,
             promptAssetReader,
-            options);
+            options,
+            agentEventBus);
     }
 
     private static ProjectPlanToolSet CreateToolSet()
@@ -807,4 +836,45 @@ public sealed class ProjectPlanWorkflowTests
             return ValueTask.FromResult(response);
         }
     }
+
+    private sealed class RecordingGroupCreatedAgentEventBus : IAgentEventBus
+    {
+        public List<string> GroupCreatedDisplayNames { get; } = [];
+
+        public IAgentEventScope CreateScope(string groupKey, string agentKey) =>
+            new NoOpAgentEventScope(groupKey, agentKey);
+
+        public ValueTask PublishGroupCreatedAsync(
+            string groupKey,
+            string displayName,
+            CancellationToken cancellationToken = default)
+        {
+            GroupCreatedDisplayNames.Add(displayName);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class NoOpAgentEventScope(string groupKey, string agentKey) : IAgentEventScope
+    {
+        public string GroupKey { get; } = groupKey;
+
+        public string AgentKey { get; } = agentKey;
+
+        public ValueTask PublishCreatedAsync(string displayName, string systemPrompt, string initialStatus, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask PublishStatusChangedAsync(string status, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask PublishUserMessageAsync(string message, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask PublishAssistantMessageAsync(string message, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask PublishToolCallStartedAsync(string toolCallId, string toolName, string? arguments, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask PublishToolCallCompletedAsync(string toolCallId, string? result, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask PublishTranscriptClearedAsync(DateTimeOffset clearAfterUtc, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    }
+
 }

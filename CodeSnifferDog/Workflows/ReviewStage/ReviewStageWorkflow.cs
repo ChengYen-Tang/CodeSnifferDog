@@ -52,14 +52,17 @@ internal sealed class ReviewStageWorkflow(
                 ReviewGroupResults = new ReviewGroupWorkflowResult[projectPlanResult.TaskItems.Count],
             })];
 
+        int reviewNumber = 1;
+
         foreach (ProjectPlanWorkflowResult projectPlanResult in preparationResult.ProjectPlanResults)
         {
             foreach (StoredProjectPlanTaskItem taskItem in projectPlanResult.TaskItems)
             {
                 await _agentEventBus.PublishGroupCreatedAsync(
                     AgentStatusCatalog.CreateReviewTaskGroupKey(taskItem),
-                    AgentStatusCatalog.CreateReviewTaskGroupDisplayName(taskItem),
+                    AgentStatusCatalog.CreateReviewTaskGroupDisplayName(reviewNumber),
                     cancellationToken).ConfigureAwait(false);
+                reviewNumber++;
             }
         }
 
