@@ -48,7 +48,7 @@ internal sealed class CommonCommandToolService
         ArgumentException.ThrowIfNullOrWhiteSpace(args.Command);
 
         return _isWindows()
-            ? _argumentsRunner("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(args.Command)], _repositoryRootPath, cancellationToken)
+            ? _argumentsRunner("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(BuildPowerShellCommand(args.Command))], _repositoryRootPath, cancellationToken)
             : _argumentsRunner("/bin/bash", ["-lc", args.Command], _repositoryRootPath, cancellationToken);
     }
 
@@ -85,6 +85,10 @@ internal sealed class CommonCommandToolService
     private static string EncodePowerShellCommand(string command)
         =>
         Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+
+    private static string BuildPowerShellCommand(string command)
+        =>
+        "$ProgressPreference = 'SilentlyContinue'" + Environment.NewLine + command;
 
     internal static bool StartsWithRipgrepExecutable(string command)
     {

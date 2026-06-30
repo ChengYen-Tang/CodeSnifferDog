@@ -39,7 +39,9 @@ public sealed class CommonCommandToolServiceTests
         CollectionAssert.AreEqual(
             new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand" },
             captured.Arguments.Take(3).ToArray());
-        Assert.AreEqual("Get-Location", Encoding.Unicode.GetString(Convert.FromBase64String(captured.Arguments[3])));
+        Assert.AreEqual(
+            "$ProgressPreference = 'SilentlyContinue'" + Environment.NewLine + "Get-Location",
+            Encoding.Unicode.GetString(Convert.FromBase64String(captured.Arguments[3])));
     }
 
     [TestMethod]
