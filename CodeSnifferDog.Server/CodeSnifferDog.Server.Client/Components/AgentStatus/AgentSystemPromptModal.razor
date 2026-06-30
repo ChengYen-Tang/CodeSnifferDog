@@ -1,0 +1,42 @@
+@using CodeSnifferDog.Server.Shared.AgentStatus
+
+@if (Agent is not null)
+{
+    <div class="modal fade"
+         id="agent-system-prompt-modal"
+         tabindex="-1"
+         aria-labelledby="agent-system-prompt-title"
+         aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable agent-system-prompt-dialog">
+            <section class="modal-content agent-system-prompt-modal">
+                <div class="agent-system-prompt-modal-header">
+                    <div>
+                        <div id="agent-system-prompt-title" class="agent-system-prompt-modal-title">System Prompt</div>
+                        <div class="agent-system-prompt-modal-subtitle">@Agent.DisplayName</div>
+                    </div>
+                    <button type="button"
+                            class="agent-system-prompt-close"
+                            title="Close"
+                            aria-label="Close system prompt"
+                            data-bs-dismiss="modal">
+                        x
+                    </button>
+                </div>
+                <pre class="agent-system-prompt-content">@SystemPromptText</pre>
+            </section>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public ProjectAgentSnapshotDto? Agent { get; set; }
+
+    [Parameter]
+    public string? SystemPrompt { get; set; }
+
+    private string SystemPromptText =>
+        string.IsNullOrWhiteSpace(SystemPrompt)
+            ? "No system prompt is available for this agent."
+            : SystemPrompt;
+}

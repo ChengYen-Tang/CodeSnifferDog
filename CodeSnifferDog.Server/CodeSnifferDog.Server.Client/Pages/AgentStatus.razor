@@ -4,6 +4,7 @@
 
 @using System.Net
 @using System.Net.Http.Json
+@using CodeSnifferDog.Server.Client.Components.AgentStatus
 @using CodeSnifferDog.Server.Client.Services.ProjectAgentStatus
 @using CodeSnifferDog.Server.Shared.AgentStatus
 @using CodeSnifferDog.Server.Shared.Projects
@@ -44,11 +45,6 @@
         Selection.SelectedAgentId is null || History.AgentId != Selection.SelectedAgentId
             ? []
             : History.TimelineEntries;
-
-    private string SelectedSystemPrompt =>
-        string.IsNullOrWhiteSpace(SelectedAgent?.SystemPrompt)
-            ? "No system prompt is available for this agent."
-            : SelectedAgent.SystemPrompt;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -346,26 +342,6 @@
         }
     }
 
-    private static string StatusCss(ProjectAgentRunStatus status) => status switch
-    {
-        ProjectAgentRunStatus.Running => "status-running",
-        ProjectAgentRunStatus.Waiting => "status-waiting",
-        ProjectAgentRunStatus.Completed => "status-completed",
-        ProjectAgentRunStatus.Degraded => "status-degraded",
-        _ => "status-waiting"
-    };
-
-    private static string FormatStatus(ProjectAgentRunStatus status) => status switch
-    {
-        ProjectAgentRunStatus.Running => "Running",
-        ProjectAgentRunStatus.Waiting => "Waiting",
-        ProjectAgentRunStatus.Completed => "Completed",
-        ProjectAgentRunStatus.Degraded => "Degraded",
-        _ => "Waiting"
-    };
-
-    private static string FormatCreatedAt(DateTimeOffset createdAtUtc) => $"Created {createdAtUtc:HH:mm}";
-
     private sealed class AgentStatusPageState(
         AgentStatusSnapshotState snapshot,
         AgentStatusLiveConnectionState liveConnection,
@@ -457,12 +433,13 @@
 
             if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
             {
-                if (update.TimelineEntry?.AgentId == Selection.SelectedAgentId)
+                ProjectAgentTimelineEntryDto? timelineEntry = update.TimelineEntry;
+                if (timelineEntry is not null && timelineEntry.AgentId == Selection.SelectedAgentId)
                 {
-                    if (!Snapshot.UpsertTimelineEntry(update.TimelineEntry))
+                    if (!Snapshot.UpsertTimelineEntry(timelineEntry))
                         return false;
 
-                    History.ApplySelectedAgentSnapshot(Snapshot.GetHistory(update.TimelineEntry.AgentId), update.TimelineEntry.AgentId);
+                    History.ApplySelectedAgentSnapshot(Snapshot.GetHistory(timelineEntry.AgentId), timelineEntry.AgentId);
                     return true;
                 }
 
@@ -1067,151 +1044,19 @@
     }
 
     <div class="agent-status-console">
-        <aside class="agent-roster-pane">
-            <div class="agent-pane-header">
-                <div class="small text-uppercase fw-bold text-primary">Agents</div>
-            </div>
+        <AgentRosterPane Groups="@Snapshot.Groups"
+                         SelectedAgentId="@Selection.SelectedAgentId"
+                         OnSelectAgent="@SelectAgentAsync" />
 
-            <div class="agent-group-list">
-                @foreach (var group in Snapshot.Groups)
-                {
-                    <section class="agent-group-card" @key="group.GroupId">
-                        <div class="agent-group-name">@group.DisplayName</div>
-                        <div class="agent-node-list">
-                            @foreach (var agent in group.Agents)
-                            {
-                                var isSelected = agent.AgentId == Selection.SelectedAgentId;
-
-                                <button type="button"
-                                        class="agent-roster-node @(isSelected ? "selected" : null)"
-                                        @key="agent.AgentId"
-                                        @onclick="() => SelectAgentAsync(agent.AgentId)">
-                                    <div class="agent-roster-main">
-                                        <div class="agent-roster-name">@agent.DisplayName</div>
-                                        <div class="agent-roster-rule">@FormatCreatedAt(agent.CreatedAtUtc)</div>
-                                    </div>
-                                    <span class="agent-status-dot @StatusCss(agent.Status)" title="@FormatStatus(agent.Status)"></span>
-                                </button>
-                            }
-                        </div>
-                    </section>
-                }
-            </div>
-        </aside>
-
-        <section class="agent-history-pane">
-            <div class="agent-history-toolbar">
-                <div>
-                    <div class="agent-history-title">History</div>
-                    @if (SelectedAgent is not null)
-                    {
-                        <div class="small text-body-secondary">@SelectedAgent.DisplayName</div>
-                    }
-                </div>
-                <button type="button"
-                        class="agent-system-prompt-button"
-                        disabled="@(SelectedAgent is null)"
-                        title="Show system prompt"
-                        data-bs-toggle="modal"
-                        data-bs-target="#agent-system-prompt-modal">
-                    Prompt
-                </button>
-            </div>
-
-            <div class="agent-chat-log">
-                @if (History.IsLoading && Selection.SelectedAgentId == History.AgentId)
-                {
-                    <div class="alert alert-info mb-0" role="status">Loading agent history...</div>
-                }
-                else if (History.ErrorMessage is not null && Selection.SelectedAgentId == History.AgentId)
-                {
-                    <div class="alert alert-warning mb-0" role="alert">@History.ErrorMessage</div>
-                }
-                else
-                {
-                    @for (var index = 0; index < SelectedHistory.Count; index++)
-                    {
-                        var entry = SelectedHistory[index];
-                        var isInput = entry.EntryKind == ProjectAgentTimelineEntryKind.Input;
-                        var isTool = entry.EntryKind == ProjectAgentTimelineEntryKind.Tool;
-                        var isCompaction = entry.EntryKind == ProjectAgentTimelineEntryKind.Compaction;
-                        var toolKey = entry.ToolCallId ?? entry.TimelineEntryId.ToString("N");
-                        var isExpanded = Selection.ExpandedToolDetails.Contains(toolKey);
-
-                        @if (isCompaction)
-                        {
-                            <div class="agent-compaction-notice" @key="entry.TimelineEntryId">
-                                <span class="agent-compaction-rule"></span>
-                                <span class="agent-compaction-label">
-                                    <svg class="agent-compaction-icon" viewBox="0 0 16 16" aria-hidden="true">
-                                        <path d="M4 1.75h5.1L12.25 4.9v9.35H4V1.75Z" />
-                                        <path d="M9 1.9V5h3.1" />
-                                        <path d="M5.75 8h4.5M5.75 10.25h4.5M5.75 12.5h3" />
-                                    </svg>
-                                    @entry.Message
-                                </span>
-                                <span class="agent-compaction-rule"></span>
-                            </div>
-                            continue;
-                        }
-
-                        <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)" @key="entry.TimelineEntryId">
-                            <div class="agent-message-bubble">
-                                @if (isTool)
-                                {
-                                    <button type="button" class="tool-call-summary" @onclick="() => ToggleToolDetails(toolKey)">
-                                        <span class="tool-call-chip">Tool</span>
-                                        <span class="tool-call-summary-name">@entry.ToolName</span>
-                                        <span>@(isExpanded ? "v" : ">")</span>
-                                    </button>
-
-                                    @if (isExpanded)
-                                    {
-                                        <div class="tool-call-item">
-                                            <div class="tool-call-label">Arguments</div>
-                                            <pre>@entry.ToolArguments</pre>
-                                            <div class="tool-call-label">Result</div>
-                                            <pre>@entry.ToolResult</pre>
-                                        </div>
-                                    }
-                                }
-                                else
-                                {
-                                    <div class="agent-message-text">@entry.Message</div>
-                                }
-                            </div>
-                        </article>
-                    }
-                }
-            </div>
-        </section>
+        <AgentHistoryPane SelectedAgent="@SelectedAgent"
+                          SelectedAgentId="@Selection.SelectedAgentId"
+                          HistoryAgentId="@History.AgentId"
+                          IsHistoryLoading="@History.IsLoading"
+                          HistoryErrorMessage="@History.ErrorMessage"
+                          TimelineEntries="@SelectedHistory"
+                          ExpandedToolDetails="@Selection.ExpandedToolDetails"
+                          OnToggleToolDetails="@ToggleToolDetails" />
     </div>
 
-    @if (SelectedAgent is not null)
-    {
-        <div class="modal fade"
-             id="agent-system-prompt-modal"
-             tabindex="-1"
-             aria-labelledby="agent-system-prompt-title"
-             aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-scrollable agent-system-prompt-dialog">
-                <section class="modal-content agent-system-prompt-modal">
-                    <div class="agent-system-prompt-modal-header">
-                        <div>
-                            <div id="agent-system-prompt-title" class="agent-system-prompt-modal-title">System Prompt</div>
-                            <div class="agent-system-prompt-modal-subtitle">@SelectedAgent.DisplayName</div>
-                        </div>
-                        <button type="button"
-                                class="agent-system-prompt-close"
-                                title="Close"
-                                aria-label="Close system prompt"
-                                data-bs-dismiss="modal">
-                            x
-                        </button>
-                    </div>
-                    <pre class="agent-system-prompt-content">@SelectedSystemPrompt</pre>
-                </section>
-            </div>
-        </div>
-    }
+    <AgentSystemPromptModal Agent="@SelectedAgent" SystemPrompt="@SelectedAgent?.SystemPrompt" />
 </div>

@@ -1,0 +1,71 @@
+@using CodeSnifferDog.Server.Shared.AgentStatus
+
+<section class="agent-history-pane">
+    <div class="agent-history-toolbar">
+        <div>
+            <div class="agent-history-title">History</div>
+            @if (SelectedAgent is not null)
+            {
+                <div class="small text-body-secondary">@SelectedAgent.DisplayName</div>
+            }
+        </div>
+        <button type="button"
+                class="agent-system-prompt-button"
+                disabled="@(SelectedAgent is null)"
+                title="Show system prompt"
+                data-bs-toggle="modal"
+                data-bs-target="#agent-system-prompt-modal">
+            Prompt
+        </button>
+    </div>
+
+    <div class="agent-chat-log">
+        @if (IsHistoryLoading && SelectedAgentId == HistoryAgentId)
+        {
+            <div class="alert alert-info mb-0" role="status">Loading agent history...</div>
+        }
+        else if (HistoryErrorMessage is not null && SelectedAgentId == HistoryAgentId)
+        {
+            <div class="alert alert-warning mb-0" role="alert">@HistoryErrorMessage</div>
+        }
+        else
+        {
+            @for (var index = 0; index < TimelineEntries.Count; index++)
+            {
+                var entry = TimelineEntries[index];
+                var toolKey = entry.ToolCallId ?? entry.TimelineEntryId.ToString("N");
+
+                <AgentTimelineEntryView Entry="entry"
+                                        IsExpanded="ExpandedToolDetails.Contains(toolKey)"
+                                        OnToggleToolDetails="OnToggleToolDetails"
+                                        @key="entry.TimelineEntryId" />
+            }
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter]
+    public ProjectAgentSnapshotDto? SelectedAgent { get; set; }
+
+    [Parameter]
+    public Guid? SelectedAgentId { get; set; }
+
+    [Parameter]
+    public Guid? HistoryAgentId { get; set; }
+
+    [Parameter]
+    public bool IsHistoryLoading { get; set; }
+
+    [Parameter]
+    public string? HistoryErrorMessage { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ProjectAgentTimelineEntryDto> TimelineEntries { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlySet<string> ExpandedToolDetails { get; set; } = new HashSet<string>();
+
+    [Parameter]
+    public EventCallback<string> OnToggleToolDetails { get; set; }
+}

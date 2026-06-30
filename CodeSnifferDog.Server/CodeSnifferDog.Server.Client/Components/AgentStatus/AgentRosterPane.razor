@@ -1,0 +1,64 @@
+@using CodeSnifferDog.Server.Shared.AgentStatus
+
+<aside class="agent-roster-pane">
+    <div class="agent-pane-header">
+        <div class="small text-uppercase fw-bold text-primary">Agents</div>
+    </div>
+
+    <div class="agent-group-list">
+        @foreach (var group in Groups)
+        {
+            <section class="agent-group-card" @key="group.GroupId">
+                <div class="agent-group-name">@group.DisplayName</div>
+                <div class="agent-node-list">
+                    @foreach (var agent in group.Agents)
+                    {
+                        var isSelected = agent.AgentId == SelectedAgentId;
+
+                        <button type="button"
+                                class="agent-roster-node @(isSelected ? "selected" : null)"
+                                @key="agent.AgentId"
+                                @onclick="() => OnSelectAgent.InvokeAsync(agent.AgentId)">
+                            <div class="agent-roster-main">
+                                <div class="agent-roster-name">@agent.DisplayName</div>
+                                <div class="agent-roster-rule">@FormatCreatedAt(agent.CreatedAtUtc)</div>
+                            </div>
+                            <span class="agent-status-dot @StatusCss(agent.Status)" title="@FormatStatus(agent.Status)"></span>
+                        </button>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</aside>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<ProjectAgentGroupSnapshotDto> Groups { get; set; } = [];
+
+    [Parameter]
+    public Guid? SelectedAgentId { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnSelectAgent { get; set; }
+
+    private static string StatusCss(ProjectAgentRunStatus status) => status switch
+    {
+        ProjectAgentRunStatus.Running => "status-running",
+        ProjectAgentRunStatus.Waiting => "status-waiting",
+        ProjectAgentRunStatus.Completed => "status-completed",
+        ProjectAgentRunStatus.Degraded => "status-degraded",
+        _ => "status-waiting"
+    };
+
+    private static string FormatStatus(ProjectAgentRunStatus status) => status switch
+    {
+        ProjectAgentRunStatus.Running => "Running",
+        ProjectAgentRunStatus.Waiting => "Waiting",
+        ProjectAgentRunStatus.Completed => "Completed",
+        ProjectAgentRunStatus.Degraded => "Degraded",
+        _ => "Waiting"
+    };
+
+    private static string FormatCreatedAt(DateTimeOffset createdAtUtc) => $"Created {createdAtUtc:HH:mm}";
+}

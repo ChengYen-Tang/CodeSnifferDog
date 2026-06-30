@@ -1,6 +1,6 @@
 using Bunit;
 using AngleSharp.Dom;
-using CodeSnifferDog.Server.Client.Pages;
+using AgentStatusPage = CodeSnifferDog.Server.Client.Pages.AgentStatus;
 using CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
@@ -76,7 +76,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={snapshot.ProjectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -136,7 +136,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Scan Agent"));
         IElement promptButton = cut.Find(".agent-system-prompt-button");
@@ -226,7 +226,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={firstSnapshot.ProjectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -258,7 +258,7 @@ public sealed class AgentStatusTests
             BaseAddress = new Uri("http://localhost"),
         });
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -280,7 +280,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo("http://localhost/agent-status?projectId=70000000-0000-0000-0000-000000000099");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -314,7 +314,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={snapshot.ProjectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -338,7 +338,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo("http://localhost/agent-status?projectId=70000000-0000-0000-0000-000000000121");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -405,7 +405,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -451,7 +451,7 @@ public sealed class AgentStatusTests
 
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Agent 1"));
 
@@ -472,6 +472,88 @@ public sealed class AgentStatusTests
 
         Assert.IsFalse(changed);
         Assert.DoesNotContain(cut.Markup, "This update belongs to another agent");
+    }
+
+    [TestMethod]
+    public void NonSelectedAgentStatusUpdate_UpdatesRosterWithoutChangingSelectedTimeline()
+    {
+        using Bunit.TestContext context = new();
+        RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("90000000-0000-0000-0000-000000000120");
+        Guid groupId = Guid.Parse("90000000-0000-0000-0000-000000000121");
+        Guid selectedAgentId = Guid.Parse("90000000-0000-0000-0000-000000000122");
+        Guid otherAgentId = Guid.Parse("90000000-0000-0000-0000-000000000123");
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-1",
+                    "Group 1",
+                    new DateTimeOffset(2026, 5, 10, 10, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            selectedAgentId,
+                            groupId,
+                            "selected-agent",
+                            "Selected Agent",
+                            ProjectAgentRunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("90000000-0000-0000-0000-000000000124"),
+                                    selectedAgentId,
+                                    1,
+                                    ProjectAgentTimelineEntryKind.Output,
+                                    message: "Selected timeline remains visible")
+                            ]),
+                        CreateAgent(
+                            otherAgentId,
+                            groupId,
+                            "other-agent",
+                            "Other Agent",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Selected timeline remains visible");
+            Assert.AreEqual("Waiting", cut.FindAll(".agent-status-dot")[1].GetAttribute("title"));
+        });
+
+        bool changed = InvokeApplyLiveUpdate(
+            cut,
+            new ProjectAgentLiveUpdateDto
+            {
+                ProjectId = projectId,
+                Kind = ProjectAgentLiveUpdateKind.AgentStatusChanged,
+                OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 10, 3, 0, TimeSpan.Zero),
+                AgentStatus = new ProjectAgentStatusChangedDto
+                {
+                    AgentId = otherAgentId,
+                    Status = ProjectAgentRunStatus.Completed,
+                    OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 10, 3, 0, TimeSpan.Zero),
+                },
+            });
+
+        Assert.IsTrue(changed);
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Selected timeline remains visible");
+            Assert.AreEqual(1, cut.FindAll(".agent-message").Count);
+            Assert.AreEqual("Completed", cut.FindAll(".agent-status-dot")[1].GetAttribute("title"));
+        });
     }
 
     [TestMethod]
@@ -583,7 +665,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={firstSnapshot.ProjectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -677,7 +759,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Selected history"));
 
@@ -708,7 +790,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={snapshot.ProjectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Snapshot loaded"));
 
         InvokeApplyLiveUpdate(
@@ -791,7 +873,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Status Agent"));
 
         ProjectAgentLiveUpdateDto statusUpdate = new()
@@ -856,7 +938,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Tool Agent"));
 
         InvokeApplyLiveUpdate(
@@ -961,7 +1043,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
         cut.WaitForAssertion(() =>
         {
             StringAssert.Contains(cut.Markup, "Inspect Program.cs");
@@ -1034,7 +1116,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
         cut.WaitForAssertion(() =>
         {
             StringAssert.Contains(cut.Markup, "Primary Agent");
@@ -1161,7 +1243,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -1260,7 +1342,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -1332,7 +1414,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -1435,7 +1517,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "ToolA"));
 
@@ -1532,7 +1614,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> firstRender = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> firstRender = RenderAgentStatus(context);
 
         firstRender.WaitForAssertion(() =>
         {
@@ -1552,7 +1634,7 @@ public sealed class AgentStatusTests
 
         firstRender.Dispose();
 
-        IRenderedComponent<AgentStatus> refreshedRender = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> refreshedRender = RenderAgentStatus(context);
 
         refreshedRender.WaitForAssertion(() =>
         {
@@ -1610,7 +1692,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -1660,7 +1742,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -1707,7 +1789,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -1753,7 +1835,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
 
@@ -1812,7 +1894,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
 
@@ -1871,7 +1953,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
 
@@ -1970,7 +2052,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
 
         cut.WaitForAssertion(() =>
         {
@@ -2032,7 +2114,7 @@ public sealed class AgentStatusTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
 
-        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
         cut.WaitForAssertion(() => Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls));
 
         liveSubscriptionClient.TriggerReconnecting();
@@ -2159,9 +2241,9 @@ public sealed class AgentStatusTests
         }
     }
 
-    private static bool InvokeApplyLiveUpdate(IRenderedComponent<AgentStatus> cut, ProjectAgentLiveUpdateDto update)
+    private static bool InvokeApplyLiveUpdate(IRenderedComponent<AgentStatusPage> cut, ProjectAgentLiveUpdateDto update)
     {
-        MethodInfo? method = typeof(AgentStatus).GetMethod("ApplyLiveUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo? method = typeof(AgentStatusPage).GetMethod("ApplyLiveUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(method);
         bool changed = false;
         cut.InvokeAsync(() =>
@@ -2209,10 +2291,10 @@ public sealed class AgentStatusTests
         return client;
     }
 
-    private static IRenderedComponent<AgentStatus> RenderAgentStatus(Bunit.TestContext context)
+    private static IRenderedComponent<AgentStatusPage> RenderAgentStatus(Bunit.TestContext context)
     {
         context.Renderer.SetRendererInfo(new RendererInfo("WebAssembly", isInteractive: true));
-        return context.RenderComponent<AgentStatus>();
+        return context.RenderComponent<AgentStatusPage>();
     }
 
     private sealed class FakeProjectAgentStatusLiveSubscriptionClient : IProjectAgentStatusLiveSubscriptionClient

@@ -149,6 +149,9 @@
         if (!PersistentComponentState.TryTakeFromJson<ProjectReportContentDto>(selectedReportContentKey, out ProjectReportContentDto? selectedReportContent))
             return false;
 
+        if (selectedReportContent is null)
+            return false;
+
         _reportList = reportList;
         SetSelectedReportContent(selectedReportContent);
         _selectedReportId = selectedReportContent.ReportId;

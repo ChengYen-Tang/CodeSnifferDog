@@ -1,0 +1,62 @@
+@using CodeSnifferDog.Server.Shared.AgentStatus
+
+@if (Entry.EntryKind == ProjectAgentTimelineEntryKind.Compaction)
+{
+    <div class="agent-compaction-notice" @key="Entry.TimelineEntryId">
+        <span class="agent-compaction-rule"></span>
+        <span class="agent-compaction-label">
+            <svg class="agent-compaction-icon" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M4 1.75h5.1L12.25 4.9v9.35H4V1.75Z" />
+                <path d="M9 1.9V5h3.1" />
+                <path d="M5.75 8h4.5M5.75 10.25h4.5M5.75 12.5h3" />
+            </svg>
+            @Entry.Message
+        </span>
+        <span class="agent-compaction-rule"></span>
+    </div>
+}
+else
+{
+    var isInput = Entry.EntryKind == ProjectAgentTimelineEntryKind.Input;
+    var isTool = Entry.EntryKind == ProjectAgentTimelineEntryKind.Tool;
+
+    <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)" @key="Entry.TimelineEntryId">
+        <div class="agent-message-bubble">
+            @if (isTool)
+            {
+                <button type="button" class="tool-call-summary" @onclick="() => OnToggleToolDetails.InvokeAsync(ToolKey)">
+                    <span class="tool-call-chip">Tool</span>
+                    <span class="tool-call-summary-name">@Entry.ToolName</span>
+                    <span>@(IsExpanded ? "v" : ">")</span>
+                </button>
+
+                @if (IsExpanded)
+                {
+                    <div class="tool-call-item">
+                        <div class="tool-call-label">Arguments</div>
+                        <pre>@Entry.ToolArguments</pre>
+                        <div class="tool-call-label">Result</div>
+                        <pre>@Entry.ToolResult</pre>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="agent-message-text">@Entry.Message</div>
+            }
+        </div>
+    </article>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ProjectAgentTimelineEntryDto Entry { get; set; } = null!;
+
+    [Parameter]
+    public bool IsExpanded { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnToggleToolDetails { get; set; }
+
+    private string ToolKey => Entry.ToolCallId ?? Entry.TimelineEntryId.ToString("N");
+}
