@@ -1,4 +1,5 @@
 @rendermode InteractiveWebAssembly
+@using CodeSnifferDog.Server.Client.Layout.Navigation
 @using CodeSnifferDog.Server.Client.Services.Projects
 @using CodeSnifferDog.Server.Shared.Projects
 @inject IProjectSidebarController SidebarSyncService
@@ -91,25 +92,6 @@
         return ProjectSidebarRouteSelection.ExtractSelectedProjectId(uri, relativePath)?.ToString();
     }
 
-    private static IReadOnlyList<ProjectAction> CreateActions(Guid projectId, ProjectStatus status) => status switch
-    {
-        ProjectStatus.Reviewing =>
-        [
-            ProjectAction.Link("S", "Agent Team / Worker Status", $"/agent-status?projectId={projectId}"),
-            ProjectAction.Cancel(),
-        ],
-        ProjectStatus.Completed =>
-        [
-            ProjectAction.Link("S", "Agent Team / Worker Status", $"/agent-status?projectId={projectId}"),
-            ProjectAction.Link("R", "Report", $"/reports/{projectId}"),
-            ProjectAction.Delete(),
-        ],
-        _ =>
-        [
-            ProjectAction.Delete(),
-        ],
-    };
-
     private bool CanStartInteractiveSync()
     {
         try
@@ -122,93 +104,11 @@
         }
     }
 
-    private static string GetGroupIconText(ProjectStatus status) => status switch
-    {
-        ProjectStatus.Reviewing => "R",
-        ProjectStatus.Completed => "C",
-        ProjectStatus.Queued => "Q",
-        ProjectStatus.Failed => "F",
-        ProjectStatus.Canceled => "C",
-        _ => "?",
-    };
-
-    private static string GetGroupIconCssClass(ProjectStatus status) => status switch
-    {
-        ProjectStatus.Reviewing => "group-icon-reviewing",
-        ProjectStatus.Completed => "group-icon-completed",
-        ProjectStatus.Queued => "group-icon-queued",
-        ProjectStatus.Failed => "group-icon-failed",
-        ProjectStatus.Canceled => "group-icon-canceled",
-        _ => string.Empty,
-    };
-
     private void RefreshSidebarProjection()
     {
         _state = SidebarSyncService.Current;
-        _groups = CreateGroups(_state);
+        _groups = ProjectSidebarProjectionBuilder.CreateGroups(_state);
     }
-
-    private sealed record ProjectAction(string IconText, string Label, ProjectActionKind Kind, string? Href)
-    {
-        public static ProjectAction Link(string iconText, string label, string href) =>
-            new(iconText, label, ProjectActionKind.Link, href);
-
-        public static ProjectAction Delete() =>
-            new("D", "Delete", ProjectActionKind.Delete, null);
-
-        public static ProjectAction Cancel() =>
-            new("X", "Cancel", ProjectActionKind.Cancel, null);
-
-        public static ProjectAction Disabled(string iconText, string label) =>
-            new(iconText, label, ProjectActionKind.Disabled, null);
-    }
-
-    private enum ProjectActionKind
-    {
-        Link,
-        Cancel,
-        Delete,
-        Disabled,
-    }
-
-    private sealed record ProjectItem(string ProjectId, string Name, string Meta, IReadOnlyList<ProjectAction> Actions);
-
-    private sealed class ProjectGroup(
-        string groupKey,
-        string title,
-        ProjectStatus status,
-        string iconText,
-        string iconCssClass,
-        bool isExpanded)
-    {
-        public string GroupKey { get; } = groupKey;
-        public string Title { get; } = title;
-        public ProjectStatus Status { get; } = status;
-        public string IconText { get; } = iconText;
-        public string IconCssClass { get; } = iconCssClass;
-        public bool IsExpanded { get; set; } = isExpanded;
-        public List<ProjectItem> Items { get; init; } = [];
-    }
-
-    private static IReadOnlyList<ProjectGroup> CreateGroups(ProjectSidebarState state) =>
-        state.Snapshot.Groups
-            .Select(group => new ProjectGroup(
-                group.GroupKey,
-                group.DisplayName,
-                group.Status,
-                GetGroupIconText(group.Status),
-                GetGroupIconCssClass(group.Status),
-                state.Ui.IsExpanded(group.GroupKey, group.Status))
-            {
-                Items = group.Projects
-                    .Select(project => new ProjectItem(
-                        project.ProjectId.ToString(),
-                        project.OriginalFileName,
-                        $"uploaded {project.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
-                        CreateActions(project.ProjectId, project.Status)))
-                    .ToList(),
-            })
-            .ToList();
 
     public void Dispose()
     {
@@ -284,7 +184,7 @@
                                                 class="project-action-button"
                                                 title="@action.Label"
                                                 @key="action.Label"
-                                                disabled="@(action.Kind is ProjectActionKind.Disabled || _actingProjectIds.Contains(item.ProjectId))"
+                                                disabled="@_actingProjectIds.Contains(item.ProjectId)"
                                                 @onclick="() => ExecuteActionAsync(item, action)"
                                                 @onclick:stopPropagation="true">
                                                 @action.IconText
