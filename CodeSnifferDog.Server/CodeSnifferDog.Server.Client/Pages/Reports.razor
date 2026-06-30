@@ -20,6 +20,7 @@
     private PersistingComponentStateSubscription? _persistingSubscription;
     private ProjectReportListDto? _reportList;
     private ProjectReportContentDto? _selectedReportContent;
+    private MarkupString _selectedReportMarkup;
     private Guid? _selectedReportId;
     private Guid? _loadedProjectId;
     private int _contentRequestVersion;
@@ -60,7 +61,7 @@
         try
         {
             _reportList = await Http.GetFromJsonAsync<ProjectReportListDto>($"/api/projects/{ProjectId}/reports");
-            _selectedReportContent = null;
+            SetSelectedReportContent(null);
             _selectedReportId = null;
 
             ProjectReportListItemDto? firstReport = _reportList?.Reports.FirstOrDefault();
@@ -70,7 +71,7 @@
         catch (Exception exception)
         {
             _reportList = null;
-            _selectedReportContent = null;
+            SetSelectedReportContent(null);
             _selectedReportId = null;
             _listErrorMessage = $"Failed to load reports: {exception.Message}";
         }
@@ -95,7 +96,7 @@
     {
         int requestVersion = Interlocked.Increment(ref _contentRequestVersion);
         _selectedReportId = reportId;
-        _selectedReportContent = null;
+        SetSelectedReportContent(null);
         _contentErrorMessage = null;
         _isContentLoading = true;
         StateHasChanged();
@@ -108,7 +109,7 @@
             if (!IsCurrentContentRequest(requestVersion, reportId))
                 return;
 
-            _selectedReportContent = reportContent;
+            SetSelectedReportContent(reportContent);
             if (_selectedReportContent is null)
                 _contentErrorMessage = "Report content response was empty.";
         }
@@ -126,6 +127,14 @@
         }
     }
 
+    private void SetSelectedReportContent(ProjectReportContentDto? reportContent)
+    {
+        _selectedReportContent = reportContent;
+        _selectedReportMarkup = reportContent is null
+            ? default
+            : RenderMarkdown(reportContent.MarkdownContent);
+    }
+
     private MarkupString RenderMarkdown(string markdown) =>
         new(Markdown.ToHtml(markdown, _markdownPipeline));
 
@@ -141,7 +150,7 @@
             return false;
 
         _reportList = reportList;
-        _selectedReportContent = selectedReportContent;
+        SetSelectedReportContent(selectedReportContent);
         _selectedReportId = selectedReportContent.ReportId;
         _isListLoading = false;
         _isContentLoading = false;
@@ -275,7 +284,7 @@
                         </div>
 
                         <div class="reports-preview-body report-reader markdown-body">
-                            @RenderMarkdown(_selectedReportContent.MarkdownContent)
+                            @_selectedReportMarkup
                         </div>
                     </div>
                 }

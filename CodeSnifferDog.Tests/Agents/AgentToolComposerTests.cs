@@ -14,9 +14,9 @@ public sealed class AgentToolComposerTests
 
         IList<AITool> tools = composer.Compose(AppContext.BaseDirectory, [domainTool]);
 
-        CollectionAssert.AreEqual(
-            new[] { "RunShellCommand", "RunRipgrepCommand", "DomainTool" },
-            tools.Select(tool => tool.Name).ToArray());
+        AssertToolNames(
+            ["Shell", "Ripgrep", "DomainTool"],
+            tools);
     }
 
     [TestMethod]
@@ -26,9 +26,9 @@ public sealed class AgentToolComposerTests
 
         IList<AITool> tools = composer.Compose(AppContext.BaseDirectory, []);
 
-        CollectionAssert.AreEqual(
-            new[] { "RunShellCommand", "RunRipgrepCommand" },
-            tools.Select(tool => tool.Name).ToArray());
+        AssertToolNames(
+            ["Shell", "Ripgrep"],
+            tools);
     }
 
     [TestMethod]
@@ -41,5 +41,13 @@ public sealed class AgentToolComposerTests
 
         Assert.AreEqual("DomainTool", composedDomainTool.Name);
         Assert.AreEqual("Domain description.", composedDomainTool.Description);
+    }
+
+    private static void AssertToolNames(IReadOnlyList<string> expectedToolNames, IEnumerable<AITool> tools)
+    {
+        string[] actualToolNames = tools.Select(tool => tool.Name).ToArray();
+        Assert.IsTrue(
+            expectedToolNames.SequenceEqual(actualToolNames, StringComparer.Ordinal),
+            $"Expected tool names [{string.Join(", ", expectedToolNames)}], actual [{string.Join(", ", actualToolNames)}].");
     }
 }

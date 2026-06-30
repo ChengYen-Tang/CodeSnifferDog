@@ -12,6 +12,7 @@
 
     private readonly HashSet<string> _actingProjectIds = [];
     private ProjectSidebarState _state = ProjectSidebarState.CreateEmpty();
+    private IReadOnlyList<ProjectGroup> _groups = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -21,12 +22,12 @@
         if (InitialSnapshot is not null)
             SidebarSyncService.InitializeSnapshot(InitialSnapshot, ExtractProjectIdFromUri());
 
-        _state = SidebarSyncService.Current;
+        RefreshSidebarProjection();
 
         if (CanStartInteractiveSync())
         {
             await SidebarSyncService.StartAsync(InitialSnapshot, ExtractProjectIdFromUri());
-            _state = SidebarSyncService.Current;
+            RefreshSidebarProjection();
         }
     }
 
@@ -34,7 +35,7 @@
     {
         _ = InvokeAsync(() =>
         {
-            _state = SidebarSyncService.Current;
+            RefreshSidebarProjection();
             StateHasChanged();
         });
     }
@@ -44,6 +45,7 @@
         _ = InvokeAsync(() =>
         {
             SidebarSyncService.SyncSelectedProjectFromUri(ExtractProjectIdFromUri());
+            RefreshSidebarProjection();
             StateHasChanged();
         });
     }
@@ -140,6 +142,12 @@
         _ => string.Empty,
     };
 
+    private void RefreshSidebarProjection()
+    {
+        _state = SidebarSyncService.Current;
+        _groups = CreateGroups(_state);
+    }
+
     private sealed record ProjectAction(string IconText, string Label, ProjectActionKind Kind, string? Href)
     {
         public static ProjectAction Link(string iconText, string label, string href) =>
@@ -182,15 +190,15 @@
         public List<ProjectItem> Items { get; init; } = [];
     }
 
-    private IReadOnlyList<ProjectGroup> Groups =>
-        _state.Snapshot.Groups
+    private static IReadOnlyList<ProjectGroup> CreateGroups(ProjectSidebarState state) =>
+        state.Snapshot.Groups
             .Select(group => new ProjectGroup(
                 group.GroupKey,
                 group.DisplayName,
                 group.Status,
                 GetGroupIconText(group.Status),
                 GetGroupIconCssClass(group.Status),
-                _state.Ui.IsExpanded(group.GroupKey, group.Status))
+                state.Ui.IsExpanded(group.GroupKey, group.Status))
             {
                 Items = group.Projects
                     .Select(project => new ProjectItem(
@@ -235,9 +243,9 @@
             <div class="sidebar-status-message sidebar-status-warning">@_state.Transport.LiveErrorMessage</div>
         }
 
-        @foreach (var group in Groups)
+        @foreach (var group in _groups)
         {
-            <section class="status-group" @key="group.Title">
+            <section class="status-group" @key="group.GroupKey">
                 <div class="status-summary" role="button" tabindex="0" title="@group.Title" @onclick="() => ToggleGroup(group)">
                     <span class="status-heading">
                         <span class="group-icon @group.IconCssClass">@group.IconText</span>
@@ -265,7 +273,7 @@
                                     {
                                         if (action.Href is not null)
                                         {
-                                            <a class="project-action-button" href="@action.Href" title="@action.Label" @onclick:stopPropagation="true">
+                                            <a class="project-action-button" href="@action.Href" title="@action.Label" @key="action.Label" @onclick:stopPropagation="true">
                                                 @action.IconText
                                             </a>
                                         }
@@ -275,6 +283,7 @@
                                                 type="button"
                                                 class="project-action-button"
                                                 title="@action.Label"
+                                                @key="action.Label"
                                                 disabled="@(action.Kind is ProjectActionKind.Disabled || _actingProjectIds.Contains(item.ProjectId))"
                                                 @onclick="() => ExecuteActionAsync(item, action)"
                                                 @onclick:stopPropagation="true">

@@ -245,6 +245,110 @@ public sealed class ReportsTests
             handler.Requests.ToArray());
     }
 
+    [TestMethod]
+    public void LargeReportList_RendersListAndSelectedContent()
+    {
+        using Bunit.TestContext context = new();
+        ConfigureServices(context);
+        Guid projectId = Guid.Parse("80000000-0000-0000-0000-000000000100");
+        Guid firstReportId = Guid.Parse("81000000-0000-0000-0000-000000000100");
+        ProjectReportListDto reportList = new()
+        {
+            OriginalFileName = "large-demo.zip",
+            Reports = Enumerable.Range(1, 200)
+                .Select(index => new ProjectReportListItemDto
+                {
+                    ReportId = index == 1
+                        ? firstReportId
+                        : Guid.Parse($"81000000-0000-0000-0001-{index:000000000000}"),
+                    RuleName = $"rule-{index:000}",
+                })
+                .ToList(),
+        };
+        SequencedReportApiMessageHandler handler = new(
+            reportList,
+            [
+                SequencedResponse.ForContent(
+                    firstReportId,
+                    new ProjectReportContentDto
+                    {
+                        ReportId = firstReportId,
+                        RuleName = "rule-001",
+                        MarkdownContent = "# Rule 001\n\nLarge list first content",
+                    })
+            ]);
+        context.Services.AddSingleton(new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        IRenderedComponent<Reports> cut = context.RenderComponent<Reports>(
+            parameters => parameters.Add(component => component.ProjectId, projectId));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.AreEqual(200, cut.FindAll(".report-file-item").Count);
+            Assert.AreEqual(1, cut.FindAll(".report-file-item.active").Count);
+            StringAssert.Contains(cut.Markup, "rule-200.md");
+            StringAssert.Contains(cut.Markup, "Large list first content");
+        });
+    }
+
+    [TestMethod]
+    public void SelectedReportMarkdown_IsCachedAcrossRender()
+    {
+        using Bunit.TestContext context = new();
+        ConfigureServices(context);
+        Guid projectId = Guid.Parse("80000000-0000-0000-0000-000000000101");
+        Guid reportId = Guid.Parse("81000000-0000-0000-0000-000000000101");
+        SequencedReportApiMessageHandler handler = new(
+            new ProjectReportListDto
+            {
+                OriginalFileName = "demo.zip",
+                Reports =
+                [
+                    new ProjectReportListItemDto
+                    {
+                        ReportId = reportId,
+                        RuleName = "rule-cache",
+                    }
+                ],
+            },
+            [
+                SequencedResponse.ForContent(
+                    reportId,
+                    new ProjectReportContentDto
+                    {
+                        ReportId = reportId,
+                        RuleName = "rule-cache",
+                        MarkdownContent = "# Rule Cache\n\nCached content",
+                    })
+            ]);
+        context.Services.AddSingleton(new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        IRenderedComponent<Reports> cut = context.RenderComponent<Reports>(
+            parameters => parameters.Add(component => component.ProjectId, projectId));
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Cached content"));
+        MarkupString firstMarkup = GetSelectedReportMarkup(cut);
+
+        cut.Render();
+        cut.Render();
+
+        MarkupString secondMarkup = GetSelectedReportMarkup(cut);
+        Assert.AreEqual(firstMarkup.Value, secondMarkup.Value);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                $"/api/projects/{projectId}/reports",
+                $"/api/projects/{projectId}/reports/{reportId}"
+            },
+            handler.Requests.ToArray());
+    }
+
     private static void ConfigureServices(Bunit.TestContext context)
     {
         ConstructorInfo constructor = typeof(PersistentComponentState)
@@ -266,6 +370,13 @@ public sealed class ReportsTests
         Activator.CreateInstance(listType)
         ?? throw new InvalidOperationException($"Unable to create instance of {listType}.");
 
+    private static MarkupString GetSelectedReportMarkup(IRenderedComponent<Reports> cut)
+    {
+        FieldInfo? field = typeof(Reports).GetField("_selectedReportMarkup", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field);
+        return (MarkupString)(field.GetValue(cut.Instance) ?? default(MarkupString));
+    }
+
     private sealed class ReportApiMessageHandler(
         ProjectReportListDto list,
         IReadOnlyDictionary<Guid, ProjectReportContentDto> contents) : HttpMessageHandler
@@ -280,13 +391,9 @@ public sealed class ReportsTests
             string path = request.RequestUri?.AbsolutePath ?? string.Empty;
             Requests.Add(path);
 
-            object? payload = path switch
-            {
-                "/api/projects/80000000-0000-0000-0000-000000000001/reports" => _list,
-                "/api/projects/80000000-0000-0000-0000-000000000001/reports/81000000-0000-0000-0000-000000000001" => _contents[Guid.Parse("81000000-0000-0000-0000-000000000001")],
-                "/api/projects/80000000-0000-0000-0000-000000000001/reports/81000000-0000-0000-0000-000000000002" => _contents[Guid.Parse("81000000-0000-0000-0000-000000000002")],
-                _ => null
-            };
+            object? payload = path.EndsWith("/reports", StringComparison.Ordinal)
+                ? _list
+                : _contents.FirstOrDefault(pair => path.EndsWith($"/{pair.Key}", StringComparison.Ordinal)).Value;
 
             if (payload is null)
             {

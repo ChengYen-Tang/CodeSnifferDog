@@ -349,6 +349,132 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
+    public void LargeSnapshot_RendersRosterAndSelectedTimeline()
+    {
+        using Bunit.TestContext context = new();
+        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("90000000-0000-0000-0000-000000000100");
+        Guid selectedGroupId = Guid.Parse("90000000-0000-0000-0000-000000000200");
+        Guid selectedAgentId = Guid.Parse("90000000-0000-0000-0000-000000000300");
+        List<ProjectAgentTimelineEntryDto> selectedTimeline = Enumerable.Range(1, 500)
+            .Select(index => CreateTimelineEntry(
+                Guid.Parse($"90000000-0000-0000-0001-{index:000000000000}"),
+                selectedAgentId,
+                index,
+                ProjectAgentTimelineEntryKind.Output,
+                message: $"Selected timeline entry {index}"))
+            .ToList();
+        List<ProjectAgentGroupSnapshotDto> groups = Enumerable.Range(0, 20)
+            .Select(groupIndex =>
+            {
+                Guid groupId = groupIndex == 0
+                    ? selectedGroupId
+                    : Guid.Parse($"90000000-0000-0000-0002-{groupIndex:000000000000}");
+                List<ProjectAgentSnapshotDto> agents = Enumerable.Range(0, 10)
+                    .Select(agentIndex =>
+                    {
+                        Guid agentId = groupIndex == 0 && agentIndex == 0
+                            ? selectedAgentId
+                            : Guid.Parse($"90000000-0000-{groupIndex:0000}-{agentIndex:0000}-000000000000");
+                        return CreateAgent(
+                            agentId,
+                            groupId,
+                            $"agent-{groupIndex}-{agentIndex}",
+                            $"Agent {groupIndex}-{agentIndex}",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 10, groupIndex, agentIndex, TimeSpan.Zero),
+                            groupIndex == 0 && agentIndex == 0 ? selectedTimeline : []);
+                    })
+                    .ToList();
+
+                return CreateGroup(
+                    groupId,
+                    $"group-{groupIndex}",
+                    $"Group {groupIndex}",
+                    new DateTimeOffset(2026, 5, 10, 9, groupIndex, 0, TimeSpan.Zero),
+                    agents);
+            })
+            .ToList();
+
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(projectId, groups);
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.AreEqual(20, cut.FindAll(".agent-group-card").Count);
+            Assert.AreEqual(200, cut.FindAll(".agent-roster-node").Count);
+            Assert.AreEqual(500, cut.FindAll(".agent-message").Count);
+            StringAssert.Contains(cut.Markup, "Selected timeline entry 500");
+            Assert.IsTrue(liveSubscriptionClient.SubscribeCalls.Count > 0);
+        });
+    }
+
+    [TestMethod]
+    public void NoOpLiveUpdate_DoesNotRequestRender()
+    {
+        using Bunit.TestContext context = new();
+        RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("90000000-0000-0000-0000-000000000110");
+        Guid groupId = Guid.Parse("90000000-0000-0000-0000-000000000111");
+        Guid agentId = Guid.Parse("90000000-0000-0000-0000-000000000112");
+        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-1",
+                    "Group 1",
+                    new DateTimeOffset(2026, 5, 10, 10, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "agent-1",
+                            "Agent 1",
+                            ProjectAgentRunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+        IRenderedComponent<AgentStatus> cut = RenderAgentStatus(context);
+
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Agent 1"));
+
+        bool changed = InvokeApplyLiveUpdate(
+            cut,
+            new ProjectAgentLiveUpdateDto
+            {
+                ProjectId = projectId,
+                Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
+                OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
+                TimelineEntry = CreateTimelineEntry(
+                    Guid.Parse("90000000-0000-0000-0000-000000000113"),
+                    Guid.Parse("90000000-0000-0000-0000-000000000114"),
+                    1,
+                    ProjectAgentTimelineEntryKind.Output,
+                    message: "This update belongs to another agent"),
+            });
+
+        Assert.IsFalse(changed);
+        Assert.DoesNotContain(cut.Markup, "This update belongs to another agent");
+    }
+
+    [TestMethod]
     public void KeepsSelectedAgentWhenSnapshotChangesAndAgentStillExists()
     {
         using Bunit.TestContext context = new();
@@ -2033,15 +2159,19 @@ public sealed class AgentStatusTests
         }
     }
 
-    private static void InvokeApplyLiveUpdate(IRenderedComponent<AgentStatus> cut, ProjectAgentLiveUpdateDto update)
+    private static bool InvokeApplyLiveUpdate(IRenderedComponent<AgentStatus> cut, ProjectAgentLiveUpdateDto update)
     {
         MethodInfo? method = typeof(AgentStatus).GetMethod("ApplyLiveUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(method);
+        bool changed = false;
         cut.InvokeAsync(() =>
         {
-            method.Invoke(cut.Instance, [update]);
-            cut.Render();
+            changed = (bool)(method.Invoke(cut.Instance, [update]) ?? false);
+            if (changed)
+                cut.Render();
         }).GetAwaiter().GetResult();
+
+        return changed;
     }
 
     private static ProjectAgentLiveUpdateDto CreateTimelineLiveUpdate(

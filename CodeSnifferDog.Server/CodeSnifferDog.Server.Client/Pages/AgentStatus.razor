@@ -182,14 +182,14 @@
         Selection.ToggleToolDetails(key);
     }
 
-    internal void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
+    internal bool ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
     {
         ArgumentNullException.ThrowIfNull(update);
 
         if (ProjectId is null || update.ProjectId != ProjectId.Value)
-            return;
+            return false;
 
-        _pageState.ApplyLiveUpdate(update);
+        return _pageState.ApplyLiveUpdate(update);
     }
 
     private async Task SubscribeToLiveUpdatesAsync(ProjectAgentStatusSnapshotDto snapshot)
@@ -211,8 +211,9 @@
             request,
             update =>
             {
-                ApplyLiveUpdate(update);
-                return InvokeAsync(StateHasChanged);
+                return ApplyLiveUpdate(update)
+                    ? InvokeAsync(StateHasChanged)
+                    : Task.CompletedTask;
             },
             HandleReconnectingAsync,
             HandleReconnectRequiredAsync).ConfigureAwait(false);
@@ -437,21 +438,21 @@
             SnapshotLoadErrorMessage = errorMessage;
         }
 
-        public void ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
+        public bool ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
         {
             if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntriesRemoved)
             {
                 ProjectAgentTimelineEntriesRemovedDto? removedEntries = update.RemovedTimelineEntries;
                 if (removedEntries is null)
-                    return;
+                    return false;
 
                 if (!Snapshot.RemoveTimelineEntries(removedEntries.AgentId, removedEntries.TimelineEntryIds))
-                    return;
+                    return false;
 
                 if (removedEntries.AgentId == Selection.SelectedAgentId)
                     History.ApplySelectedAgentSnapshot(Snapshot.GetHistory(removedEntries.AgentId), removedEntries.AgentId);
 
-                return;
+                return true;
             }
 
             if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
@@ -459,18 +460,20 @@
                 if (update.TimelineEntry?.AgentId == Selection.SelectedAgentId)
                 {
                     if (!Snapshot.UpsertTimelineEntry(update.TimelineEntry))
-                        return;
+                        return false;
 
                     History.ApplySelectedAgentSnapshot(Snapshot.GetHistory(update.TimelineEntry.AgentId), update.TimelineEntry.AgentId);
+                    return true;
                 }
 
-                return;
+                return false;
             }
 
             if (!Snapshot.ApplyLiveUpdate(update))
-                return;
+                return false;
 
             Selection.ApplySnapshot(Snapshot.Snapshot);
+            return true;
         }
 
         public void SetAgentHistory(Guid agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
@@ -1072,7 +1075,7 @@
             <div class="agent-group-list">
                 @foreach (var group in Snapshot.Groups)
                 {
-                    <section class="agent-group-card">
+                    <section class="agent-group-card" @key="group.GroupId">
                         <div class="agent-group-name">@group.DisplayName</div>
                         <div class="agent-node-list">
                             @foreach (var agent in group.Agents)
@@ -1081,6 +1084,7 @@
 
                                 <button type="button"
                                         class="agent-roster-node @(isSelected ? "selected" : null)"
+                                        @key="agent.AgentId"
                                         @onclick="() => SelectAgentAsync(agent.AgentId)">
                                     <div class="agent-roster-main">
                                         <div class="agent-roster-name">@agent.DisplayName</div>
@@ -1136,7 +1140,7 @@
 
                         @if (isCompaction)
                         {
-                            <div class="agent-compaction-notice">
+                            <div class="agent-compaction-notice" @key="entry.TimelineEntryId">
                                 <span class="agent-compaction-rule"></span>
                                 <span class="agent-compaction-label">
                                     <svg class="agent-compaction-icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -1151,7 +1155,7 @@
                             continue;
                         }
 
-                        <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)">
+                        <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)" @key="entry.TimelineEntryId">
                             <div class="agent-message-bubble">
                                 @if (isTool)
                                 {

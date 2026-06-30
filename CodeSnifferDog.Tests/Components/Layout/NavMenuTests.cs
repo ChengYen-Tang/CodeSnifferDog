@@ -485,6 +485,45 @@ public sealed class NavMenuTests
         });
     }
 
+    [TestMethod]
+    public void LargeSidebarSnapshot_RendersProjectsAndRefreshesCachedProjection()
+    {
+        using Bunit.TestContext context = new();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
+        context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        Guid selectedProjectId = Guid.Parse("70000000-0000-0000-0001-000000000001");
+        ProjectSidebarSnapshotDto initialSnapshot = CreateSnapshot(
+            selectedProjectId,
+            CreateLargeReviewingGroup("repo-large", 100));
+
+        IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
+            parameters => parameters.Add(component => component.InitialSnapshot, initialSnapshot));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.AreEqual(100, cut.FindAll(".project-link").Count);
+            Assert.AreEqual(1, cut.FindAll(".project-link.active").Count);
+            StringAssert.Contains(cut.Markup, "repo-large-100.zip");
+        });
+
+        ProjectSidebarSnapshotDto refreshedSnapshot = CreateSnapshot(
+            Guid.Parse("70000000-0000-0000-0001-000000000050"),
+            CreateLargeReviewingGroup("repo-refreshed", 100));
+
+        cut.InvokeAsync(() =>
+        {
+            sidebarSyncService.InitializeSnapshot(refreshedSnapshot, selectedProjectIdFromUri: null);
+        }).GetAwaiter().GetResult();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.AreEqual(100, cut.FindAll(".project-link").Count);
+            StringAssert.Contains(cut.Markup, "repo-refreshed-100.zip");
+            Assert.DoesNotContain(cut.Markup, "repo-large-100.zip");
+        });
+    }
+
     private static ProjectSidebarSnapshotDto CreateSnapshot(Guid? selectedProjectId, params ProjectSidebarGroupDto[] groups) => new()
     {
         GeneratedAtUtc = new DateTimeOffset(2026, 5, 15, 12, 0, 0, TimeSpan.Zero),
@@ -540,6 +579,24 @@ public sealed class NavMenuTests
                 }
             ],
         };
+
+    private static ProjectSidebarGroupDto CreateLargeReviewingGroup(string namePrefix, int projectCount) => new()
+    {
+        GroupKey = "reviewing",
+        DisplayName = "Reviewing",
+        Status = ProjectStatus.Reviewing,
+        SortOrder = 0,
+        Projects = Enumerable.Range(1, projectCount)
+            .Select(index => new ProjectSidebarProjectDto
+            {
+                ProjectId = Guid.Parse($"70000000-0000-0000-0001-{index:000000000000}"),
+                OriginalFileName = $"{namePrefix}-{index:000}.zip",
+                Status = ProjectStatus.Reviewing,
+                CreatedAtUtc = new DateTimeOffset(2026, 5, 15, 11, 0, 0, TimeSpan.Zero).AddMinutes(index),
+                SortOrder = index,
+            })
+            .ToList(),
+    };
 
     private sealed class ThrowingHttpMessageHandler : HttpMessageHandler
     {
