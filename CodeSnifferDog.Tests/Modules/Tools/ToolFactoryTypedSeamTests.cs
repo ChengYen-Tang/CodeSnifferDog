@@ -28,7 +28,7 @@ public sealed class ToolFactoryTypedSeamTests
             RunShellCommandTool,
             RunRipgrepCommandTool));
 
-        CollectionAssert.AreEqual(new[] { "RunShellCommand", "RunRipgrepCommand" }, tools.Select(tool => tool.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "Shell", "Ripgrep" }, tools.Select(tool => tool.Name).ToArray());
     }
 
     [TestMethod]
@@ -47,8 +47,8 @@ public sealed class ToolFactoryTypedSeamTests
                 return ValueTask.FromResult(Succeeded());
             }));
 
-        AIFunction shellFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "RunShellCommand"));
-        AIFunction ripgrepFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "RunRipgrepCommand"));
+        AIFunction shellFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "Shell"));
+        AIFunction ripgrepFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "Ripgrep"));
 
         await shellFunction.InvokeAsync(new AIFunctionArguments { ["Command"] = "Get-ChildItem" }, TestContext.CancellationToken);
         await ripgrepFunction.InvokeAsync(new AIFunctionArguments { ["Command"] = "-n \"SystemPrompt\" ." }, TestContext.CancellationToken);

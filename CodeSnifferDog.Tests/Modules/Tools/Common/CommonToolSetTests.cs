@@ -116,7 +116,7 @@ public sealed class CommonToolSetTests
         CommonToolSet toolSet = new(repositoryRootPath);
 
         Microsoft.Extensions.AI.AITool ripgrepTool = toolSet.CreateTools()
-            .Single(tool => string.Equals(tool.Name, "RunRipgrepCommand", StringComparison.Ordinal));
+            .Single(tool => string.Equals(tool.Name, "Ripgrep", StringComparison.Ordinal));
 
         Assert.Contains("use \"-n \\\"SystemPrompt\\\" .\"", ripgrepTool.Description);
         Assert.Contains("instead of \"rg -n \\\"SystemPrompt\\\" .\"", ripgrepTool.Description);

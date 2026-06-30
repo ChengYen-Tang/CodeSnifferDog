@@ -10,12 +10,12 @@ internal static class CommonToolFactory
     [
         AIFunctionFactory.Create(
             callbacks.RunShellCommandTool,
-            "RunShellCommand",
+            "Shell",
             "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux/macOS. Pass only the command text to execute.",
             serializerOptions: null),
         AIFunctionFactory.Create(
             callbacks.RunRipgrepCommandTool,
-            "RunRipgrepCommand",
+            "Ripgrep",
             "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\".",
             serializerOptions: null),
     ];
