@@ -1,0 +1,68 @@
+@using CodeSnifferDog.Server.Shared.Reports
+
+<div class="col-12 col-xl-3 col-xxl-2 reports-sidebar-column h-100">
+    <div class="reports-sidebar">
+        <div class="reports-sidebar-header">
+            <div class="d-flex align-items-start justify-content-between gap-2">
+                <div>
+                    <h2 class="h5 mb-1 text-dark-emphasis">@(ReportList?.OriginalFileName ?? "Reports")</h2>
+                    <p class="text-secondary mb-0">@((ReportList?.Reports.Count ?? 0).ToString()) markdown reports available</p>
+                </div>
+                @if (ReportList is not null && ReportList.Reports.Count > 0)
+                {
+                    <a class="project-action-button"
+                       href="@($"/api/projects/{ProjectId}/reports/download")"
+                       title="Download all reports as zip">
+                        ZIP
+                    </a>
+                }
+            </div>
+        </div>
+
+        <div class="reports-file-list">
+            @if (IsListLoading)
+            {
+                <div class="text-secondary">Loading reports...</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(ListErrorMessage))
+            {
+                <div class="text-danger">@ListErrorMessage</div>
+            }
+            else if (ReportList is null || ReportList.Reports.Count == 0)
+            {
+                <div class="text-secondary">No reports available for this project.</div>
+            }
+            else
+            {
+                @foreach (ProjectReportListItemDto report in ReportList.Reports)
+                {
+                    <ReportFileItemView @key="report.ReportId"
+                                        ProjectId="@ProjectId"
+                                        Report="@report"
+                                        IsSelected="@(SelectedReportId == report.ReportId)"
+                                        OnSelectReport="@OnSelectReport" />
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public ProjectReportListDto? ReportList { get; set; }
+
+    [Parameter]
+    public Guid? SelectedReportId { get; set; }
+
+    [Parameter]
+    public bool IsListLoading { get; set; }
+
+    [Parameter]
+    public string? ListErrorMessage { get; set; }
+
+    [Parameter]
+    public EventCallback<ProjectReportListItemDto> OnSelectReport { get; set; }
+}

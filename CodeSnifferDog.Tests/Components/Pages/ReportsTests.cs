@@ -1,6 +1,5 @@
 using Bunit;
 using AngleSharp.Dom;
-using CodeSnifferDog.Server.Client.Pages;
 using CodeSnifferDog.Server.Shared.Reports;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +8,7 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text.Json;
+using ReportsPage = CodeSnifferDog.Server.Client.Pages.Reports;
 
 namespace CodeSnifferDog.Tests.Components.Pages;
 
@@ -62,7 +62,7 @@ public sealed class ReportsTests
         NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
         navigationManager.NavigateTo("http://localhost/reports/80000000-0000-0000-0000-000000000001");
 
-        IRenderedComponent<Reports> cut = context.RenderComponent<Reports>(
+        IRenderedComponent<ReportsPage> cut = context.RenderComponent<ReportsPage>(
             parameters => parameters.Add(component => component.ProjectId, Guid.Parse("80000000-0000-0000-0000-000000000001")));
 
         cut.WaitForAssertion(() =>
@@ -155,7 +155,7 @@ public sealed class ReportsTests
             BaseAddress = new Uri("http://localhost"),
         });
 
-        IRenderedComponent<Reports> cut = context.RenderComponent<Reports>(
+        IRenderedComponent<ReportsPage> cut = context.RenderComponent<ReportsPage>(
             parameters => parameters.Add(component => component.ProjectId, Guid.Parse("80000000-0000-0000-0000-000000000011")));
 
         cut.WaitForAssertion(() =>
@@ -217,7 +217,7 @@ public sealed class ReportsTests
             BaseAddress = new Uri("http://localhost"),
         });
 
-        IRenderedComponent<Reports> cut = context.RenderComponent<Reports>(
+        IRenderedComponent<ReportsPage> cut = context.RenderComponent<ReportsPage>(
             parameters => parameters.Add(component => component.ProjectId, Guid.Parse("80000000-0000-0000-0000-000000000021")));
 
         cut.WaitForAssertion(() =>
@@ -282,7 +282,7 @@ public sealed class ReportsTests
             BaseAddress = new Uri("http://localhost"),
         });
 
-        IRenderedComponent<Reports> cut = context.RenderComponent<Reports>(
+        IRenderedComponent<ReportsPage> cut = context.RenderComponent<ReportsPage>(
             parameters => parameters.Add(component => component.ProjectId, projectId));
 
         cut.WaitForAssertion(() =>
@@ -329,7 +329,7 @@ public sealed class ReportsTests
             BaseAddress = new Uri("http://localhost"),
         });
 
-        IRenderedComponent<Reports> cut = context.RenderComponent<Reports>(
+        IRenderedComponent<ReportsPage> cut = context.RenderComponent<ReportsPage>(
             parameters => parameters.Add(component => component.ProjectId, projectId));
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Cached content"));
@@ -370,9 +370,9 @@ public sealed class ReportsTests
         Activator.CreateInstance(listType)
         ?? throw new InvalidOperationException($"Unable to create instance of {listType}.");
 
-    private static MarkupString GetSelectedReportMarkup(IRenderedComponent<Reports> cut)
+    private static MarkupString GetSelectedReportMarkup(IRenderedComponent<ReportsPage> cut)
     {
-        FieldInfo? field = typeof(Reports).GetField("_selectedReportMarkup", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo? field = typeof(ReportsPage).GetField("_selectedReportMarkup", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(field);
         return (MarkupString)(field.GetValue(cut.Instance) ?? default(MarkupString));
     }

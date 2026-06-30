@@ -1,0 +1,73 @@
+@using CodeSnifferDog.Server.Shared.Reports
+
+<div class="col-12 col-xl-9 col-xxl-10 reports-preview-column h-100">
+    @if (IsContentLoading && SelectedReportListItem is not null)
+    {
+        <div class="reports-preview-shell">
+            <div class="reports-preview-toolbar">
+                <div>
+                    <div class="reports-preview-file">@($"{SelectedReportListItem.RuleName}.md")</div>
+                    <div class="reports-preview-meta">@SelectedReportListItem.RuleName</div>
+                </div>
+            </div>
+
+            <div class="reports-preview-body report-reader markdown-body">
+                Loading report...
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(ContentErrorMessage))
+    {
+        <div class="reports-preview-shell">
+            <div class="reports-preview-body report-reader markdown-body text-danger">
+                @ContentErrorMessage
+            </div>
+        </div>
+    }
+    else if (SelectedReportContent is not null)
+    {
+        <div class="reports-preview-shell">
+            <div class="reports-preview-toolbar">
+                <div>
+                    <div class="reports-preview-file">@($"{SelectedReportContent.RuleName}.md")</div>
+                    <div class="reports-preview-meta">@SelectedReportContent.RuleName</div>
+                </div>
+            </div>
+
+            <div class="reports-preview-body report-reader markdown-body">
+                @SelectedReportMarkup
+            </div>
+        </div>
+    }
+    else if (!IsListLoading && string.IsNullOrWhiteSpace(ListErrorMessage))
+    {
+        <div class="reports-preview-shell">
+            <div class="reports-preview-body report-reader markdown-body">
+                No report selected.
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public bool IsContentLoading { get; set; }
+
+    [Parameter]
+    public ProjectReportListItemDto? SelectedReportListItem { get; set; }
+
+    [Parameter]
+    public string? ContentErrorMessage { get; set; }
+
+    [Parameter]
+    public ProjectReportContentDto? SelectedReportContent { get; set; }
+
+    [Parameter]
+    public MarkupString SelectedReportMarkup { get; set; }
+
+    [Parameter]
+    public bool IsListLoading { get; set; }
+
+    [Parameter]
+    public string? ListErrorMessage { get; set; }
+}

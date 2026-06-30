@@ -2,6 +2,7 @@
 @rendermode InteractiveAuto
 @implements IDisposable
 @using System.Net.Http.Json
+@using CodeSnifferDog.Server.Client.Components.Reports
 @using CodeSnifferDog.Server.Shared.Reports
 @using Markdig
 @inject HttpClient Http
@@ -193,113 +194,20 @@
 
     <div class="card border-0 shadow-sm dashboard-card reports-explorer-card flex-grow-1">
         <div class="row g-0 reports-explorer">
-            <div class="col-12 col-xl-3 col-xxl-2 reports-sidebar-column h-100">
-                <div class="reports-sidebar">
-                    <div class="reports-sidebar-header">
-                        <div class="d-flex align-items-start justify-content-between gap-2">
-                            <div>
-                                <h2 class="h5 mb-1 text-dark-emphasis">@(_reportList?.OriginalFileName ?? "Reports")</h2>
-                                <p class="text-secondary mb-0">@((_reportList?.Reports.Count ?? 0).ToString()) markdown reports available</p>
-                            </div>
-                            @if (_reportList is not null && _reportList.Reports.Count > 0)
-                            {
-                                <a class="project-action-button"
-                                   href="@($"/api/projects/{ProjectId}/reports/download")"
-                                   title="Download all reports as zip">
-                                    ZIP
-                                </a>
-                            }
-                        </div>
-                    </div>
+            <ReportsSidebarPane ProjectId="@ProjectId"
+                                ReportList="@_reportList"
+                                SelectedReportId="@_selectedReportId"
+                                IsListLoading="@_isListLoading"
+                                ListErrorMessage="@_listErrorMessage"
+                                OnSelectReport="@SelectReportAsync" />
 
-                    <div class="reports-file-list">
-                        @if (_isListLoading)
-                        {
-                            <div class="text-secondary">Loading reports...</div>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(_listErrorMessage))
-                        {
-                            <div class="text-danger">@_listErrorMessage</div>
-                        }
-                        else if (_reportList is null || _reportList.Reports.Count == 0)
-                        {
-                            <div class="text-secondary">No reports available for this project.</div>
-                        }
-                        else
-                        {
-                            @foreach (ProjectReportListItemDto report in _reportList.Reports)
-                            {
-                                <div class="report-file-item @(_selectedReportId == report.ReportId ? "active" : null)">
-                                    <button type="button"
-                                            class="report-file-select"
-                                            @onclick="() => SelectReportAsync(report)">
-                                        <span class="report-file-icon">MD</span>
-                                        <span class="report-file-body">
-                                            <span class="report-file-name">@($"{report.RuleName}.md")</span>
-                                            <span class="report-file-category">@report.RuleName</span>
-                                        </span>
-                                    </button>
-                                    <a class="report-file-download"
-                                       href="@($"/api/projects/{ProjectId}/reports/{report.ReportId}/download")"
-                                       title="Download report"
-                                       download="@($"{report.RuleName}.md")">
-                                        ↓
-                                    </a>
-                                </div>
-                            }
-                        }
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-12 col-xl-9 col-xxl-10 reports-preview-column h-100">
-                @if (_isContentLoading && SelectedReportListItem is not null)
-                {
-                    <div class="reports-preview-shell">
-                        <div class="reports-preview-toolbar">
-                            <div>
-                                <div class="reports-preview-file">@($"{SelectedReportListItem.RuleName}.md")</div>
-                                <div class="reports-preview-meta">@SelectedReportListItem.RuleName</div>
-                            </div>
-                        </div>
-
-                        <div class="reports-preview-body report-reader markdown-body">
-                            Loading report...
-                        </div>
-                    </div>
-                }
-                else if (!string.IsNullOrWhiteSpace(_contentErrorMessage))
-                {
-                    <div class="reports-preview-shell">
-                        <div class="reports-preview-body report-reader markdown-body text-danger">
-                            @_contentErrorMessage
-                        </div>
-                    </div>
-                }
-                else if (_selectedReportContent is not null)
-                {
-                    <div class="reports-preview-shell">
-                        <div class="reports-preview-toolbar">
-                            <div>
-                                <div class="reports-preview-file">@($"{_selectedReportContent.RuleName}.md")</div>
-                                <div class="reports-preview-meta">@_selectedReportContent.RuleName</div>
-                            </div>
-                        </div>
-
-                        <div class="reports-preview-body report-reader markdown-body">
-                            @_selectedReportMarkup
-                        </div>
-                    </div>
-                }
-                else if (!_isListLoading && string.IsNullOrWhiteSpace(_listErrorMessage))
-                {
-                    <div class="reports-preview-shell">
-                        <div class="reports-preview-body report-reader markdown-body">
-                            No report selected.
-                        </div>
-                    </div>
-                }
-            </div>
+            <ReportsPreviewPane IsContentLoading="@_isContentLoading"
+                                SelectedReportListItem="@SelectedReportListItem"
+                                ContentErrorMessage="@_contentErrorMessage"
+                                SelectedReportContent="@_selectedReportContent"
+                                SelectedReportMarkup="@_selectedReportMarkup"
+                                IsListLoading="@_isListLoading"
+                                ListErrorMessage="@_listErrorMessage" />
         </div>
     </div>
 </div>

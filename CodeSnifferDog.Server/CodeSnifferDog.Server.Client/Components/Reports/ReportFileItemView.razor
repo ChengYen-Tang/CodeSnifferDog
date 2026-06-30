@@ -1,0 +1,35 @@
+@using CodeSnifferDog.Server.Shared.Reports
+
+<div class="report-file-item @(IsSelected ? "active" : null)">
+    <button type="button"
+            class="report-file-select"
+            @onclick="SelectReportAsync">
+        <span class="report-file-icon">MD</span>
+        <span class="report-file-body">
+            <span class="report-file-name">@($"{Report.RuleName}.md")</span>
+            <span class="report-file-category">@Report.RuleName</span>
+        </span>
+    </button>
+    <a class="report-file-download"
+       href="@($"/api/projects/{ProjectId}/reports/{Report.ReportId}/download")"
+       title="Download report"
+       download="@($"{Report.RuleName}.md")">
+        ↓
+    </a>
+</div>
+
+@code {
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public ProjectReportListItemDto Report { get; set; } = null!;
+
+    [Parameter]
+    public bool IsSelected { get; set; }
+
+    [Parameter]
+    public EventCallback<ProjectReportListItemDto> OnSelectReport { get; set; }
+
+    private Task SelectReportAsync() => OnSelectReport.InvokeAsync(Report);
+}
