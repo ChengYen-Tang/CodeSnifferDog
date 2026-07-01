@@ -104,7 +104,7 @@ internal sealed class CommonCommandToolService
         CommandExecutionResult result,
         long durationMs)
     {
-        if (result.ExitCode == 0)
+        if (result.ExitCode == 0 || (toolName == "Ripgrep" && result.ExitCode == 1))
         {
             _logger?.LogDebug(
                 "{ToolName} tool completed in {DurationMs} ms. Exit code: {ExitCode}; command: {Command}; stdout: {StandardOutput}; stderr: {StandardError}",

@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Common.Tools;
 using CodeSnifferDog.Modules.Tools.Common;
+using Microsoft.Extensions.Logging;
 using System.Text;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.Common;
@@ -122,6 +123,31 @@ public sealed class CommonCommandToolServiceTests
     }
 
     [TestMethod]
+    public async Task RunRipgrepCommandAsync_LogsNoMatchAsDebug()
+    {
+        CapturingLogger<CommonCommandToolService> logger = new();
+        CommonCommandToolService service = CreateService(
+            textRunner: static (fileName, arguments, workingDirectory, cancellationToken) =>
+                ValueTask.FromResult(new CommandExecutionResult
+                {
+                    ExitCode = 1,
+                    StandardOutput = "",
+                    StandardError = "",
+                }),
+            logger: logger);
+
+        await service.RunRipgrepCommandAsync(
+            new RunRipgrepCommandArgs
+            {
+                Command = "missing .",
+            },
+            TestContext.CancellationToken);
+
+        CollectionAssert.DoesNotContain(logger.Levels, LogLevel.Warning);
+        CollectionAssert.Contains(logger.Levels, LogLevel.Debug);
+    }
+
+    [TestMethod]
     public void RipgrepAssetLocator_GetExecutablePath_ThrowsOriginalMissingAssetMessage()
     {
         string baseDirectory = CreateTemporaryDirectory();
@@ -137,13 +163,15 @@ public sealed class CommonCommandToolServiceTests
         CommandArgumentsRunner? argumentsRunner = null,
         CommandTextRunner? textRunner = null,
         RipgrepExecutablePathProvider? ripgrepExecutablePathProvider = null,
-        Func<bool>? isWindows = null) =>
+        Func<bool>? isWindows = null,
+        ILogger<CommonCommandToolService>? logger = null) =>
         new(
             CreateTemporaryDirectory(),
             argumentsRunner ?? SucceedArgumentsRunner,
             textRunner ?? SucceedTextRunner,
             ripgrepExecutablePathProvider ?? (() => "rg"),
-            isWindows ?? (() => true));
+            isWindows ?? (() => true),
+            logger);
 
     private static ValueTask<CommandExecutionResult> SucceedArgumentsRunner(
         string fileName,
@@ -221,6 +249,27 @@ public sealed class CommonCommandToolServiceTests
             FileName = fileName;
             Arguments = arguments;
             return ValueTask.FromResult(Succeeded());
+        }
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull =>
+            null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Levels.Add(logLevel);
         }
     }
 }
