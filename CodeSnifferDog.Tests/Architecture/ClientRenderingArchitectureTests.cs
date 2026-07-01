@@ -19,6 +19,8 @@ public sealed class ClientRenderingArchitectureTests
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusLiveUpdateReducer).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusSnapshotState).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusHistoryState).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusTimelineEntries).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusTimelineMutationResult).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.Reports", typeof(ReportsSidebarPane).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.Reports", typeof(ReportsPreviewPane).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.Reports", typeof(ReportFileItemView).Namespace);
@@ -38,6 +40,8 @@ public sealed class ClientRenderingArchitectureTests
             typeof(AgentStatusLiveConnectionState),
             typeof(AgentStatusSelectedAgentLiveConnectionState),
             typeof(AgentStatusCompletionState),
+            typeof(AgentStatusTimelineEntries),
+            typeof(AgentStatusTimelineMutationResult),
             typeof(ProjectSidebarProjectionBuilder),
             typeof(ProjectAction),
             typeof(ProjectActionKind),

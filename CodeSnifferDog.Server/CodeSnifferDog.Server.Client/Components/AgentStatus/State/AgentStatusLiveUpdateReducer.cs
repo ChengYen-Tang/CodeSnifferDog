@@ -16,11 +16,18 @@ internal sealed class AgentStatusLiveUpdateReducer
             if (removedEntries is null)
                 return false;
 
-            if (!snapshot.RemoveTimelineEntries(removedEntries.AgentId, removedEntries.TimelineEntryIds))
+            AgentStatusTimelineMutationResult? result =
+                snapshot.RemoveTimelineEntries(removedEntries.AgentId, removedEntries.TimelineEntryIds);
+            if (result is null)
                 return false;
 
             if (removedEntries.AgentId == selection.SelectedAgentId)
-                history.ApplySelectedAgentSnapshot(snapshot.GetHistory(removedEntries.AgentId), removedEntries.AgentId);
+            {
+                history.ApplySelectedAgentSnapshot(
+                    result.TimelineEntries,
+                    removedEntries.AgentId,
+                    result.LatestSequence);
+            }
 
             return true;
         }
@@ -30,10 +37,15 @@ internal sealed class AgentStatusLiveUpdateReducer
             ProjectAgentTimelineEntryDto? timelineEntry = update.TimelineEntry;
             if (timelineEntry is not null && timelineEntry.AgentId == selection.SelectedAgentId)
             {
-                if (!snapshot.UpsertTimelineEntry(timelineEntry))
+                AgentStatusTimelineMutationResult? result =
+                    snapshot.UpsertTimelineEntry(timelineEntry, history.GetLatestSequence());
+                if (result is null)
                     return false;
 
-                history.ApplySelectedAgentSnapshot(snapshot.GetHistory(timelineEntry.AgentId), timelineEntry.AgentId);
+                history.ApplySelectedAgentSnapshot(
+                    result.TimelineEntries,
+                    timelineEntry.AgentId,
+                    result.LatestSequence);
                 return true;
             }
 

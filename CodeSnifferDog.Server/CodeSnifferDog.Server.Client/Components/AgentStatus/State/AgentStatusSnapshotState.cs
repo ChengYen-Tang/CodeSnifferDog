@@ -207,20 +207,22 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
         return true;
     }
 
-    public bool UpsertTimelineEntry(ProjectAgentTimelineEntryDto? timelineEntry)
+    public AgentStatusTimelineMutationResult? UpsertTimelineEntry(
+        ProjectAgentTimelineEntryDto? timelineEntry,
+        long latestSequence)
     {
         if (timelineEntry is null || Snapshot is null)
-            return false;
+            return null;
 
         if (!_lookup.TryGetAgentLocation(timelineEntry.AgentId, out AgentStatusSnapshotAgentLocation location))
-            return false;
+            return null;
 
         List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
         ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
         List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
         ProjectAgentSnapshotDto agent = agents[location.AgentIndex];
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
-            AgentStatusTimelineEntries.Upsert(agent.TimelineEntries, timelineEntry);
+        AgentStatusTimelineMutationResult result =
+            AgentStatusTimelineEntries.UpsertWithLatestSequence(agent.TimelineEntries, timelineEntry, latestSequence);
 
         agents[location.AgentIndex] = new ProjectAgentSnapshotDto
         {
@@ -232,7 +234,7 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
             Status = agent.Status,
             CreatedAtUtc = agent.CreatedAtUtc,
             HasLoadedHistory = true,
-            TimelineEntries = timelineEntries,
+            TimelineEntries = result.TimelineEntries,
         };
 
         groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto
@@ -245,27 +247,26 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
         };
 
         ReplaceSnapshotGroups(groups);
-        return true;
+        return result;
     }
 
-    public bool RemoveTimelineEntries(Guid agentId, IReadOnlyList<Guid> timelineEntryIds)
+    public AgentStatusTimelineMutationResult? RemoveTimelineEntries(Guid agentId, IReadOnlyList<Guid> timelineEntryIds)
     {
         if (Snapshot is null || timelineEntryIds.Count == 0)
-            return false;
+            return null;
 
         if (!_lookup.TryGetAgentLocation(agentId, out AgentStatusSnapshotAgentLocation location))
-            return false;
+            return null;
 
         HashSet<Guid> timelineEntryIdSet = [.. timelineEntryIds];
         List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
         ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
         List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
         ProjectAgentSnapshotDto agent = agents[location.AgentIndex];
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
-            AgentStatusTimelineEntries.Remove(agent.TimelineEntries, timelineEntryIdSet);
-
-        if (timelineEntries.Count == agent.TimelineEntries.Count)
-            return false;
+        AgentStatusTimelineMutationResult? result =
+            AgentStatusTimelineEntries.RemoveWithLatestSequence(agent.TimelineEntries, timelineEntryIdSet);
+        if (result is null)
+            return null;
 
         agents[location.AgentIndex] = new ProjectAgentSnapshotDto
         {
@@ -277,7 +278,7 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
             Status = agent.Status,
             CreatedAtUtc = agent.CreatedAtUtc,
             HasLoadedHistory = agent.HasLoadedHistory,
-            TimelineEntries = timelineEntries,
+            TimelineEntries = result.TimelineEntries,
         };
 
         groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto
@@ -290,7 +291,7 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
         };
 
         ReplaceSnapshotGroups(groups);
-        return true;
+        return result;
     }
 
     public void ReplaceAgentHistory(Guid agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)

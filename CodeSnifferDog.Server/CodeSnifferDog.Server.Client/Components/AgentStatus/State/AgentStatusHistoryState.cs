@@ -31,9 +31,20 @@ internal sealed class AgentStatusHistoryState(Guid? agentId, IReadOnlyList<Proje
 
     public void ApplySelectedAgentSnapshot(IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries, Guid agentId)
     {
+        ApplySelectedAgentSnapshot(
+            timelineEntries,
+            agentId,
+            AgentStatusTimelineEntries.GetLatestSequence(timelineEntries));
+    }
+
+    public void ApplySelectedAgentSnapshot(
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
+        Guid agentId,
+        long latestSequence)
+    {
         AgentId = agentId;
         TimelineEntries = timelineEntries;
-        _latestSequence = AgentStatusTimelineEntries.GetLatestSequence(timelineEntries);
+        _latestSequence = latestSequence;
         IsLoading = false;
         ErrorMessage = null;
     }

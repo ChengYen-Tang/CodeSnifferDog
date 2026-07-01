@@ -25,6 +25,38 @@ public sealed class AgentStatusTimelineEntriesTests
     }
 
     [TestMethod]
+    public void UpsertWithLatestSequenceReturnsUpdatedTimelineAndLatestSequence()
+    {
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        [
+            CreateEntry(1, 10),
+            CreateEntry(3, 30),
+        ];
+
+        AgentStatusTimelineMutationResult result =
+            AgentStatusTimelineEntries.UpsertWithLatestSequence(timelineEntries, CreateEntry(2, 20));
+
+        CollectionAssert.AreEqual(new long[] { 1, 2, 3 }, result.TimelineEntries.Select(entry => entry.Sequence).ToArray());
+        Assert.AreEqual(3, result.LatestSequence);
+    }
+
+    [TestMethod]
+    public void UpsertWithLatestSequenceUsesProvidedLatestSequence()
+    {
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        [
+            CreateEntry(1, 10),
+            CreateEntry(3, 30),
+        ];
+
+        AgentStatusTimelineMutationResult result =
+            AgentStatusTimelineEntries.UpsertWithLatestSequence(timelineEntries, CreateEntry(2, 20), latestSequence: 9);
+
+        CollectionAssert.AreEqual(new long[] { 1, 2, 3 }, result.TimelineEntries.Select(entry => entry.Sequence).ToArray());
+        Assert.AreEqual(9, result.LatestSequence);
+    }
+
+    [TestMethod]
     public void UpsertReplacesExistingEntryAndRepositionsWhenOrderChanges()
     {
         Guid replacedEntryId = Guid.Parse("73000000-0000-0000-0000-000000000010");
@@ -115,6 +147,42 @@ public sealed class AgentStatusTimelineEntriesTests
 
         CollectionAssert.AreEqual(new long[] { 1, 3 }, removed.Select(entry => entry.Sequence).ToArray());
         CollectionAssert.AreEqual(new long[] { 1, 2, 3 }, noOp.Select(entry => entry.Sequence).ToArray());
+    }
+
+    [TestMethod]
+    public void RemoveWithLatestSequenceReturnsRemainingEntriesAndLatestSequence()
+    {
+        Guid removedEntryId = Guid.Parse("73000000-0000-0000-0000-000000000031");
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        [
+            CreateEntry(1, 10),
+            CreateEntry(2, 20),
+            CreateEntry(5, 50, removedEntryId),
+        ];
+
+        AgentStatusTimelineMutationResult? result =
+            AgentStatusTimelineEntries.RemoveWithLatestSequence(timelineEntries, new HashSet<Guid> { removedEntryId });
+
+        Assert.IsNotNull(result);
+        CollectionAssert.AreEqual(new long[] { 1, 2 }, result.TimelineEntries.Select(entry => entry.Sequence).ToArray());
+        Assert.AreEqual(2, result.LatestSequence);
+    }
+
+    [TestMethod]
+    public void RemoveWithLatestSequenceReturnsNullWhenNoEntriesAreRemoved()
+    {
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        [
+            CreateEntry(1, 10),
+            CreateEntry(2, 20),
+        ];
+
+        AgentStatusTimelineMutationResult? result =
+            AgentStatusTimelineEntries.RemoveWithLatestSequence(
+                timelineEntries,
+                new HashSet<Guid> { Guid.Parse("73000000-0000-0000-0000-000000000099") });
+
+        Assert.IsNull(result);
     }
 
     [TestMethod]

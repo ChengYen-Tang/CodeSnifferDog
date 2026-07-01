@@ -6,7 +6,24 @@ internal static class AgentStatusTimelineEntries
 {
     public static IReadOnlyList<ProjectAgentTimelineEntryDto> Upsert(
         IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
-        ProjectAgentTimelineEntryDto timelineEntry)
+        ProjectAgentTimelineEntryDto timelineEntry) =>
+        UpsertWithLatestSequence(
+            timelineEntries,
+            timelineEntry,
+            GetLatestSequence(timelineEntries)).TimelineEntries;
+
+    public static AgentStatusTimelineMutationResult UpsertWithLatestSequence(
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
+        ProjectAgentTimelineEntryDto timelineEntry) =>
+        UpsertWithLatestSequence(
+            timelineEntries,
+            timelineEntry,
+            GetLatestSequence(timelineEntries));
+
+    public static AgentStatusTimelineMutationResult UpsertWithLatestSequence(
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
+        ProjectAgentTimelineEntryDto timelineEntry,
+        long latestSequence)
     {
         List<ProjectAgentTimelineEntryDto> nextTimelineEntries = timelineEntries.ToList();
         bool isSorted = IsSorted(timelineEntries);
@@ -17,35 +34,60 @@ internal static class AgentStatusTimelineEntries
             if (isSorted && CompareOrder(existingEntry, timelineEntry) == 0)
             {
                 nextTimelineEntries[existingIndex] = timelineEntry;
-                return nextTimelineEntries;
+                return new AgentStatusTimelineMutationResult(
+                    nextTimelineEntries,
+                    Math.Max(latestSequence, timelineEntry.Sequence));
             }
 
             nextTimelineEntries.RemoveAt(existingIndex);
+            if (existingEntry.Sequence == latestSequence && timelineEntry.Sequence < latestSequence)
+                latestSequence = GetLatestSequence(nextTimelineEntries);
         }
 
         if (!isSorted)
         {
             nextTimelineEntries.Add(timelineEntry);
-            return Normalize(nextTimelineEntries);
+            IReadOnlyList<ProjectAgentTimelineEntryDto> normalizedTimelineEntries = Normalize(nextTimelineEntries);
+            return new AgentStatusTimelineMutationResult(
+                normalizedTimelineEntries,
+                GetLatestSequence(normalizedTimelineEntries));
         }
 
         nextTimelineEntries.Insert(GetInsertIndex(nextTimelineEntries, timelineEntry), timelineEntry);
-        return nextTimelineEntries;
+        return new AgentStatusTimelineMutationResult(
+            nextTimelineEntries,
+            Math.Max(latestSequence, timelineEntry.Sequence));
     }
 
     public static IReadOnlyList<ProjectAgentTimelineEntryDto> Remove(
         IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
+        IReadOnlySet<Guid> timelineEntryIds) =>
+        RemoveWithLatestSequence(timelineEntries, timelineEntryIds)?.TimelineEntries ?? timelineEntries;
+
+    public static AgentStatusTimelineMutationResult? RemoveWithLatestSequence(
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
         IReadOnlySet<Guid> timelineEntryIds)
     {
         List<ProjectAgentTimelineEntryDto> nextTimelineEntries = new(timelineEntries.Count);
+        long latestSequence = 0;
+        bool removedAny = false;
         for (int index = 0; index < timelineEntries.Count; index++)
         {
             ProjectAgentTimelineEntryDto entry = timelineEntries[index];
-            if (!timelineEntryIds.Contains(entry.TimelineEntryId))
-                nextTimelineEntries.Add(entry);
+            if (timelineEntryIds.Contains(entry.TimelineEntryId))
+            {
+                removedAny = true;
+                continue;
+            }
+
+            nextTimelineEntries.Add(entry);
+            if (entry.Sequence > latestSequence)
+                latestSequence = entry.Sequence;
         }
 
-        return nextTimelineEntries;
+        return removedAny
+            ? new AgentStatusTimelineMutationResult(nextTimelineEntries, latestSequence)
+            : null;
     }
 
     public static IReadOnlyList<ProjectAgentTimelineEntryDto> Normalize(
