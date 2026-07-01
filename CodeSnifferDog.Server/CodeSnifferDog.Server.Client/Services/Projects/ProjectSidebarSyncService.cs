@@ -10,6 +10,7 @@ public sealed class ProjectSidebarSyncService : IProjectSidebarController, IAsyn
     private readonly IProjectSidebarPollingFallback _pollingFallback;
     private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private CancellationTokenSource? _refreshCancellationTokenSource;
+    private int _trailingReloadRequested;
     private bool _started;
 
     public ProjectSidebarSyncService(
@@ -31,27 +32,24 @@ public sealed class ProjectSidebarSyncService : IProjectSidebarController, IAsyn
 
     public void InitializeSnapshot(ProjectSidebarSnapshotDto? snapshot, string? selectedProjectIdFromUri)
     {
-        Current.ApplySnapshot(snapshot, selectedProjectIdFromUri);
-        Current.Transport.CompleteSnapshotLoad();
-        NotifyChanged();
+        bool changed = Current.ApplySnapshot(snapshot, selectedProjectIdFromUri);
+        changed |= Current.Transport.CompleteSnapshotLoad();
+        NotifyChangedIf(changed);
     }
 
     public void SelectProject(string projectId)
     {
-        Current.Ui.SelectProject(projectId);
-        NotifyChanged();
+        NotifyChangedIf(Current.Ui.SelectProject(projectId));
     }
 
     public void ToggleGroup(string groupKey, ProjectStatus status)
     {
-        Current.Ui.ToggleGroup(groupKey, status);
-        NotifyChanged();
+        NotifyChangedIf(Current.Ui.ToggleGroup(groupKey, status));
     }
 
     public void SyncSelectedProjectFromUri(string? selectedProjectIdFromUri)
     {
-        Current.Ui.SyncSelectedProjectFromUri(selectedProjectIdFromUri, Current.Snapshot.Groups);
-        NotifyChanged();
+        NotifyChangedIf(Current.Ui.SyncSelectedProjectFromUri(selectedProjectIdFromUri, Current.Snapshot.Groups));
     }
 
     public async Task<bool> DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
@@ -95,9 +93,9 @@ public sealed class ProjectSidebarSyncService : IProjectSidebarController, IAsyn
 
         if (initialSnapshot is not null)
         {
-            Current.ApplySnapshot(initialSnapshot, selectedProjectIdFromUri);
-            Current.Transport.CompleteSnapshotLoad();
-            NotifyChanged();
+            bool changed = Current.ApplySnapshot(initialSnapshot, selectedProjectIdFromUri);
+            changed |= Current.Transport.CompleteSnapshotLoad();
+            NotifyChangedIf(changed);
         }
 
         if (initialSnapshot is null)
@@ -124,59 +122,86 @@ public sealed class ProjectSidebarSyncService : IProjectSidebarController, IAsyn
         }
     }
 
-    private void StartPollingFallback()
+    private bool StartPollingFallback()
     {
         if (_refreshCancellationTokenSource is null)
-            return;
+            return false;
+
+        if (Current.Transport.IsPollingFallbackActive && _pollingFallback.IsActive)
+            return false;
 
         _pollingFallback.Start(
             onRefreshRequested: pollingCancellationToken => ReloadAsync(isInitialLoad: false, selectedProjectIdFromUri: null, pollingCancellationToken),
             _refreshCancellationTokenSource.Token);
-        Current.Transport.SetPollingFallbackActive(_pollingFallback.IsActive);
-        NotifyChanged();
+        return Current.Transport.SetPollingFallbackActive(_pollingFallback.IsActive);
     }
 
-    private void StopPollingFallback()
+    private bool StopPollingFallback()
     {
+        if (!Current.Transport.IsPollingFallbackActive && !_pollingFallback.IsActive)
+            return false;
+
         _pollingFallback.Stop();
-        Current.Transport.SetPollingFallbackActive(_pollingFallback.IsActive);
-        NotifyChanged();
+        return Current.Transport.SetPollingFallbackActive(_pollingFallback.IsActive);
     }
 
     private async Task ReloadAsync(bool isInitialLoad, string? selectedProjectIdFromUri, CancellationToken cancellationToken)
     {
         if (!await _reloadLock.WaitAsync(0, cancellationToken))
+        {
+            if (!isInitialLoad)
+                Interlocked.Exchange(ref _trailingReloadRequested, 1);
+
             return;
+        }
 
-        if (isInitialLoad)
-            Current.Transport.StartInitialLoad();
-        else
-            Current.Transport.StartRefresh();
+        try
+        {
+            bool runTrailingReload;
+            do
+            {
+                Interlocked.Exchange(ref _trailingReloadRequested, 0);
+                await ReloadOnceAsync(isInitialLoad, selectedProjectIdFromUri, cancellationToken).ConfigureAwait(false);
+                isInitialLoad = false;
+                selectedProjectIdFromUri = null;
+                runTrailingReload = Interlocked.Exchange(ref _trailingReloadRequested, 0) == 1;
+            }
+            while (runTrailingReload);
+        }
+        finally
+        {
+            _reloadLock.Release();
+        }
+    }
 
-        NotifyChanged();
+    private async Task ReloadOnceAsync(bool isInitialLoad, string? selectedProjectIdFromUri, CancellationToken cancellationToken)
+    {
+        bool changed = isInitialLoad
+            ? Current.Transport.StartInitialLoad()
+            : Current.Transport.StartRefresh();
+
+        NotifyChangedIf(changed);
 
         try
         {
             ProjectSidebarSnapshotDto? snapshot =
                 await _httpClient.GetFromJsonAsync<ProjectSidebarSnapshotDto>("/api/projects/sidebar", cancellationToken);
-            Current.ApplySnapshot(snapshot, selectedProjectIdFromUri);
-            Current.Transport.CompleteSnapshotLoad();
+            changed = Current.ApplySnapshot(snapshot, selectedProjectIdFromUri);
+            changed |= Current.Transport.CompleteSnapshotLoad();
         }
         catch (OperationCanceledException)
         {
+            changed = false;
         }
         catch (Exception exception)
         {
             if (isInitialLoad)
-                Current.Snapshot.Update(null);
+                changed = Current.Snapshot.Update(null);
 
-            Current.Transport.CompleteSnapshotLoad($"Failed to load projects: {exception.Message}");
+            changed |= Current.Transport.CompleteSnapshotLoad($"Failed to load projects: {exception.Message}");
         }
-        finally
-        {
-            _reloadLock.Release();
-            NotifyChanged();
-        }
+
+        NotifyChangedIf(changed);
     }
 
     private void OnLiveConnectionStateChanged(bool isLiveConnected, bool isReconnecting, string? liveErrorMessage)
@@ -186,14 +211,21 @@ public sealed class ProjectSidebarSyncService : IProjectSidebarController, IAsyn
 
     private void UpdateLiveConnectionState(bool isLiveConnected, bool isReconnecting, string? liveErrorMessage)
     {
+        bool changed;
         if (isLiveConnected)
-            StopPollingFallback();
+            changed = StopPollingFallback();
         else
-            StartPollingFallback();
+            changed = StartPollingFallback();
 
-        Current.Transport.SetReconnecting(isReconnecting);
-        Current.Transport.SetLiveConnected(isLiveConnected, liveErrorMessage);
-        NotifyChanged();
+        changed |= Current.Transport.SetReconnecting(isReconnecting);
+        changed |= Current.Transport.SetLiveConnected(isLiveConnected, liveErrorMessage);
+        NotifyChangedIf(changed);
+    }
+
+    private void NotifyChangedIf(bool changed)
+    {
+        if (changed)
+            NotifyChanged();
     }
 
     private void NotifyChanged() => Changed?.Invoke();

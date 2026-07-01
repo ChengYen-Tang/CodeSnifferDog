@@ -19,17 +19,17 @@ public sealed class ProjectSidebarState(
             new ProjectSidebarUiState(selectedProjectId: null, groupExpansionStates: []),
             new ProjectSidebarTransportState(
                 isLoading: true,
-                isRefreshing: false,
                 isReconnecting: false,
                 isLiveConnected: false,
                 snapshotErrorMessage: null,
                 liveErrorMessage: null,
                 isPollingFallbackActive: true));
 
-    public void ApplySnapshot(ProjectSidebarSnapshotDto? snapshot, string? selectedProjectIdFromUri)
+    public bool ApplySnapshot(ProjectSidebarSnapshotDto? snapshot, string? selectedProjectIdFromUri)
     {
-        Snapshot.Update(snapshot);
-        Ui.ApplySnapshot(snapshot, selectedProjectIdFromUri);
+        bool snapshotChanged = Snapshot.Update(snapshot);
+        bool uiChanged = Ui.ApplySnapshot(snapshot, selectedProjectIdFromUri);
+        return snapshotChanged || uiChanged;
     }
 }
 
@@ -39,9 +39,11 @@ public sealed class ProjectSidebarSnapshotState(ProjectSidebarSnapshotDto? snaps
 
     public IReadOnlyList<ProjectSidebarGroupDto> Groups => Snapshot?.Groups ?? [];
 
-    public void Update(ProjectSidebarSnapshotDto? snapshot)
+    public bool Update(ProjectSidebarSnapshotDto? snapshot)
     {
+        bool changed = !ProjectSidebarSnapshotComparer.HasEquivalentVisibleState(Snapshot, snapshot);
         Snapshot = snapshot;
+        return changed;
     }
 }
 
@@ -51,15 +53,16 @@ public sealed class ProjectSidebarUiState(string? selectedProjectId, Dictionary<
 
     public Dictionary<string, bool> GroupExpansionStates { get; } = groupExpansionStates;
 
-    public void ApplySnapshot(ProjectSidebarSnapshotDto? snapshot, string? selectedProjectIdFromUri)
+    public bool ApplySnapshot(ProjectSidebarSnapshotDto? snapshot, string? selectedProjectIdFromUri)
     {
+        string? previousSelectedProjectId = SelectedProjectId;
+        Dictionary<string, bool> previousExpansionStates = new(GroupExpansionStates, StringComparer.Ordinal);
         IReadOnlyList<ProjectSidebarGroupDto> groups = snapshot?.Groups ?? [];
         HashSet<string> validProjectIds = groups
             .SelectMany(group => group.Projects)
             .Select(project => project.ProjectId.ToString())
             .ToHashSet(StringComparer.Ordinal);
 
-        Dictionary<string, bool> previousExpansionStates = new(GroupExpansionStates, StringComparer.Ordinal);
         GroupExpansionStates.Clear();
         foreach (ProjectSidebarGroupDto group in groups)
         {
@@ -71,11 +74,11 @@ public sealed class ProjectSidebarUiState(string? selectedProjectId, Dictionary<
         if (selectedProjectIdFromUri is not null && validProjectIds.Contains(selectedProjectIdFromUri))
         {
             SelectedProjectId = selectedProjectIdFromUri;
-            return;
+            return HasChanged(previousSelectedProjectId, previousExpansionStates);
         }
 
         if (SelectedProjectId is not null && validProjectIds.Contains(SelectedProjectId))
-            return;
+            return HasChanged(previousSelectedProjectId, previousExpansionStates);
 
         if (snapshot?.SelectedProjectId is Guid selectedProjectIdFromSnapshot)
         {
@@ -83,7 +86,7 @@ public sealed class ProjectSidebarUiState(string? selectedProjectId, Dictionary<
             if (validProjectIds.Contains(selectedProjectIdText))
             {
                 SelectedProjectId = selectedProjectIdText;
-                return;
+                return HasChanged(previousSelectedProjectId, previousExpansionStates);
             }
         }
 
@@ -91,24 +94,32 @@ public sealed class ProjectSidebarUiState(string? selectedProjectId, Dictionary<
             .SelectMany(group => group.Projects.OrderBy(project => project.SortOrder))
             .Select(project => project.ProjectId.ToString())
             .FirstOrDefault();
+        return HasChanged(previousSelectedProjectId, previousExpansionStates);
     }
 
-    public void SelectProject(string projectId)
+    public bool SelectProject(string projectId)
     {
+        if (string.Equals(SelectedProjectId, projectId, StringComparison.Ordinal))
+            return false;
+
         SelectedProjectId = projectId;
+        return true;
     }
 
-    public void SyncSelectedProjectFromUri(string? selectedProjectIdFromUri, IReadOnlyList<ProjectSidebarGroupDto> groups)
+    public bool SyncSelectedProjectFromUri(string? selectedProjectIdFromUri, IReadOnlyList<ProjectSidebarGroupDto> groups)
     {
         if (selectedProjectIdFromUri is null)
-            return;
+            return false;
 
         bool projectExists = groups
             .SelectMany(group => group.Projects)
             .Any(project => string.Equals(project.ProjectId.ToString(), selectedProjectIdFromUri, StringComparison.Ordinal));
 
-        if (projectExists)
-            SelectedProjectId = selectedProjectIdFromUri;
+        if (!projectExists || string.Equals(SelectedProjectId, selectedProjectIdFromUri, StringComparison.Ordinal))
+            return false;
+
+        SelectedProjectId = selectedProjectIdFromUri;
+        return true;
     }
 
     public bool IsExpanded(string groupKey, ProjectStatus status) =>
@@ -116,10 +127,32 @@ public sealed class ProjectSidebarUiState(string? selectedProjectId, Dictionary<
             ? isExpanded
             : GetDefaultExpanded(status);
 
-    public void ToggleGroup(string groupKey, ProjectStatus status)
+    public bool ToggleGroup(string groupKey, ProjectStatus status)
     {
         bool currentValue = IsExpanded(groupKey, status);
         GroupExpansionStates[groupKey] = !currentValue;
+        return true;
+    }
+
+    private bool HasChanged(string? previousSelectedProjectId, IReadOnlyDictionary<string, bool> previousExpansionStates) =>
+        !string.Equals(previousSelectedProjectId, SelectedProjectId, StringComparison.Ordinal) ||
+        !HasEquivalentExpansionStates(previousExpansionStates);
+
+    private bool HasEquivalentExpansionStates(IReadOnlyDictionary<string, bool> previousExpansionStates)
+    {
+        if (previousExpansionStates.Count != GroupExpansionStates.Count)
+            return false;
+
+        foreach (KeyValuePair<string, bool> previousState in previousExpansionStates)
+        {
+            if (!GroupExpansionStates.TryGetValue(previousState.Key, out bool currentValue) ||
+                currentValue != previousState.Value)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool GetDefaultExpanded(ProjectStatus status) => status switch
@@ -131,7 +164,6 @@ public sealed class ProjectSidebarUiState(string? selectedProjectId, Dictionary<
 
 public sealed class ProjectSidebarTransportState(
     bool isLoading,
-    bool isRefreshing,
     bool isReconnecting,
     bool isLiveConnected,
     string? snapshotErrorMessage,
@@ -139,8 +171,6 @@ public sealed class ProjectSidebarTransportState(
     bool isPollingFallbackActive)
 {
     public bool IsLoading { get; private set; } = isLoading;
-
-    public bool IsRefreshing { get; private set; } = isRefreshing;
 
     public bool IsReconnecting { get; private set; } = isReconnecting;
 
@@ -152,40 +182,50 @@ public sealed class ProjectSidebarTransportState(
 
     public bool IsPollingFallbackActive { get; private set; } = isPollingFallbackActive;
 
-    public void StartInitialLoad()
+    public bool StartInitialLoad()
     {
+        bool changed = !IsLoading || SnapshotErrorMessage is not null;
         IsLoading = true;
-        IsRefreshing = false;
         SnapshotErrorMessage = null;
+        return changed;
     }
 
-    public void StartRefresh()
+    public bool StartRefresh()
     {
+        bool changed = IsLoading || SnapshotErrorMessage is not null;
         IsLoading = false;
-        IsRefreshing = true;
         SnapshotErrorMessage = null;
+        return changed;
     }
 
-    public void CompleteSnapshotLoad(string? snapshotErrorMessage = null)
+    public bool CompleteSnapshotLoad(string? snapshotErrorMessage = null)
     {
+        bool changed = IsLoading || !string.Equals(SnapshotErrorMessage, snapshotErrorMessage, StringComparison.Ordinal);
         IsLoading = false;
-        IsRefreshing = false;
         SnapshotErrorMessage = snapshotErrorMessage;
+        return changed;
     }
 
-    public void SetLiveConnected(bool isLiveConnected, string? liveErrorMessage = null)
+    public bool SetLiveConnected(bool isLiveConnected, string? liveErrorMessage = null)
     {
+        bool changed = IsLiveConnected != isLiveConnected ||
+            !string.Equals(LiveErrorMessage, liveErrorMessage, StringComparison.Ordinal);
         IsLiveConnected = isLiveConnected;
         LiveErrorMessage = liveErrorMessage;
+        return changed;
     }
 
-    public void SetReconnecting(bool isReconnecting)
+    public bool SetReconnecting(bool isReconnecting)
     {
+        bool changed = IsReconnecting != isReconnecting;
         IsReconnecting = isReconnecting;
+        return changed;
     }
 
-    public void SetPollingFallbackActive(bool isPollingFallbackActive)
+    public bool SetPollingFallbackActive(bool isPollingFallbackActive)
     {
+        bool changed = IsPollingFallbackActive != isPollingFallbackActive;
         IsPollingFallbackActive = isPollingFallbackActive;
+        return changed;
     }
 }

@@ -9,6 +9,48 @@ namespace CodeSnifferDog.Tests.Services.Projects;
 public sealed class ProjectSidebarSyncServiceTests
 {
     [TestMethod]
+    public async Task EquivalentSnapshotAndSameSelection_DoNotNotifyChangedAsync()
+    {
+        RecordingSidebarHttpMessageHandler handler = new();
+        FakeProjectSidebarRefreshSignalClient refreshSignalClient = new();
+        FakeProjectSidebarPollingFallback pollingFallback = new();
+        ProjectSidebarSnapshotDto snapshot = CreateSnapshot("repo-before.zip");
+
+        await using ProjectSidebarSyncService service = CreateService(handler, refreshSignalClient, pollingFallback);
+        int changedCount = 0;
+        service.Changed += () => changedCount++;
+
+        service.InitializeSnapshot(snapshot, selectedProjectIdFromUri: null);
+        service.InitializeSnapshot(CreateSnapshot("repo-before.zip", generatedMinute: 1), selectedProjectIdFromUri: null);
+        service.InitializeSnapshot(CreateSnapshot(
+            "repo-before.zip",
+            selectedProjectId: Guid.Parse("70000000-0000-0000-0000-000000000799")), selectedProjectIdFromUri: null);
+        service.SelectProject(snapshot.SelectedProjectId!.Value.ToString());
+        service.SyncSelectedProjectFromUri(null);
+        service.SyncSelectedProjectFromUri(snapshot.SelectedProjectId.Value.ToString());
+
+        Assert.AreEqual(1, changedCount);
+    }
+
+    [TestMethod]
+    public async Task ChangedSnapshotVisibleFields_NotifyChangedAsync()
+    {
+        RecordingSidebarHttpMessageHandler handler = new();
+        FakeProjectSidebarRefreshSignalClient refreshSignalClient = new();
+        FakeProjectSidebarPollingFallback pollingFallback = new();
+
+        await using ProjectSidebarSyncService service = CreateService(handler, refreshSignalClient, pollingFallback);
+        int changedCount = 0;
+        service.Changed += () => changedCount++;
+
+        service.InitializeSnapshot(CreateSnapshot("repo-before.zip"), selectedProjectIdFromUri: null);
+        service.InitializeSnapshot(CreateSnapshot("repo-after.zip"), selectedProjectIdFromUri: null);
+        service.InitializeSnapshot(CreateSnapshot("repo-after.zip", status: ProjectStatus.Completed), selectedProjectIdFromUri: null);
+
+        Assert.AreEqual(3, changedCount);
+    }
+
+    [TestMethod]
     public async Task SignalRRefreshTrigger_ReloadsSidebarSnapshotAsync()
     {
         RecordingSidebarHttpMessageHandler handler = new(
@@ -84,6 +126,44 @@ public sealed class ProjectSidebarSyncServiceTests
     }
 
     [TestMethod]
+    public async Task SameLiveConnectionState_DoesNotNotifyChangedAsync()
+    {
+        RecordingSidebarHttpMessageHandler handler = new();
+        FakeProjectSidebarRefreshSignalClient refreshSignalClient = new();
+        FakeProjectSidebarPollingFallback pollingFallback = new();
+
+        await using ProjectSidebarSyncService service = CreateService(handler, refreshSignalClient, pollingFallback);
+        int changedCount = 0;
+        service.Changed += () => changedCount++;
+
+        await service.StartAsync(initialSnapshot: CreateSnapshot("repo-before.zip"));
+        await refreshSignalClient.SetConnectionStateAsync(isLiveConnected: true, isReconnecting: false, null);
+        await refreshSignalClient.SetConnectionStateAsync(isLiveConnected: true, isReconnecting: false, null);
+
+        Assert.AreEqual(2, changedCount);
+        Assert.AreEqual(0, pollingFallback.StartCallCount);
+    }
+
+    [TestMethod]
+    public async Task SameUnavailableLiveConnectionState_DoesNotRestartPollingFallbackAsync()
+    {
+        RecordingSidebarHttpMessageHandler handler = new();
+        FakeProjectSidebarRefreshSignalClient refreshSignalClient = new();
+        FakeProjectSidebarPollingFallback pollingFallback = new();
+
+        await using ProjectSidebarSyncService service = CreateService(handler, refreshSignalClient, pollingFallback);
+        int changedCount = 0;
+        service.Changed += () => changedCount++;
+
+        await service.StartAsync(initialSnapshot: CreateSnapshot("repo-before.zip"));
+        await refreshSignalClient.SetConnectionStateAsync(isLiveConnected: false, isReconnecting: true, "Live updates reconnecting...");
+        await refreshSignalClient.SetConnectionStateAsync(isLiveConnected: false, isReconnecting: true, "Live updates reconnecting...");
+
+        Assert.AreEqual(3, changedCount);
+        Assert.AreEqual(1, pollingFallback.StartCallCount);
+    }
+
+    [TestMethod]
     public async Task LiveConnectionRecovered_StopsPollingFallbackAsync()
     {
         RecordingSidebarHttpMessageHandler handler = new(
@@ -127,6 +207,32 @@ public sealed class ProjectSidebarSyncServiceTests
         Assert.IsFalse(service.Current.Transport.IsLoading);
     }
 
+    [TestMethod]
+    public async Task RefreshBurstWhileReloadActive_CoalescesToActiveAndTrailingReloadAsync()
+    {
+        DelayedSidebarHttpMessageHandler handler = new(
+            CreateSnapshot("repo-active.zip"),
+            CreateSnapshot("repo-trailing.zip"));
+        FakeProjectSidebarRefreshSignalClient refreshSignalClient = new();
+        FakeProjectSidebarPollingFallback pollingFallback = new();
+
+        await using ProjectSidebarSyncService service = CreateService(handler, refreshSignalClient, pollingFallback);
+        await service.StartAsync(initialSnapshot: CreateSnapshot("repo-before.zip"));
+
+        Task firstRefresh = refreshSignalClient.TriggerRefreshAsync();
+        await handler.WaitForRequestCountAsync(1);
+        Task secondRefresh = refreshSignalClient.TriggerRefreshAsync();
+        Task thirdRefresh = refreshSignalClient.TriggerRefreshAsync();
+
+        handler.ReleaseNextResponse();
+        await handler.WaitForRequestCountAsync(2);
+        handler.ReleaseNextResponse();
+        await Task.WhenAll(firstRefresh, secondRefresh, thirdRefresh);
+
+        Assert.AreEqual(2, handler.RequestCount);
+        Assert.AreEqual("repo-trailing.zip", service.Current.Snapshot.Groups[0].Projects[0].OriginalFileName);
+    }
+
     private static ProjectSidebarSyncService CreateService(
         HttpMessageHandler handler,
         IProjectSidebarRefreshSignalClient refreshSignalClient,
@@ -145,10 +251,14 @@ public sealed class ProjectSidebarSyncServiceTests
             Content = JsonContent.Create(snapshot),
         };
 
-    private static ProjectSidebarSnapshotDto CreateSnapshot(string fileName) => new()
+    private static ProjectSidebarSnapshotDto CreateSnapshot(
+        string fileName,
+        int generatedMinute = 0,
+        ProjectStatus status = ProjectStatus.Reviewing,
+        Guid? selectedProjectId = null) => new()
     {
-        GeneratedAtUtc = new DateTimeOffset(2026, 5, 16, 0, 0, 0, TimeSpan.Zero),
-        SelectedProjectId = Guid.Parse("70000000-0000-0000-0000-000000000701"),
+        GeneratedAtUtc = new DateTimeOffset(2026, 5, 16, 0, generatedMinute, 0, TimeSpan.Zero),
+        SelectedProjectId = selectedProjectId ?? Guid.Parse("70000000-0000-0000-0000-000000000701"),
         Groups =
         [
             new ProjectSidebarGroupDto
@@ -163,7 +273,7 @@ public sealed class ProjectSidebarSyncServiceTests
                     {
                         ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000701"),
                         OriginalFileName = fileName,
-                        Status = ProjectStatus.Reviewing,
+                        Status = status,
                         CreatedAtUtc = new DateTimeOffset(2026, 5, 16, 0, 0, 0, TimeSpan.Zero),
                         SortOrder = 0,
                     }
@@ -217,10 +327,13 @@ public sealed class ProjectSidebarSyncServiceTests
 
         public bool IsActive { get; private set; }
 
+        public int StartCallCount { get; private set; }
+
         public void Start(Func<CancellationToken, Task> onRefreshRequested, CancellationToken cancellationToken)
         {
             _onRefreshRequested = onRefreshRequested;
             IsActive = true;
+            StartCallCount++;
         }
 
         public void Stop()
@@ -250,6 +363,43 @@ public sealed class ProjectSidebarSyncServiceTests
             }
 
             return Task.FromResult(_responses.Dequeue());
+        }
+    }
+
+    private sealed class DelayedSidebarHttpMessageHandler(params ProjectSidebarSnapshotDto[] snapshots) : HttpMessageHandler
+    {
+        private readonly Queue<ProjectSidebarSnapshotDto> _snapshots = new(snapshots);
+        private readonly Queue<TaskCompletionSource<HttpResponseMessage>> _responses = [];
+        private readonly List<TaskCompletionSource> _requestWaiters = [];
+
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            foreach (TaskCompletionSource waiter in _requestWaiters.ToArray())
+                waiter.TrySetResult();
+
+            TaskCompletionSource<HttpResponseMessage> response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _responses.Enqueue(response);
+            return response.Task;
+        }
+
+        public Task WaitForRequestCountAsync(int expectedRequestCount)
+        {
+            if (RequestCount >= expectedRequestCount)
+                return Task.CompletedTask;
+
+            TaskCompletionSource waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _requestWaiters.Add(waiter);
+            return waiter.Task;
+        }
+
+        public void ReleaseNextResponse()
+        {
+            Assert.IsTrue(_responses.Count > 0, "No delayed sidebar response is pending.");
+            Assert.IsTrue(_snapshots.Count > 0, "No sidebar snapshot response is configured.");
+            _responses.Dequeue().SetResult(CreateJsonResponse(_snapshots.Dequeue()));
         }
     }
 }

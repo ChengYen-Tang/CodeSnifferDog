@@ -346,7 +346,7 @@ public sealed class NavMenuTests
         {
             sidebarSyncService.Current.Transport.SetReconnecting(true);
             sidebarSyncService.Current.Transport.SetLiveConnected(false, "Live updates reconnecting...");
-            sidebarSyncService.InitializeSnapshot(initialSnapshot, selectedProjectIdFromUri: null);
+            cut.Render();
         }).GetAwaiter().GetResult();
 
         cut.WaitForAssertion(() =>
@@ -522,6 +522,45 @@ public sealed class NavMenuTests
             StringAssert.Contains(cut.Markup, "repo-refreshed-100.zip");
             Assert.DoesNotContain(cut.Markup, "repo-large-100.zip");
         });
+    }
+
+    [TestMethod]
+    public void NoOpSidebarUpdates_DoNotRerenderNavigation()
+    {
+        using Bunit.TestContext context = new();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
+        context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        Guid selectedProjectId = Guid.Parse("70000000-0000-0000-0000-000000000481");
+        ProjectSidebarSnapshotDto initialSnapshot = CreateSnapshot(
+            selectedProjectId,
+            CreateReviewingGroup(
+                selectedProjectId,
+                "repo-noop.zip",
+                Guid.Parse("70000000-0000-0000-0000-000000000482"),
+                "repo-secondary.zip"));
+
+        IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
+            parameters => parameters.Add(component => component.InitialSnapshot, initialSnapshot));
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "repo-noop.zip"));
+        int renderCount = cut.RenderCount;
+        string markup = cut.Markup;
+
+        cut.InvokeAsync(() =>
+        {
+            sidebarSyncService.InitializeSnapshot(CreateSnapshot(
+                selectedProjectId,
+                CreateReviewingGroup(
+                    selectedProjectId,
+                    "repo-noop.zip",
+                    Guid.Parse("70000000-0000-0000-0000-000000000482"),
+                    "repo-secondary.zip")), selectedProjectIdFromUri: null);
+            sidebarSyncService.SelectProject(selectedProjectId.ToString());
+            sidebarSyncService.SyncSelectedProjectFromUri(selectedProjectId.ToString());
+        }).GetAwaiter().GetResult();
+
+        Assert.AreEqual(renderCount, cut.RenderCount);
+        Assert.AreEqual(markup, cut.Markup);
     }
 
     private static ProjectSidebarSnapshotDto CreateSnapshot(Guid? selectedProjectId, params ProjectSidebarGroupDto[] groups) => new()
