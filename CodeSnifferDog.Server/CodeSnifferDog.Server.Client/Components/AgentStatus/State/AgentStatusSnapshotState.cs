@@ -219,12 +219,8 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
         ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
         List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
         ProjectAgentSnapshotDto agent = agents[location.AgentIndex];
-        List<ProjectAgentTimelineEntryDto> timelineEntries = agent.TimelineEntries.ToList();
-        int existingIndex = timelineEntries.FindIndex(candidate => candidate.TimelineEntryId == timelineEntry.TimelineEntryId);
-        if (existingIndex >= 0)
-            timelineEntries[existingIndex] = timelineEntry;
-        else
-            timelineEntries.Add(timelineEntry);
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+            AgentStatusTimelineEntries.Upsert(agent.TimelineEntries, timelineEntry);
 
         agents[location.AgentIndex] = new ProjectAgentSnapshotDto
         {
@@ -236,10 +232,7 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
             Status = agent.Status,
             CreatedAtUtc = agent.CreatedAtUtc,
             HasLoadedHistory = true,
-            TimelineEntries = timelineEntries
-                .OrderBy(candidate => candidate.Sequence)
-                .ThenBy(candidate => candidate.OccurredAtUtc)
-                .ToList(),
+            TimelineEntries = timelineEntries,
         };
 
         groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto
@@ -268,9 +261,8 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
         ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
         List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
         ProjectAgentSnapshotDto agent = agents[location.AgentIndex];
-        List<ProjectAgentTimelineEntryDto> timelineEntries = agent.TimelineEntries
-            .Where(entry => !timelineEntryIdSet.Contains(entry.TimelineEntryId))
-            .ToList();
+        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+            AgentStatusTimelineEntries.Remove(agent.TimelineEntries, timelineEntryIdSet);
 
         if (timelineEntries.Count == agent.TimelineEntries.Count)
             return false;
@@ -323,10 +315,7 @@ internal sealed class AgentStatusSnapshotState(ProjectAgentStatusSnapshotDto? sn
             Status = existingAgent.Status,
             CreatedAtUtc = existingAgent.CreatedAtUtc,
             HasLoadedHistory = true,
-            TimelineEntries = timelineEntries
-                .OrderBy(candidate => candidate.Sequence)
-                .ThenBy(candidate => candidate.OccurredAtUtc)
-                .ToList(),
+            TimelineEntries = AgentStatusTimelineEntries.Normalize(timelineEntries),
         };
 
         groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto

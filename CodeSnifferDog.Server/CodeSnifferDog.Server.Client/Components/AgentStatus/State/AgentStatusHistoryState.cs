@@ -4,7 +4,7 @@ namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 
 internal sealed class AgentStatusHistoryState(Guid? agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries, bool isLoading)
 {
-    private long _latestSequence = CalculateLatestSequence(timelineEntries);
+    private long _latestSequence = AgentStatusTimelineEntries.GetLatestSequence(timelineEntries);
 
     public Guid? AgentId { get; private set; } = agentId;
 
@@ -33,7 +33,7 @@ internal sealed class AgentStatusHistoryState(Guid? agentId, IReadOnlyList<Proje
     {
         AgentId = agentId;
         TimelineEntries = timelineEntries;
-        _latestSequence = CalculateLatestSequence(timelineEntries);
+        _latestSequence = AgentStatusTimelineEntries.GetLatestSequence(timelineEntries);
         IsLoading = false;
         ErrorMessage = null;
     }
@@ -69,15 +69,4 @@ internal sealed class AgentStatusHistoryState(Guid? agentId, IReadOnlyList<Proje
 
     public long GetLatestSequence() => _latestSequence;
 
-    private static long CalculateLatestSequence(IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
-    {
-        long latestSequence = 0;
-        for (int index = 0; index < timelineEntries.Count; index++)
-        {
-            if (timelineEntries[index].Sequence > latestSequence)
-                latestSequence = timelineEntries[index].Sequence;
-        }
-
-        return latestSequence;
-    }
 }
