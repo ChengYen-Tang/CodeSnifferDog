@@ -7,8 +7,24 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 using CodeSnifferDog.Server.Shared.Projects;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Components;
+using Serilog;
+
+string logFilePath = Path.Combine(AppContext.BaseDirectory, "logs", "codesnifferdog-.log");
+const string LogOutputTemplate =
+    "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj} {Properties:j}{NewLine}{Exception}";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSerilog((services, loggerConfiguration) =>
+    loggerConfiguration
+        .ReadFrom.Configuration(builder.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .WriteTo.Console(outputTemplate: LogOutputTemplate)
+        .WriteTo.File(
+            logFilePath,
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 30,
+            outputTemplate: LogOutputTemplate));
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
@@ -53,4 +69,8 @@ app.MapRazorComponents<App>()
     .AddInteractiveWebAssemblyRenderMode()
     .AddAdditionalAssemblies(typeof(CodeSnifferDog.Server.Client.AssemblyMarker).Assembly);
 
-app.Run();
+app.Logger.LogInformation(
+    "CodeSnifferDog server starting in {EnvironmentName}. File logs path: {LogFilePath}",
+    app.Environment.EnvironmentName,
+    logFilePath);
+await app.RunAsync().ConfigureAwait(false);

@@ -4,6 +4,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Diagnostics;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 
@@ -29,11 +30,17 @@ internal sealed class ProjectAnalysisRunner(
     public async Task RunAsync(ProjectAnalysisContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+        Stopwatch stopwatch = Stopwatch.StartNew();
 
         if (!IsReady)
             throw new InvalidOperationException("Project analysis runner is not ready.");
 
         ValidateOptions();
+
+        _logger.LogInformation(
+            "Project {ProjectId} analysis started for repository {RepositoryRootPath}.",
+            context.ProjectId,
+            context.RepositoryRootPath);
 
         await ClearAgentStatusDataAsync(context.ProjectId, cancellationToken).ConfigureAwait(false);
 
@@ -52,7 +59,14 @@ internal sealed class ProjectAnalysisRunner(
             .CompleteAnalysisAsync(context.ProjectId, rules, analysisResult, cancellationToken)
             .ConfigureAwait(false);
 
-        _logger.LogInformation("Project {ProjectId} analysis completed.", context.ProjectId);
+        _logger.LogInformation(
+            "Project {ProjectId} analysis completed in {DurationMs} ms. Rule count: {RuleCount}; report count: {ReportCount}; error count: {ErrorCount}; has findings: {HasAnyFindings}.",
+            context.ProjectId,
+            stopwatch.ElapsedMilliseconds,
+            rules.Count,
+            analysisResult.RuleReports.Count,
+            analysisResult.ExecutionErrors.Count,
+            analysisResult.HasAnyFindings);
     }
 
     private void ValidateOptions()

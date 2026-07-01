@@ -4,6 +4,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue;
 
@@ -11,12 +12,14 @@ internal sealed class ExecutionQueueClaimer(
     IServiceScopeFactory serviceScopeFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectExecutionLeaseRegistry leaseRegistry,
-    IExecutionStateService executionStateService) : IExecutionQueueClaimer
+    IExecutionStateService executionStateService,
+    ILogger<ExecutionQueueClaimer>? logger = null) : IExecutionQueueClaimer
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectExecutionLeaseRegistry _leaseRegistry = leaseRegistry;
     private readonly IExecutionStateService _executionStateService = executionStateService;
+    private readonly ILogger<ExecutionQueueClaimer> _logger = logger ?? NullLogger<ExecutionQueueClaimer>.Instance;
 
     public async Task<ProjectExecutionClaim?> TryClaimNextAsync(CancellationToken cancellationToken)
     {
@@ -35,6 +38,8 @@ internal sealed class ExecutionQueueClaimer(
                 ProjectProcessingStatus.Reviewing,
                 CancellationToken.None);
             await projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
+
+            _logger.LogInformation("Project {ProjectId} was claimed for execution.", claimData.ProjectId);
 
             return new ProjectExecutionClaim(
                 claimData.ProjectId,

@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Common.Tools;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
@@ -8,8 +9,10 @@ public sealed class CommonToolSet
 {
     private readonly CommonCommandToolService _commandToolService;
 
-    public CommonToolSet(string repositoryRootPath)
-        : this(new CommonCommandToolService(repositoryRootPath))
+    public CommonToolSet(string repositoryRootPath, ILoggerFactory? loggerFactory = null)
+        : this(new CommonCommandToolService(
+            repositoryRootPath,
+            loggerFactory?.CreateLogger<CommonCommandToolService>()))
     {
     }
 

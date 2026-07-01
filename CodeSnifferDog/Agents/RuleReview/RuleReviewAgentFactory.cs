@@ -19,7 +19,7 @@ public sealed class RuleReviewAgentFactory(
     IServiceProvider? serviceProvider = null)
 {
     private readonly AgentPromptRenderer _promptRenderer = new(promptAssetReader, promptTemplateRenderer);
-    private readonly AgentToolComposer _toolComposer = new();
+    private readonly AgentToolComposer _toolComposer = new(loggerFactory);
     private readonly AgentBuilderService _agentBuilderService = new(compactionOptions, loggerFactory, serviceProvider);
 
     public AgentCreationResult Create(

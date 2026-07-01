@@ -4,17 +4,20 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.Projects.Projection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake.Queue;
 
 internal sealed class ProjectQueueService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IOptions<ProjectExecutionOptions> projectExecutionOptions,
-    IProjectProjectionMapper projectionMapper) : IProjectQueueService
+    IProjectProjectionMapper projectionMapper,
+    ILogger<ProjectQueueService>? logger = null) : IProjectQueueService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly ProjectExecutionOptions _projectExecutionOptions = projectExecutionOptions.Value;
     private readonly IProjectProjectionMapper _projectionMapper = projectionMapper;
+    private readonly ILogger<ProjectQueueService> _logger = logger ?? NullLogger<ProjectQueueService>.Instance;
 
     public async Task<ProjectUploadResult> QueueAsync(ProjectQueueRequest request, CancellationToken cancellationToken)
     {
@@ -44,6 +47,12 @@ internal sealed class ProjectQueueService(
 
         dbContext.Projects.Add(project);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Project {ProjectId} queued from {OriginalFileName}. File size: {FileSizeBytes} bytes.",
+            project.Id,
+            project.OriginalFileName,
+            project.FileSizeBytes);
 
         return new ProjectUploadResult
         {

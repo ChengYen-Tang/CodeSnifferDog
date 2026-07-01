@@ -11,12 +11,15 @@ internal static class RunnerCompactionOptions
         OperationalContextAgentCompactionOptionsFactory factory,
         string summaryPromptAssetPath,
         OperationalContextCompactionOptions options,
-        IAgentEventScope eventScope) =>
+        IAgentEventScope eventScope,
+        ILoggerFactory loggerFactory) =>
         factory.CreateFromPromptAsset(
             summaryPromptAssetPath,
             options,
             hooks:
             [
-                new AgentCompactionEventHook(eventScope),
+                new AgentCompactionEventHook(
+                    eventScope,
+                    loggerFactory.CreateLogger<AgentCompactionEventHook>()),
             ]);
 }

@@ -8,6 +8,7 @@ using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Workflows.RuleReview;
 using FluentResults;
+using System.Diagnostics;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
@@ -19,8 +20,9 @@ internal sealed class RuleReviewRunnerFactory(
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly ILogger<RuleReviewRunnerFactory> _logger = loggerFactory.CreateLogger<RuleReviewRunnerFactory>();
 
-    public Task<Result<RuleReviewWorkflowResult>> RunAsync(
+    public async Task<Result<RuleReviewWorkflowResult>> RunAsync(
         WorkflowRuntimeContext context,
         string repositoryRootPath,
         string ruleKey,
@@ -30,6 +32,12 @@ internal sealed class RuleReviewRunnerFactory(
         IRuleReviewIssueStore issueStore,
         CancellationToken cancellationToken)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        _logger.LogDebug(
+            "Rule review workflow started for rule {RuleKey}, task item {ProjectPlanTaskItemId}.",
+            ruleKey,
+            taskItem.ProjectPlanTaskItemId);
+
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReviewWorkflow workflow = new(
             (reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, eventScope) => new RuleReviewAgentFactory(
@@ -37,7 +45,8 @@ internal sealed class RuleReviewRunnerFactory(
                     context.CompactionOptionsFactory,
                     SummaryPromptAssetPath,
                     compactionOptions,
-                    eventScope),
+                    eventScope,
+                    _loggerFactory),
                 context.PromptAssetReader,
                 loggerFactory: _loggerFactory,
                 serviceProvider: _serviceProvider).Create(context.ChatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer, eventScope),
@@ -46,7 +55,8 @@ internal sealed class RuleReviewRunnerFactory(
                     context.CompactionOptionsFactory,
                     SummaryPromptAssetPath,
                     compactionOptions,
-                    eventScope),
+                    eventScope,
+                    _loggerFactory),
                 context.PromptAssetReader,
                 loggerFactory: _loggerFactory,
                 serviceProvider: _serviceProvider).Create(context.ChatClient, reviewRepositoryRootPath, reviewRuleKey, reviewRuleMarkdown, reviewTaskItem, issueStore, verdictBuffer, eventScope),
@@ -56,7 +66,16 @@ internal sealed class RuleReviewRunnerFactory(
             CreateWorkflowOptions(context.ExecutionOptions),
             agentEventBus: context.AgentEventBus);
 
-        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
+        Result<RuleReviewWorkflowResult> result =
+            await workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken).ConfigureAwait(false);
+        _logger.LogDebug(
+            "Rule review workflow completed in {DurationMs} ms for rule {RuleKey}, task item {ProjectPlanTaskItemId}. Success: {Succeeded}; issue count: {IssueCount}.",
+            stopwatch.ElapsedMilliseconds,
+            ruleKey,
+            taskItem.ProjectPlanTaskItemId,
+            result.IsSuccess,
+            result.IsSuccess ? result.Value.Issues.Count : 0);
+        return result;
     }
 
     internal static RuleReviewWorkflowOptions CreateWorkflowOptions(ExecutionOptions executionOptions) =>

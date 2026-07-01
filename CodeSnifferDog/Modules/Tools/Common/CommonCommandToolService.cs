@@ -1,4 +1,6 @@
 using CodeSnifferDog.Models.Common.Tools;
+using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Text;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
@@ -10,14 +12,18 @@ internal sealed class CommonCommandToolService
     private readonly CommandTextRunner _textRunner;
     private readonly RipgrepExecutablePathProvider _ripgrepExecutablePathProvider;
     private readonly Func<bool> _isWindows;
+    private readonly ILogger<CommonCommandToolService>? _logger;
 
-    public CommonCommandToolService(string repositoryRootPath)
+    public CommonCommandToolService(
+        string repositoryRootPath,
+        ILogger<CommonCommandToolService>? logger = null)
         : this(
             repositoryRootPath,
             CommandProcessRunner.RunAsync,
             CommandProcessRunner.RunAsync,
             new RipgrepAssetLocator().GetExecutablePath,
-            OperatingSystem.IsWindows)
+            OperatingSystem.IsWindows,
+            logger)
     {
     }
 
@@ -26,7 +32,8 @@ internal sealed class CommonCommandToolService
         CommandArgumentsRunner argumentsRunner,
         CommandTextRunner textRunner,
         RipgrepExecutablePathProvider ripgrepExecutablePathProvider,
-        Func<bool> isWindows)
+        Func<bool> isWindows,
+        ILogger<CommonCommandToolService>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(argumentsRunner);
         ArgumentNullException.ThrowIfNull(textRunner);
@@ -38,21 +45,32 @@ internal sealed class CommonCommandToolService
         _textRunner = textRunner;
         _ripgrepExecutablePathProvider = ripgrepExecutablePathProvider;
         _isWindows = isWindows;
+        _logger = logger;
     }
 
-    public ValueTask<CommandExecutionResult> RunShellCommandAsync(
+    public async ValueTask<CommandExecutionResult> RunShellCommandAsync(
         RunShellCommandArgs args,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentException.ThrowIfNullOrWhiteSpace(args.Command);
 
-        return _isWindows()
-            ? _argumentsRunner("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(BuildPowerShellCommand(args.Command))], _repositoryRootPath, cancellationToken)
-            : _argumentsRunner("/bin/bash", ["-lc", args.Command], _repositoryRootPath, cancellationToken);
+        string command = args.Command.Trim();
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        _logger?.LogDebug(
+            "Shell tool started in {RepositoryRootPath}. Command: {Command}",
+            _repositoryRootPath,
+            command);
+
+        CommandExecutionResult result = _isWindows()
+            ? await _argumentsRunner("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(BuildPowerShellCommand(command))], _repositoryRootPath, cancellationToken).ConfigureAwait(false)
+            : await _argumentsRunner("/bin/bash", ["-lc", command], _repositoryRootPath, cancellationToken).ConfigureAwait(false);
+
+        LogCommandResult("Shell", command, result, stopwatch.ElapsedMilliseconds);
+        return result;
     }
 
-    public ValueTask<CommandExecutionResult> RunRipgrepCommandAsync(
+    public async ValueTask<CommandExecutionResult> RunRipgrepCommandAsync(
         RunRipgrepCommandArgs args,
         CancellationToken cancellationToken)
     {
@@ -64,11 +82,49 @@ internal sealed class CommonCommandToolService
         if (StartsWithRipgrepExecutable(trimmedCommand))
             throw new ArgumentException("Command must not include the rg executable name.", nameof(args));
 
-        return _textRunner(
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        _logger?.LogDebug(
+            "Ripgrep tool started in {RepositoryRootPath}. Arguments: {Command}",
+            _repositoryRootPath,
+            trimmedCommand);
+
+        CommandExecutionResult result = await _textRunner(
             _ripgrepExecutablePathProvider(),
             trimmedCommand,
             _repositoryRootPath,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+
+        LogCommandResult("Ripgrep", trimmedCommand, result, stopwatch.ElapsedMilliseconds);
+        return result;
+    }
+
+    private void LogCommandResult(
+        string toolName,
+        string command,
+        CommandExecutionResult result,
+        long durationMs)
+    {
+        if (result.ExitCode == 0)
+        {
+            _logger?.LogDebug(
+                "{ToolName} tool completed in {DurationMs} ms. Exit code: {ExitCode}; command: {Command}; stdout: {StandardOutput}; stderr: {StandardError}",
+                toolName,
+                durationMs,
+                result.ExitCode,
+                command,
+                result.StandardOutput,
+                result.StandardError);
+            return;
+        }
+
+        _logger?.LogWarning(
+            "{ToolName} tool completed with non-zero exit code {ExitCode} in {DurationMs} ms. Command: {Command}; stdout: {StandardOutput}; stderr: {StandardError}",
+            toolName,
+            result.ExitCode,
+            durationMs,
+            command,
+            result.StandardOutput,
+            result.StandardError);
     }
 
     private static string ValidateRepositoryRootPath(string repositoryRootPath)

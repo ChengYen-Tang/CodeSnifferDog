@@ -9,6 +9,7 @@ using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Workflows.Report;
 using FluentResults;
+using System.Diagnostics;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
@@ -20,8 +21,9 @@ internal sealed class RuleReportRunnerFactory(
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly ILogger<RuleReportRunnerFactory> _logger = loggerFactory.CreateLogger<RuleReportRunnerFactory>();
 
-    public Task<Result<RuleReportWorkflowResult>> RunAsync(
+    public async Task<Result<RuleReportWorkflowResult>> RunAsync(
         WorkflowRuntimeContext context,
         string repositoryRootPath,
         string ruleKey,
@@ -32,6 +34,13 @@ internal sealed class RuleReportRunnerFactory(
         IRuleReportIssueStore reportIssueStore,
         CancellationToken cancellationToken)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        _logger.LogDebug(
+            "Rule report workflow started for rule {RuleKey}, task item {ProjectPlanTaskItemId}. Current flow issue count: {IssueCount}.",
+            ruleKey,
+            taskItem.ProjectPlanTaskItemId,
+            currentFlowIssues.Count);
+
         ReviewVerdictBuffer verdictBuffer = new();
         RuleReportWorkflow workflow = new(
             (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, eventScope) => new ReportAggregatorAgentFactory(
@@ -39,7 +48,8 @@ internal sealed class RuleReportRunnerFactory(
                     context.CompactionOptionsFactory,
                     SummaryPromptAssetPath,
                     compactionOptions,
-                    eventScope),
+                    eventScope,
+                    _loggerFactory),
                 context.PromptAssetReader,
                 loggerFactory: _loggerFactory,
                 serviceProvider: _serviceProvider).Create(context.ChatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, reportIssueStore, verdictBuffer, eventScope),
@@ -48,7 +58,8 @@ internal sealed class RuleReportRunnerFactory(
                     context.CompactionOptionsFactory,
                     SummaryPromptAssetPath,
                     compactionOptions,
-                    eventScope),
+                    eventScope,
+                    _loggerFactory),
                 context.PromptAssetReader,
                 loggerFactory: _loggerFactory,
                 serviceProvider: _serviceProvider).Create(context.ChatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer, eventScope),
@@ -58,7 +69,16 @@ internal sealed class RuleReportRunnerFactory(
             CreateWorkflowOptions(context.ExecutionOptions),
             agentEventBus: context.AgentEventBus);
 
-        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken);
+        Result<RuleReportWorkflowResult> result =
+            await workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken).ConfigureAwait(false);
+        _logger.LogDebug(
+            "Rule report workflow completed in {DurationMs} ms for rule {RuleKey}, task item {ProjectPlanTaskItemId}. Success: {Succeeded}; repository issue count: {IssueCount}.",
+            stopwatch.ElapsedMilliseconds,
+            ruleKey,
+            taskItem.ProjectPlanTaskItemId,
+            result.IsSuccess,
+            result.IsSuccess ? result.Value.RepositoryIssues.Count : 0);
+        return result;
     }
 
     internal static RuleReportWorkflowOptions CreateWorkflowOptions(ExecutionOptions executionOptions) =>
