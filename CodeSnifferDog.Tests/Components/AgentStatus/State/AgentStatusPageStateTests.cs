@@ -213,6 +213,23 @@ public sealed class AgentStatusPageStateTests
         Assert.IsTrue(removeChanged);
         Assert.HasCount(1, state.History.TimelineEntries);
         Assert.AreEqual("new selected", state.History.TimelineEntries[0].Message);
+        Assert.AreEqual(2, state.History.GetLatestSequence());
+
+        bool removeRemainingChanged = state.ApplyLiveUpdate(new ProjectAgentLiveUpdateDto
+        {
+            ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
+            Kind = ProjectAgentLiveUpdateKind.TimelineEntriesRemoved,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            RemovedTimelineEntries = new ProjectAgentTimelineEntriesRemovedDto
+            {
+                AgentId = selectedAgentId,
+                TimelineEntryIds = [Guid.Parse("73000000-0000-0000-0000-000000000002")],
+            },
+        });
+
+        Assert.IsTrue(removeRemainingChanged);
+        Assert.IsEmpty(state.History.TimelineEntries);
+        Assert.AreEqual(0, state.History.GetLatestSequence());
     }
 
     [TestMethod]
@@ -243,6 +260,66 @@ public sealed class AgentStatusPageStateTests
         CollectionAssert.AreEqual(
             new long[] { 3, 5 },
             state.Snapshot.FindAgent(agentId)!.TimelineEntries.Select(entry => entry.Sequence).ToArray());
+    }
+
+    [TestMethod]
+    public void LargeSnapshotLookupPreservesSelectionAndAppliesSelectedHistory()
+    {
+        AgentStatusPageState state = AgentStatusPageState.CreateEmpty();
+        Guid selectedGroupId = Guid.Parse("71000000-0000-0000-0000-000000000015");
+        Guid selectedAgentId = Guid.Parse("72000000-0000-0000-0015-000000000007");
+        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups = Enumerable.Range(0, 20)
+            .Select(groupIndex =>
+            {
+                Guid groupId = groupIndex == 15
+                    ? selectedGroupId
+                    : Guid.Parse($"71000000-0000-0000-0000-{groupIndex:000000000000}");
+                IReadOnlyList<ProjectAgentSnapshotDto> agents = Enumerable.Range(0, 10)
+                    .Select(agentIndex =>
+                    {
+                        Guid agentId = groupIndex == 15 && agentIndex == 7
+                            ? selectedAgentId
+                            : Guid.Parse($"72000000-0000-{groupIndex:0000}-{agentIndex:0000}-000000000000");
+                        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+                            agentId == selectedAgentId
+                                ? [CreateTimelineEntry(selectedAgentId, 11, "selected")]
+                                : [];
+
+                        return CreateAgent(agentId, groupId, $"Agent {groupIndex}-{agentIndex}", agentIndex, timelineEntries);
+                    })
+                    .ToList();
+
+                return CreateGroup(groupId, $"Group {groupIndex}", groupIndex, agents);
+            })
+            .ToList();
+
+        state.SetSnapshot(CreateSnapshot(groups));
+        state.SelectAgent(selectedAgentId);
+        state.SetSnapshot(CreateSnapshot(groups));
+
+        Assert.AreEqual(selectedAgentId, state.Selection.SelectedAgentId);
+        Assert.AreEqual(selectedAgentId, state.Snapshot.FindAgent(selectedAgentId)?.AgentId);
+        Assert.HasCount(1, state.History.TimelineEntries);
+        Assert.AreEqual(11, state.History.GetLatestSequence());
+    }
+
+    [TestMethod]
+    public void NullSnapshotClearsSelectionHistoryAndLookup()
+    {
+        AgentStatusPageState state = AgentStatusPageState.CreateEmpty();
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000050");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000050");
+        state.SetSnapshot(CreateSnapshot(
+            [
+                CreateGroup(groupId, "Group A", 1, [CreateAgent(agentId, groupId, "Agent", 1, [CreateTimelineEntry(agentId, 3, "third")])]),
+            ]));
+
+        state.SetSnapshot(null);
+
+        Assert.IsNull(state.Selection.SelectedAgentId);
+        Assert.IsNull(state.Snapshot.FindAgent(agentId));
+        Assert.IsEmpty(state.History.TimelineEntries);
+        Assert.AreEqual(0, state.History.GetLatestSequence());
     }
 
     private static ProjectAgentLiveUpdateDto CreateAgentUpdate(Guid groupId, Guid agentId, string displayName, int createdMinute) => new()

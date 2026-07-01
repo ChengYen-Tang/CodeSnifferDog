@@ -50,8 +50,8 @@ internal sealed class AgentStatusPageState(
     public void SetSnapshot(ProjectAgentStatusSnapshotDto? snapshot)
     {
         Snapshot.Replace(snapshot);
-        Selection.ApplySnapshot(snapshot);
-        History.ApplySnapshot(snapshot, Selection.SelectedAgentId);
+        Selection.ApplySnapshot(Snapshot);
+        History.ApplySnapshot(Snapshot, Selection.SelectedAgentId);
         Snapshot.ReleaseHistoryExcept(Selection.SelectedAgentId);
     }
 

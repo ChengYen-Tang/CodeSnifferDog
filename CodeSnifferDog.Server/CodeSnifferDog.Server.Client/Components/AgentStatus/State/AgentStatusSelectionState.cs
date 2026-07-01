@@ -1,5 +1,3 @@
-using CodeSnifferDog.Server.Shared.AgentStatus;
-
 namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 
 internal sealed class AgentStatusSelectionState(Guid? selectedAgentId, HashSet<string> expandedToolDetails)
@@ -14,9 +12,9 @@ internal sealed class AgentStatusSelectionState(Guid? selectedAgentId, HashSet<s
         ExpandedToolDetails.Clear();
     }
 
-    public void ApplySnapshot(ProjectAgentStatusSnapshotDto? snapshot)
+    public void ApplySnapshot(AgentStatusSnapshotState snapshot)
     {
-        if (snapshot is null)
+        if (snapshot.Snapshot is null)
         {
             SelectedAgentId = null;
             ExpandedToolDetails.Clear();
@@ -25,15 +23,12 @@ internal sealed class AgentStatusSelectionState(Guid? selectedAgentId, HashSet<s
 
         bool selectedAgentStillExists =
             SelectedAgentId is not null &&
-            snapshot.AgentGroups.SelectMany(group => group.Agents).Any(agent => agent.AgentId == SelectedAgentId.Value);
+            snapshot.ContainsAgent(SelectedAgentId.Value);
 
         if (selectedAgentStillExists)
             return;
 
-        SelectedAgentId = snapshot.AgentGroups
-            .SelectMany(group => group.Agents)
-            .Select(agent => (Guid?)agent.AgentId)
-            .FirstOrDefault();
+        SelectedAgentId = snapshot.GetFirstAgentId();
         ExpandedToolDetails.Clear();
     }
 

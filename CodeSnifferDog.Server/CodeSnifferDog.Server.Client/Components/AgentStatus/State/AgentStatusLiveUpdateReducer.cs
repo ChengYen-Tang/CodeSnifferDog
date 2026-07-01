@@ -43,7 +43,7 @@ internal sealed class AgentStatusLiveUpdateReducer
         if (!snapshot.ApplyLiveUpdate(update))
             return false;
 
-        selection.ApplySnapshot(snapshot.Snapshot);
+        selection.ApplySnapshot(snapshot);
         return true;
     }
 }
