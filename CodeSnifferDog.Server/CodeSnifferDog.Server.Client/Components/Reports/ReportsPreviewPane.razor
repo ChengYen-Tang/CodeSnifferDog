@@ -11,16 +11,20 @@
                 </div>
             </div>
 
-            <div class="reports-preview-body report-reader markdown-body">
-                Loading report...
+            <div class="reports-preview-body">
+                <div class="markdown-body report-reader">
+                    Loading report...
+                </div>
             </div>
         </div>
     }
     else if (!string.IsNullOrWhiteSpace(ContentErrorMessage))
     {
         <div class="reports-preview-shell">
-            <div class="reports-preview-body report-reader markdown-body text-danger">
-                @ContentErrorMessage
+            <div class="reports-preview-body">
+                <div class="markdown-body report-reader text-danger">
+                    @ContentErrorMessage
+                </div>
             </div>
         </div>
     }
@@ -34,16 +38,20 @@
                 </div>
             </div>
 
-            <div class="reports-preview-body report-reader markdown-body">
-                @SelectedReportMarkup
+            <div class="reports-preview-body">
+                <div class="markdown-body report-reader">
+                    @SelectedReportMarkup
+                </div>
             </div>
         </div>
     }
     else if (!IsListLoading && string.IsNullOrWhiteSpace(ListErrorMessage))
     {
         <div class="reports-preview-shell">
-            <div class="reports-preview-body report-reader markdown-body">
-                No report selected.
+            <div class="reports-preview-body">
+                <div class="markdown-body report-reader">
+                    No report selected.
+                </div>
             </div>
         </div>
     }

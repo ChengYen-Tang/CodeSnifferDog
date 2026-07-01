@@ -57,7 +57,7 @@ public sealed class ReportsPreviewPaneTests
             parameters => parameters.Add(component => component.ContentErrorMessage, "Failed to load report content: 500"));
 
         StringAssert.Contains(error.Markup, "Failed to load report content: 500");
-        StringAssert.Contains(error.Find(".reports-preview-body").ClassName, "text-danger");
+        StringAssert.Contains(error.Find(".markdown-body").ClassName, "text-danger");
 
         IRenderedComponent<ReportsPreviewPane> empty = context.RenderComponent<ReportsPreviewPane>(
             parameters => parameters

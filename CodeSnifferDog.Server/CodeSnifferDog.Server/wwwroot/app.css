@@ -18,6 +18,7 @@ a {
 .reports-page {
     height: 100%;
     min-height: 0;
+    overflow: hidden;
 }
 
 .agent-status-page {
@@ -834,13 +835,13 @@ a {
 }
 
 .reports-explorer-card {
-    min-height: calc(100dvh - 11rem);
-    height: calc(100dvh - 11rem);
+    min-height: 0;
+    height: auto;
     overflow: hidden;
 }
 
 .reports-explorer {
-    min-height: calc(100dvh - 11rem);
+    min-height: 0;
     height: 100%;
 }
 
