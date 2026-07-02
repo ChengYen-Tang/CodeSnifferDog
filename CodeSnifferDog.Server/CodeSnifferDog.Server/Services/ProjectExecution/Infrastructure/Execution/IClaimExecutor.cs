@@ -6,6 +6,6 @@ internal interface IClaimExecutor
 {
     Task ExecuteAsync(
         int workerNumber,
-        ProjectExecutionClaim claim,
+        Claim claim,
         CancellationToken stoppingToken);
 }

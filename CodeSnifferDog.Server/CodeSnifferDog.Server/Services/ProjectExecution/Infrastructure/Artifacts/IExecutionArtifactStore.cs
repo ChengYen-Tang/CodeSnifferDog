@@ -4,7 +4,7 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Artifac
 
 internal interface IExecutionArtifactStore
 {
-    string PrepareRepository(ProjectExecutionClaim claim);
+    string PrepareRepository(Claim claim);
 
     bool StoredZipExists(string storedZipRelativePath);
 

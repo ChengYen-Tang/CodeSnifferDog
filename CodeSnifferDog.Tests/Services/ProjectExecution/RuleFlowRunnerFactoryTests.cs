@@ -7,7 +7,7 @@ using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.RuleReview;
-using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
+using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using FluentResults;
 using Microsoft.Extensions.AI;

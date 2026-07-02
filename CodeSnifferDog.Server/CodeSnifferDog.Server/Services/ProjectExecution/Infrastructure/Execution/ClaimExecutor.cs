@@ -1,6 +1,7 @@
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Artifacts;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Cancellation;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue;
 using System.Diagnostics;
 
@@ -19,7 +20,7 @@ internal sealed class ClaimExecutor(
 
     public async Task ExecuteAsync(
         int workerNumber,
-        ProjectExecutionClaim claim,
+        Claim claim,
         CancellationToken stoppingToken)
     {
         using ProjectExecutionLease lease = claim.ExecutionLease;
@@ -98,11 +99,11 @@ internal sealed class ClaimExecutor(
     }
 
     private async Task ApplyCancellationOutcomeAsync(
-        ProjectExecutionClaim claim,
+        Claim claim,
         ProjectExecutionLease lease,
         long durationMs)
     {
-        ProjectExecutionCancellationOutcome outcome = ProjectExecutionCancellationPolicy.Resolve(lease);
+        Outcome outcome = Policy.Resolve(lease);
 
         _logger.LogInformation(
             "Project {ProjectId} execution was canceled after {DurationMs} ms.",

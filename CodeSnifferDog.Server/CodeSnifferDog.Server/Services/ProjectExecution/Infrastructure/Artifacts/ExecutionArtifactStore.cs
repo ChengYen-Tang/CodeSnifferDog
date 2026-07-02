@@ -11,7 +11,7 @@ internal sealed class ExecutionArtifactStore(
     private readonly ProjectTemporaryStoragePaths _storagePaths = storagePaths;
     private readonly ILogger<ExecutionArtifactStore> _logger = logger;
 
-    public string PrepareRepository(ProjectExecutionClaim claim)
+    public string PrepareRepository(Claim claim)
     {
         string uploadedZipPath = _storagePaths.ResolveStoredZipPath(claim.StoredZipRelativePath);
         string extractedProjectPath = _storagePaths.ResolveExtractedProjectPath(claim.ProjectId);

@@ -68,7 +68,7 @@ public sealed class ExecutionStateServiceTests
         new(
             services.GetRequiredService<IServiceScopeFactory>(),
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-            services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+            services.GetRequiredService<ILiveUpdateNotifier>(),
             services.GetRequiredService<IProjectStatusMapper>());
 
     private static ServiceProvider CreateServices(
@@ -80,7 +80,7 @@ public sealed class ExecutionStateServiceTests
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot));
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
-        services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier>(liveUpdateNotifier);
+        services.AddSingleton<ILiveUpdateNotifier>(liveUpdateNotifier);
         services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
         return services.BuildServiceProvider();
     }
@@ -118,7 +118,7 @@ public sealed class ExecutionStateServiceTests
         }
     }
 
-    private sealed class TestLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
+    private sealed class TestLiveUpdateNotifier : ILiveUpdateNotifier
     {
         public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
 

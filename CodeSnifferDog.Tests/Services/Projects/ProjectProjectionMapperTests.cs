@@ -1,6 +1,7 @@
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.Projects.Projection;
+using CodeSnifferDog.Server.Services.Projects.Sidebar.Projection;
 using CodeSnifferDog.Server.Shared.Projects;
 
 namespace CodeSnifferDog.Tests.Services.Projects;
@@ -83,7 +84,7 @@ public sealed class ProjectProjectionMapperTests
     public void MapSidebarProject_MapsProjectFieldsAndSortOrder()
     {
         ProjectProjectionMapper mapper = CreateMapper();
-        ProjectSidebarProjectProjection project = new(
+        ProjectProjection project = new(
             Guid.NewGuid(),
             "repo.zip",
             ProjectProcessingStatus.Reviewing,

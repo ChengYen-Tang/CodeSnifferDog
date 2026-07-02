@@ -1,5 +1,4 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using FluentResults;
 
 namespace CodeSnifferDog.Workflows.Common;

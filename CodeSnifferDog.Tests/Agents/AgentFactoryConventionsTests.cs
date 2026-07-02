@@ -3,7 +3,6 @@ using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.Scan;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;

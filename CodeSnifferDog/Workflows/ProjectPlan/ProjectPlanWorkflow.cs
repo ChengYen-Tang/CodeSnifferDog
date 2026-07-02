@@ -2,7 +2,6 @@ using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -10,6 +9,7 @@ using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.ProjectPlan;
 
@@ -43,8 +43,8 @@ public sealed class ProjectPlanWorkflow(
         repositoryRootPath = repositoryRootPath.Trim();
         await _taskItemStore.ClearAsync(cancellationToken).ConfigureAwait(false);
 
-        ProjectPlanWorkflowMessageTemplates messageTemplates = new(_promptAssetReader);
-        ProjectPlanWorkflowMessageBuilder messageBuilder = new(messageTemplates);
+        MessageTemplates messageTemplates = new(_promptAssetReader);
+        MessageBuilder messageBuilder = new(messageTemplates);
         string groupKey = AgentStatusCatalog.CreateProjectPlanGroupKey(scanProject);
         IAgentEventScope plannerAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateProjectPlannerAgentKey(scanProject));
         IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateProjectVerifierAgentKey(scanProject));
@@ -158,7 +158,7 @@ public sealed class ProjectPlanWorkflow(
 
             if (verdict.Approved)
             {
-                return Result.Ok(ProjectPlanWorkflowResultFactory.Create(
+                return Result.Ok(ResultFactory.Create(
                     scanProject,
                     taskItems,
                     verdict,
@@ -173,7 +173,7 @@ public sealed class ProjectPlanWorkflow(
             if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
             {
                 await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Ok(ProjectPlanWorkflowResultFactory.Create(
+                return Result.Ok(ResultFactory.Create(
                     scanProject,
                     taskItems,
                     verdict,

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Cancellation;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 
@@ -33,7 +34,7 @@ public sealed class ProjectExecutionLeaseRegistry : IProjectExecutionLeaseRegist
         if (!_leases.TryGetValue(projectId, out ProjectExecutionLease? lease))
             return false;
 
-        if (!lease.TryCancel(ProjectExecutionCancellationSource.UserRequest))
+        if (!lease.TryCancel(Source.UserRequest))
             return false;
 
         completion = lease.Completion;

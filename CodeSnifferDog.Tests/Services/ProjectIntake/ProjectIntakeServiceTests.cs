@@ -24,8 +24,8 @@ public sealed class ProjectIntakeServiceTests
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         TrackingProjectChangePublisher projectChangePublisher = new();
-        StubProjectUploadService uploadService = new();
-        StubProjectQueueService queueService = new();
+        StubUploadService uploadService = new();
+        StubQueueService queueService = new();
         TrackingProjectExecutionQueueLock queueLock = new();
         ProjectIntakeService service = CreateService(
             dbContextFactory,
@@ -53,8 +53,8 @@ public sealed class ProjectIntakeServiceTests
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         TrackingProjectChangePublisher projectChangePublisher = new();
-        StubProjectUploadService uploadService = new();
-        StubProjectQueueService queueService = new(new InvalidOperationException("queue failed"));
+        StubUploadService uploadService = new();
+        StubQueueService queueService = new(new InvalidOperationException("queue failed"));
         ProjectIntakeService service = CreateService(
             dbContextFactory,
             projectChangePublisher,
@@ -106,7 +106,7 @@ public sealed class ProjectIntakeServiceTests
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         TrackingProjectChangePublisher projectChangePublisher = new();
-        StubProjectDeletionService deletionService = new(deleted: true);
+        StubDeletionService deletionService = new(deleted: true);
         TrackingProjectExecutionQueueLock queueLock = new();
         ProjectIntakeService service = CreateService(
             dbContextFactory,
@@ -128,7 +128,7 @@ public sealed class ProjectIntakeServiceTests
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         TrackingProjectChangePublisher projectChangePublisher = new();
-        StubProjectDeletionService deletionService = new(deleted: false);
+        StubDeletionService deletionService = new(deleted: false);
         ProjectIntakeService service = CreateService(
             dbContextFactory,
             projectChangePublisher,
@@ -143,17 +143,17 @@ public sealed class ProjectIntakeServiceTests
     private static ProjectIntakeService CreateService(
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
         IProjectChangePublisher projectChangePublisher,
-        IProjectUploadService? uploadService = null,
-        IProjectQueueService? queueService = null,
-        IProjectDeletionService? deletionService = null,
+        IUploadService? uploadService = null,
+        IQueueService? queueService = null,
+        IDeletionService? deletionService = null,
         IProjectExecutionLeaseRegistry? executionLeaseRegistry = null,
         IProjectExecutionQueueLock? queueLock = null) =>
         new(
             dbContextFactory,
             projectChangePublisher,
-            uploadService ?? new StubProjectUploadService(),
-            queueService ?? new StubProjectQueueService(),
-            deletionService ?? new StubProjectDeletionService(),
+            uploadService ?? new StubUploadService(),
+            queueService ?? new StubQueueService(),
+            deletionService ?? new StubDeletionService(),
             new ProjectProjectionMapper(new ProjectStatusMapper()),
             executionLeaseRegistry ?? new StubProjectExecutionLeaseRegistry(Guid.Empty),
             queueLock ?? new TrackingProjectExecutionQueueLock(),
@@ -219,25 +219,25 @@ public sealed class ProjectIntakeServiceTests
         public void Dispose() { }
     }
 
-    private sealed class StubProjectUploadService : IProjectUploadService
+    private sealed class StubUploadService : IUploadService
     {
-        public ProjectUploadArtifact Artifact { get; } = new("repo.zip", 123, "stored.zip", "uploads/stored.zip");
+        public Artifact Artifact { get; } = new("repo.zip", 123, "stored.zip", "uploads/stored.zip");
 
         public int DeleteCallCount { get; private set; }
 
-        public ProjectUploadArtifact? DeletedArtifact { get; private set; }
+        public Artifact? DeletedArtifact { get; private set; }
 
-        public Task<ProjectUploadArtifact> StoreAsync(Guid projectId, IFormFile zipFile, CancellationToken cancellationToken) =>
+        public Task<Artifact> StoreAsync(Guid projectId, IFormFile zipFile, CancellationToken cancellationToken) =>
             Task.FromResult(Artifact);
 
-        public void TryDeleteStoredFile(ProjectUploadArtifact artifact)
+        public void TryDeleteStoredFile(Artifact artifact)
         {
             DeleteCallCount++;
             DeletedArtifact = artifact;
         }
     }
 
-    private sealed class StubProjectQueueService(Exception? exception = null) : IProjectQueueService
+    private sealed class StubQueueService(Exception? exception = null) : IQueueService
     {
         public ProjectUploadResult Result { get; } = new()
         {
@@ -249,9 +249,9 @@ public sealed class ProjectIntakeServiceTests
             QueueTimestampUtc = DateTimeOffset.UtcNow,
         };
 
-        public ProjectQueueRequest? Request { get; private set; }
+        public Request? Request { get; private set; }
 
-        public Task<ProjectUploadResult> QueueAsync(ProjectQueueRequest request, CancellationToken cancellationToken)
+        public Task<ProjectUploadResult> QueueAsync(Request request, CancellationToken cancellationToken)
         {
             Request = request;
             return exception is null
@@ -260,7 +260,7 @@ public sealed class ProjectIntakeServiceTests
         }
     }
 
-    private sealed class StubProjectDeletionService(bool deleted = false) : IProjectDeletionService
+    private sealed class StubDeletionService(bool deleted = false) : IDeletionService
     {
         public Guid? ProjectId { get; private set; }
 

@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -11,7 +12,7 @@ public sealed class OperationalContextCompactionMessageContextProvider : Message
     private readonly OperationalContextMessageShrinker _messageShrinker;
     private readonly OperationalContextCompactionOptions _options;
     private readonly OperationalContextChatReducer _reducer;
-    private readonly OperationalContextAutomaticCompactionSessionState _sessionState = new();
+    private readonly AutomaticCompactionSessionState _sessionState = new();
 
     public OperationalContextCompactionMessageContextProvider(
         OperationalContextAgentCompactionOptions agentOptions)

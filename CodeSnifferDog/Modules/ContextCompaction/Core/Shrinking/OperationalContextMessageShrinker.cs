@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
@@ -155,12 +156,12 @@ public sealed class OperationalContextMessageShrinker
                     case FunctionCallContent functionCall when
                         removeCompactedMessages &&
                         targetCallIds.Contains(functionCall.CallId):
-                        freedEstimatedTokens += OperationalContextTokenEstimator.EstimateContent(content);
+                        freedEstimatedTokens += TokenEstimator.EstimateContent(content);
                         changed = true;
                         continue;
 
                     case FunctionResultContent functionResult when targetCallIds.Contains(functionResult.CallId):
-                        freedEstimatedTokens += OperationalContextTokenEstimator.EstimateContent(content);
+                        freedEstimatedTokens += TokenEstimator.EstimateContent(content);
                         shrunkToolResultCount++;
                         changed = true;
 

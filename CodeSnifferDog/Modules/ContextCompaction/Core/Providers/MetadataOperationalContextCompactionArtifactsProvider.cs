@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
@@ -39,7 +40,7 @@ public sealed class MetadataOperationalContextCompactionArtifactsProvider(
                 OperationalContextCompactionArtifactMetadata.HookResultArtifactKind))
                 continue;
 
-            int messageTokens = OperationalContextTokenEstimator.Estimate([message]);
+            int messageTokens = TokenEstimator.Estimate([message]);
             if (usedTokens + messageTokens > _options.PostCompactAttachmentTokenBudget)
                 break;
 

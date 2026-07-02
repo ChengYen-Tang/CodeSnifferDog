@@ -4,13 +4,13 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Prompts;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.Report;
 
@@ -26,10 +26,10 @@ public sealed class RuleReportWorkflow(
     private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
     private readonly Func<string, string, string, StoredProjectPlanTaskItem, IReadOnlyList<StoredRuleReviewIssue>, IAgentEventScope, AgentCreationResult> _reportVerifierAgentFactory = reportVerifierAgentFactory;
     private readonly IRuleReportIssueStore _reportIssueStore = reportIssueStore;
-    private readonly RuleReportDiffService _diffService = new(reportIssueStore);
+    private readonly DiffService _diffService = new(reportIssueStore);
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly RuleReportWorkflowMessageBuilder _messageBuilder =
-        new(new RuleReportWorkflowMessageTemplates(promptAssetReader ?? new PromptAssetReader()));
+    private readonly MessageBuilder _messageBuilder =
+        new(new MessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly RuleReportWorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
     private RuleFlowKey _ruleFlowKey = default!;
@@ -159,7 +159,7 @@ public sealed class RuleReportWorkflow(
                     IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
                         await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
 
-                    return Result.Ok(RuleReportWorkflowResultFactory.Create(
+                    return Result.Ok(ResultFactory.Create(
                         ruleKey,
                         taskItem,
                         diff,
@@ -179,7 +179,7 @@ public sealed class RuleReportWorkflow(
                     IReadOnlyList<StoredRuleReportIssue> repositoryIssues =
                         await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
 
-                    return Result.Ok(RuleReportWorkflowResultFactory.Create(
+                    return Result.Ok(ResultFactory.Create(
                         ruleKey,
                         taskItem,
                         diff,

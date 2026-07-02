@@ -11,12 +11,12 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Executi
 internal sealed class ExecutionStateService(
     IServiceScopeFactory serviceScopeFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-    IProjectAgentStatusLiveUpdateNotifier projectAgentStatusLiveUpdateNotifier,
+    ILiveUpdateNotifier projectAgentStatusLiveUpdateNotifier,
     IProjectStatusMapper projectStatusMapper) : IExecutionStateService
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
-    private readonly IProjectAgentStatusLiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
+    private readonly ILiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
     private readonly IProjectStatusMapper _projectStatusMapper = projectStatusMapper;
 
     public async Task<bool> CanStartExecutionAsync(Guid projectId, CancellationToken cancellationToken)

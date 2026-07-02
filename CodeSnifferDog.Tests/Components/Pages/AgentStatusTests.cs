@@ -23,7 +23,7 @@ public sealed class AgentStatusTests
     public void RendersSnapshotAndSelectsFirstAvailableAgent()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000001"),
             groups:
@@ -157,7 +157,7 @@ public sealed class AgentStatusTests
     public void ReplacesSelectedAgentWhenSnapshotChangesAndOriginalAgentDisappears()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         ProjectAgentStatusSnapshotDto firstSnapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000010"),
             groups:
@@ -252,7 +252,7 @@ public sealed class AgentStatusTests
     public void ShowsNoProjectSelectedWhenProjectIdIsMissing()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([]))
         {
             BaseAddress = new Uri("http://localhost"),
@@ -271,7 +271,7 @@ public sealed class AgentStatusTests
     public void ShowsNotFoundErrorWhenSnapshotEndpointReturns404()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([], statusCode: HttpStatusCode.NotFound))
         {
             BaseAddress = new Uri("http://localhost"),
@@ -293,7 +293,7 @@ public sealed class AgentStatusTests
     public void KeepsSelectionEmptyWhenSnapshotContainsNoAgents()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000120"),
             groups:
@@ -329,7 +329,7 @@ public sealed class AgentStatusTests
     public void ShowsFailureErrorWhenSnapshotEndpointReturnsServerError()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([], statusCode: HttpStatusCode.InternalServerError))
         {
             BaseAddress = new Uri("http://localhost"),
@@ -352,7 +352,7 @@ public sealed class AgentStatusTests
     public void LargeSnapshot_RendersRosterAndSelectedTimeline()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("90000000-0000-0000-0000-000000000100");
         Guid selectedGroupId = Guid.Parse("90000000-0000-0000-0000-000000000200");
         Guid selectedAgentId = Guid.Parse("90000000-0000-0000-0000-000000000300");
@@ -560,7 +560,7 @@ public sealed class AgentStatusTests
     public void KeepsSelectedAgentWhenSnapshotChangesAndAgentStillExists()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid selectedAgentId = Guid.Parse("72000000-0000-0000-0000-000000000020");
         Guid otherAgentId = Guid.Parse("72000000-0000-0000-0000-000000000021");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000020");
@@ -692,7 +692,7 @@ public sealed class AgentStatusTests
     public void SelectingAgentWithoutPreloadedHistoryFetchesHistoryOnDemand()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000301");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000301");
         Guid selectedAgentId = Guid.Parse("72000000-0000-0000-0000-000000000301");
@@ -777,7 +777,7 @@ public sealed class AgentStatusTests
     public void LiveReducer_AddsGroupAndAgentAndSelectsFirstAvailableAgent()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000200"),
             groups: []);
@@ -841,7 +841,7 @@ public sealed class AgentStatusTests
     public void LiveReducer_StatusUpdateIsIdempotentAndDoesNotDuplicateAgent()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000201");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000201");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000201");
@@ -904,7 +904,7 @@ public sealed class AgentStatusTests
     public void LiveReducer_ToolTimelineUpdateIsUpsertNotAppend()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000202");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000202");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000202");
@@ -987,7 +987,7 @@ public sealed class AgentStatusTests
     public void LiveReducer_TimelineEntriesRemoved_RemovesSelectedAgentHistoryEntries()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000206");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000206");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000206");
@@ -1077,7 +1077,7 @@ public sealed class AgentStatusTests
     public void LiveReducer_UnknownGroupOrAgentEvents_AreIgnoredWithoutBreakingSelection()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000203");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000203");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000203");
@@ -1182,7 +1182,7 @@ public sealed class AgentStatusTests
     public void SnapshotLoad_SubscribesToLiveUpdatesWithSelectedAgentCursor()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000204");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000204");
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000204");
@@ -1275,7 +1275,7 @@ public sealed class AgentStatusTests
     public void SelectingAnotherAgent_ReSubscribesLiveUpdatesForSelectedAgentOnly()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000214");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000214");
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000214");
@@ -1365,7 +1365,7 @@ public sealed class AgentStatusTests
     public void SelectingAnotherAgent_WhenHistoryLoadFails_UnsubscribesOldLiveTailAndShowsError()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000218");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000218");
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000218");
@@ -1439,7 +1439,7 @@ public sealed class AgentStatusTests
     public void SelectingAnotherAgent_ClearsExpandedToolDetailsForPreviousAgent()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000220");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000220");
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000220");
@@ -1547,7 +1547,7 @@ public sealed class AgentStatusTests
     public void RefreshingPage_RebuildsSelectedAgentStateAndResubscribesFromFreshSnapshot()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000216");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000216");
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000216");
@@ -1650,7 +1650,7 @@ public sealed class AgentStatusTests
     public void SnapshotLoad_WhenLiveSubscriptionFails_KeepsSnapshotVisible()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         liveSubscriptionClient.SubscribeException = new InvalidOperationException("SignalR handshake failed");
 
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000205");
@@ -1708,7 +1708,7 @@ public sealed class AgentStatusTests
     public void ShowsCompletedCompletionState_WhenSnapshotIsCompleted()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000208");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000208");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000209");
@@ -1755,7 +1755,7 @@ public sealed class AgentStatusTests
     public void ShowsFailedCompletionState_WhenSnapshotIsFailed()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000209");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000209");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000210");
@@ -1802,7 +1802,7 @@ public sealed class AgentStatusTests
     public void LiveProjectStatusUpdate_TransitionsFromRunningToCompleted()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000210");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000210");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000211");
@@ -1861,7 +1861,7 @@ public sealed class AgentStatusTests
     public void LiveProjectStatusUpdate_TransitionsFromRunningToFailed()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000211");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000211");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000212");
@@ -1920,7 +1920,7 @@ public sealed class AgentStatusTests
     public void LiveProjectStatusUpdate_TransitionsFromRunningToCanceled()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000212");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000212");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000213");
@@ -1979,7 +1979,7 @@ public sealed class AgentStatusTests
     public void ReconnectRequired_ReloadsSnapshotAndResubscribesLive()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000206");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000206");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000207");
@@ -2074,7 +2074,7 @@ public sealed class AgentStatusTests
     public void Reconnecting_ImmediatelyShowsReconnectingStateBeforeReload()
     {
         using Bunit.TestContext context = new();
-        FakeProjectAgentStatusLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000207");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000207");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000208");
@@ -2284,10 +2284,10 @@ public sealed class AgentStatusTests
                 toolResult),
         };
 
-    private static FakeProjectAgentStatusLiveSubscriptionClient RegisterLiveSubscriptionClient(Bunit.TestContext context)
+    private static FakeLiveSubscriptionClient RegisterLiveSubscriptionClient(Bunit.TestContext context)
     {
-        FakeProjectAgentStatusLiveSubscriptionClient client = new();
-        context.Services.AddSingleton<IProjectAgentStatusLiveSubscriptionClient>(client);
+        FakeLiveSubscriptionClient client = new();
+        context.Services.AddSingleton<ILiveSubscriptionClient>(client);
         return client;
     }
 
@@ -2297,7 +2297,7 @@ public sealed class AgentStatusTests
         return context.RenderComponent<AgentStatusPage>();
     }
 
-    private sealed class FakeProjectAgentStatusLiveSubscriptionClient : IProjectAgentStatusLiveSubscriptionClient
+    private sealed class FakeLiveSubscriptionClient : ILiveSubscriptionClient
     {
         private Func<ProjectAgentLiveUpdateDto, Task>? _onUpdate;
         private Func<Task>? _onReconnecting;

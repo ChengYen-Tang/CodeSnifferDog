@@ -1,7 +1,7 @@
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;

@@ -1,5 +1,4 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Server;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
@@ -16,7 +15,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Readiness;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Recovery;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
-using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
+using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using CodeSnifferDog.Server.Services.ProjectIntake;
 using CodeSnifferDog.Server.Services.ProjectIntake.Deletion;
@@ -26,14 +25,26 @@ using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Services.ProjectReports.Export;
 using CodeSnifferDog.Server.Services.ProjectReports.Projection;
 using CodeSnifferDog.Server.Services.ProjectReports.Queries;
-using CodeSnifferDog.Server.Services.Projects;
+using CodeSnifferDog.Server.Services.Projects.Sidebar;
+using CodeSnifferDog.Server.Services.Projects.Sidebar.Projection;
+using CodeSnifferDog.Server.Services.Projects.Sidebar.Queries;
 using CodeSnifferDog.Server.Services.Projects.Projection;
-using CodeSnifferDog.Server.Services.Projects.Queries;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
+using ReportProjectionMapper = CodeSnifferDog.Server.Services.ProjectReports.Projection.ProjectionMapper;
+using ReportProjectionMapperInterface = CodeSnifferDog.Server.Services.ProjectReports.Projection.IProjectionMapper;
+using AgentStatusSnapshotService = CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.SnapshotService;
+using AgentStatusSnapshotServiceInterface = CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.ISnapshotService;
+using ReportQueryService = CodeSnifferDog.Server.Services.ProjectReports.Queries.QueryService;
+using ReportQueryServiceInterface = CodeSnifferDog.Server.Services.ProjectReports.Queries.IQueryService;
+using SidebarQueryService = CodeSnifferDog.Server.Services.Projects.Sidebar.Queries.QueryService;
+using SidebarQueryServiceInterface = CodeSnifferDog.Server.Services.Projects.Sidebar.Queries.IQueryService;
+using SidebarSnapshotService = CodeSnifferDog.Server.Services.Projects.Sidebar.SnapshotService;
+using SidebarSnapshotServiceInterface = CodeSnifferDog.Server.Services.Projects.Sidebar.ISnapshotService;
 
 namespace CodeSnifferDog.Tests.Services;
 
@@ -43,35 +54,35 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
-    public void RegistersAgentStatusRuntimeProductionChain()
+    public void RegistersStatusRuntimeProductionChain()
     {
         using ServiceProvider serviceProvider = CreateServiceProvider();
         using IServiceScope scope = serviceProvider.CreateScope();
         IServiceProvider services = scope.ServiceProvider;
 
-        Assert.IsInstanceOfType<AgentStatusEventSubscriberFactory>(
-            services.GetRequiredService<IAgentStatusEventSubscriberFactory>());
-        Assert.IsInstanceOfType<AgentStatusRuntimeFactory>(
-            services.GetRequiredService<IAgentStatusRuntimeFactory>());
-        Assert.IsInstanceOfType<AgentStatusRuntimeComponentsFactory>(
-            services.GetRequiredService<IAgentStatusRuntimeComponentsFactory>());
-        Assert.IsInstanceOfType<AgentTimelinePersistenceService>(
-            services.GetRequiredService<IAgentTimelinePersistenceService>());
+        Assert.IsInstanceOfType<EventSubscriberFactory>(
+            services.GetRequiredService<IEventSubscriberFactory>());
+        Assert.IsInstanceOfType<RuntimeFactory>(
+            services.GetRequiredService<IRuntimeFactory>());
+        Assert.IsInstanceOfType<RuntimeComponentsFactory>(
+            services.GetRequiredService<IRuntimeComponentsFactory>());
+        Assert.IsInstanceOfType<TimelinePersistenceService>(
+            services.GetRequiredService<ITimelinePersistenceService>());
     }
 
     [TestMethod]
     public async Task CreatesSubscriberFromProductionRegistration()
     {
-        CollectingProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        CollectingLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider serviceProvider = CreateServiceProvider(liveUpdateNotifier);
         using IServiceScope scope = serviceProvider.CreateScope();
         Guid projectId = Guid.NewGuid();
-        IAgentStatusEventSubscriberFactory subscriberFactory =
-            scope.ServiceProvider.GetRequiredService<IAgentStatusEventSubscriberFactory>();
+        IEventSubscriberFactory subscriberFactory =
+            scope.ServiceProvider.GetRequiredService<IEventSubscriberFactory>();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             scope.ServiceProvider.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
         using AgentStatusEventStream eventStream = new();
-        await using ProjectAgentStatusEventSubscriber subscriber =
+        await using EventSubscriber subscriber =
             subscriberFactory.Create(projectId, eventStream.Events);
         string groupKey = "group-1";
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, "agent-1");
@@ -107,23 +118,23 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
     {
         using ServiceProvider serviceProvider = CreateServiceProvider();
         IHostedService hostedService = serviceProvider.GetServices<IHostedService>()
-            .Single(service => service is ProjectExecutionHostedService);
+            .Single(service => service is HostedService);
         using IServiceScope scope = serviceProvider.CreateScope();
         IServiceProvider services = scope.ServiceProvider;
 
-        Assert.IsInstanceOfType<ProjectExecutionHostedService>(hostedService);
-        Assert.IsInstanceOfType<ProjectReviewAnalysisExecutor>(
-            services.GetRequiredService<IProjectReviewAnalysisExecutor>());
-        Assert.IsInstanceOfType<ProjectAnalysisRunner>(
+        Assert.IsInstanceOfType<HostedService>(hostedService);
+        Assert.IsInstanceOfType<ReviewAnalysisExecutor>(
+            services.GetRequiredService<IReviewAnalysisExecutor>());
+        Assert.IsInstanceOfType<Runner>(
             services.GetRequiredService<IProjectAnalysisRunner>());
-        Assert.IsInstanceOfType<ProjectAnalysisCompletionService>(
-            services.GetRequiredService<IProjectAnalysisCompletionService>());
-        Assert.IsInstanceOfType<ProjectReviewAgentTeamWorkerFactory>(
-            services.GetRequiredService<IProjectReviewAgentTeamWorkerFactory>());
-        Assert.IsInstanceOfType<ProjectReviewAgentTeamDependenciesFactory>(
-            services.GetRequiredService<IProjectReviewAgentTeamDependenciesFactory>());
-        Assert.IsInstanceOfType<ProjectReviewWorkflowRunnerFactory>(
-            services.GetRequiredService<IProjectReviewWorkflowRunnerFactory>());
+        Assert.IsInstanceOfType<CompletionService>(
+            services.GetRequiredService<ICompletionService>());
+        Assert.IsInstanceOfType<WorkerFactory>(
+            services.GetRequiredService<IWorkerFactory>());
+        Assert.IsInstanceOfType<DependenciesFactory>(
+            services.GetRequiredService<IDependenciesFactory>());
+        Assert.IsInstanceOfType<ReviewRunnerFactory>(
+            services.GetRequiredService<IReviewRunnerFactory>());
         Assert.IsInstanceOfType<ScanRunnerFactory>(
             services.GetRequiredService<IScanRunnerFactory>());
         Assert.IsInstanceOfType<ProjectPlanRunnerFactory>(
@@ -159,26 +170,26 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
             services.GetRequiredService<IProjectStatusMapper>());
         Assert.IsInstanceOfType<ProjectProjectionMapper>(
             services.GetRequiredService<IProjectProjectionMapper>());
-        Assert.IsInstanceOfType<ProjectUploadService>(
-            services.GetRequiredService<IProjectUploadService>());
-        Assert.IsInstanceOfType<ProjectQueueService>(
-            services.GetRequiredService<IProjectQueueService>());
-        Assert.IsInstanceOfType<ProjectDeletionService>(
-            services.GetRequiredService<IProjectDeletionService>());
+        Assert.IsInstanceOfType<UploadService>(
+            services.GetRequiredService<IUploadService>());
+        Assert.IsInstanceOfType<QueueService>(
+            services.GetRequiredService<IQueueService>());
+        Assert.IsInstanceOfType<DeletionService>(
+            services.GetRequiredService<IDeletionService>());
         Assert.IsInstanceOfType<ProjectIntakeService>(
             services.GetRequiredService<IProjectIntakeService>());
-        Assert.IsInstanceOfType<ProjectReportProjectionMapper>(
-            services.GetRequiredService<IProjectReportProjectionMapper>());
-        Assert.IsInstanceOfType<ProjectReportQueryService>(
-            services.GetRequiredService<IProjectReportQueryService>());
-        Assert.IsInstanceOfType<ProjectReportExportService>(
-            services.GetRequiredService<IProjectReportExportService>());
-        Assert.IsInstanceOfType<ProjectReportService>(
-            services.GetRequiredService<IProjectReportService>());
-        Assert.IsInstanceOfType<ProjectSidebarQueryService>(
-            services.GetRequiredService<IProjectSidebarQueryService>());
-        Assert.IsInstanceOfType<ProjectSidebarSnapshotService>(
-            services.GetRequiredService<IProjectSidebarSnapshotService>());
+        Assert.IsInstanceOfType<ReportProjectionMapper>(
+            services.GetRequiredService<ReportProjectionMapperInterface>());
+        Assert.IsInstanceOfType<ReportQueryService>(
+            services.GetRequiredService<ReportQueryServiceInterface>());
+        Assert.IsInstanceOfType<ExportService>(
+            services.GetRequiredService<IExportService>());
+        Assert.IsInstanceOfType<ReportService>(
+            services.GetRequiredService<IReportService>());
+        Assert.IsInstanceOfType<SidebarQueryService>(
+            services.GetRequiredService<SidebarQueryServiceInterface>());
+        Assert.IsInstanceOfType<SidebarSnapshotService>(
+            services.GetRequiredService<SidebarSnapshotServiceInterface>());
     }
 
     [TestMethod]
@@ -188,14 +199,14 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
         using IServiceScope scope = serviceProvider.CreateScope();
         IServiceProvider services = scope.ServiceProvider;
 
-        Assert.IsInstanceOfType<ProjectAgentStatusSnapshotQueryService>(
-            services.GetRequiredService<IProjectAgentStatusSnapshotQueryService>());
-        Assert.IsInstanceOfType<ProjectAgentStatusBackfillQueryService>(
-            services.GetRequiredService<IProjectAgentStatusBackfillQueryService>());
-        Assert.IsInstanceOfType<ProjectAgentStatusSnapshotService>(
-            services.GetRequiredService<IProjectAgentStatusSnapshotService>());
-        Assert.IsInstanceOfType<ProjectAgentStatusLiveBackfillService>(
-            services.GetRequiredService<IProjectAgentStatusLiveBackfillService>());
+        Assert.IsInstanceOfType<SnapshotQueryService>(
+            services.GetRequiredService<ISnapshotQueryService>());
+        Assert.IsInstanceOfType<BackfillQueryService>(
+            services.GetRequiredService<IBackfillQueryService>());
+        Assert.IsInstanceOfType<AgentStatusSnapshotService>(
+            services.GetRequiredService<AgentStatusSnapshotServiceInterface>());
+        Assert.IsInstanceOfType<LiveBackfillService>(
+            services.GetRequiredService<ILiveBackfillService>());
     }
 
     [TestMethod]
@@ -207,7 +218,7 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
     }
 
     private static ServiceProvider CreateServiceProvider(
-        CollectingProjectAgentStatusLiveUpdateNotifier? liveUpdateNotifier = null)
+        CollectingLiveUpdateNotifier? liveUpdateNotifier = null)
     {
         ServiceCollection services = [];
         services.AddLogging();
@@ -218,7 +229,7 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
             options => options.UseInMemoryDatabase(Guid.NewGuid().ToString("N")));
 
         if (liveUpdateNotifier is not null)
-            services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier>(liveUpdateNotifier);
+            services.AddSingleton<ILiveUpdateNotifier>(liveUpdateNotifier);
 
         return services.BuildServiceProvider(new ServiceProviderOptions
         {
@@ -240,7 +251,7 @@ public sealed class CodeSnifferDogServerServiceCollectionExtensionsTests
             })
             .Build();
 
-    private sealed class CollectingProjectAgentStatusLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
+    private sealed class CollectingLiveUpdateNotifier : ILiveUpdateNotifier
     {
         public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
 

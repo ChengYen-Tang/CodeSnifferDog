@@ -76,7 +76,7 @@ public sealed class ExecutionArtifactStoreTests
         return storagePaths;
     }
 
-    private static ProjectExecutionClaim CreateClaim(Guid projectId, string storedZipRelativePath) =>
+    private static Claim CreateClaim(Guid projectId, string storedZipRelativePath) =>
         new(projectId, storedZipRelativePath, new ProjectExecutionLease(projectId, CancellationToken.None, static _ => { }));
 
     private static void CreateZip(string zipPath, string entryName, string content)

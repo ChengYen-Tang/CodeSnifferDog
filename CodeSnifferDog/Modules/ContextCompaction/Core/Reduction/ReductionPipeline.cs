@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using Microsoft.Extensions.AI;
@@ -67,7 +68,7 @@ internal sealed class ReductionPipeline(
         if (reason == OperationalContextCompactionReason.Reactive)
             return true;
 
-        int estimatedTokens = OperationalContextTokenEstimator.Estimate(messages);
+        int estimatedTokens = TokenEstimator.Estimate(messages);
         return estimatedTokens >= options.GetAutoCompactThreshold();
     }
 }

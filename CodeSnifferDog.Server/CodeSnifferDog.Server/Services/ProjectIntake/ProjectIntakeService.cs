@@ -14,9 +14,9 @@ namespace CodeSnifferDog.Server.Services.ProjectIntake;
 internal sealed class ProjectIntakeService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectChangePublisher projectChangePublisher,
-    IProjectUploadService projectUploadService,
-    IProjectQueueService projectQueueService,
-    IProjectDeletionService projectDeletionService,
+    IUploadService projectUploadService,
+    IQueueService projectQueueService,
+    IDeletionService projectDeletionService,
     IProjectProjectionMapper projectionMapper,
     IProjectExecutionLeaseRegistry executionLeaseRegistry,
     IProjectExecutionQueueLock queueLock,
@@ -24,9 +24,9 @@ internal sealed class ProjectIntakeService(
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectChangePublisher _projectChangePublisher = projectChangePublisher;
-    private readonly IProjectUploadService _projectUploadService = projectUploadService;
-    private readonly IProjectQueueService _projectQueueService = projectQueueService;
-    private readonly IProjectDeletionService _projectDeletionService = projectDeletionService;
+    private readonly IUploadService _projectUploadService = projectUploadService;
+    private readonly IQueueService _projectQueueService = projectQueueService;
+    private readonly IDeletionService _projectDeletionService = projectDeletionService;
     private readonly IProjectProjectionMapper _projectionMapper = projectionMapper;
     private readonly IProjectExecutionLeaseRegistry _executionLeaseRegistry = executionLeaseRegistry;
     private readonly IProjectExecutionQueueLock _queueLock = queueLock;
@@ -36,7 +36,7 @@ internal sealed class ProjectIntakeService(
     {
         Guid projectId = Guid.NewGuid();
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-        ProjectUploadArtifact artifact = await _projectUploadService
+        Artifact artifact = await _projectUploadService
             .StoreAsync(projectId, zipFile, cancellationToken)
             .ConfigureAwait(false);
 
@@ -44,7 +44,7 @@ internal sealed class ProjectIntakeService(
         {
             using IDisposable queueLease = await _queueLock.AcquireAsync(cancellationToken);
             ProjectUploadResult result = await _projectQueueService.QueueAsync(
-                new ProjectQueueRequest(
+                new Request(
                     projectId,
                     artifact.OriginalFileName,
                     artifact.FileSizeBytes,

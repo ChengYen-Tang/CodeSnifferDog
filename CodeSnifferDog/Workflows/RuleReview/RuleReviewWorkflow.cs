@@ -3,13 +3,13 @@ using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Prompts;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.RuleReview;
 
@@ -26,8 +26,8 @@ public sealed class RuleReviewWorkflow(
     private readonly Func<string, string, string, StoredProjectPlanTaskItem, IAgentEventScope, AgentCreationResult> _reviewVerifierAgentFactory = reviewVerifierAgentFactory;
     private readonly IRuleReviewIssueStore _issueStore = issueStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly RuleReviewWorkflowMessageBuilder _messageBuilder =
-        new(new RuleReviewWorkflowMessageTemplates(promptAssetReader ?? new PromptAssetReader()));
+    private readonly MessageBuilder _messageBuilder =
+        new(new MessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly RuleReviewWorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
     private RuleFlowKey _ruleFlowKey = default!;
@@ -138,7 +138,7 @@ public sealed class RuleReviewWorkflow(
                                 Message = "Rule Review Agent did not submit any issues or a no-issue conclusion after the allowed reset limit.",
                             };
 
-                            return Result.Ok(RuleReviewWorkflowResultFactory.Create(
+                            return Result.Ok(ResultFactory.Create(
                                 taskItem,
                                 ruleKey,
                                 issues,
@@ -200,7 +200,7 @@ public sealed class RuleReviewWorkflow(
 
                 if (verdict.Approved)
                 {
-                    return Result.Ok(RuleReviewWorkflowResultFactory.Create(
+                    return Result.Ok(ResultFactory.Create(
                         taskItem,
                         ruleKey,
                         issues,
@@ -218,7 +218,7 @@ public sealed class RuleReviewWorkflow(
                 if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
                 {
                     await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    return Result.Ok(RuleReviewWorkflowResultFactory.Create(
+                    return Result.Ok(ResultFactory.Create(
                         taskItem,
                         ruleKey,
                         issues,

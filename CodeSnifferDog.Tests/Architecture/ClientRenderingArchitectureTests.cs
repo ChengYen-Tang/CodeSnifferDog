@@ -1,6 +1,7 @@
 using CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 using CodeSnifferDog.Server.Client.Components.Reports;
 using CodeSnifferDog.Server.Client.Layout.Navigation;
+using CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 using Microsoft.AspNetCore.Components;
 using System.Reflection;
 using AgentStatusPage = CodeSnifferDog.Server.Client.Pages.AgentStatus;
@@ -15,16 +16,18 @@ public sealed class ClientRenderingArchitectureTests
     [TestMethod]
     public void ClientRenderingCollaborators_StayInFocusedNamespaces()
     {
-        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusPageState).Namespace);
-        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusLiveUpdateReducer).Namespace);
-        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusSnapshotState).Namespace);
-        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusHistoryState).Namespace);
-        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusTimelineEntries).Namespace);
-        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(AgentStatusTimelineMutationResult).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(PageState).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(LiveUpdateReducer).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(SnapshotState).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(HistoryState).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(TimelineEntryList).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Components.AgentStatus.State", typeof(TimelineMutationResult).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.Reports", typeof(ReportsSidebarPane).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.Reports", typeof(ReportsPreviewPane).Namespace);
         Assert.AreEqual("CodeSnifferDog.Server.Client.Components.Reports", typeof(ReportFileItemView).Namespace);
-        Assert.AreEqual("CodeSnifferDog.Server.Client.Layout.Navigation", typeof(ProjectSidebarProjectionBuilder).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Layout.Navigation", typeof(SidebarProjectionBuilder).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Services.ProjectAgentStatus", typeof(ILiveSubscriptionClient).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Server.Client.Services.ProjectAgentStatus", typeof(SignalRLiveSubscriptionClient).Namespace);
     }
 
     [TestMethod]
@@ -32,17 +35,17 @@ public sealed class ClientRenderingArchitectureTests
     {
         Type[] internalTypes =
         [
-            typeof(AgentStatusPageState),
-            typeof(AgentStatusLiveUpdateReducer),
-            typeof(AgentStatusSnapshotState),
-            typeof(AgentStatusHistoryState),
-            typeof(AgentStatusSelectionState),
-            typeof(AgentStatusLiveConnectionState),
-            typeof(AgentStatusSelectedAgentLiveConnectionState),
-            typeof(AgentStatusCompletionState),
-            typeof(AgentStatusTimelineEntries),
-            typeof(AgentStatusTimelineMutationResult),
-            typeof(ProjectSidebarProjectionBuilder),
+            typeof(PageState),
+            typeof(LiveUpdateReducer),
+            typeof(SnapshotState),
+            typeof(HistoryState),
+            typeof(SelectionState),
+            typeof(LiveConnectionState),
+            typeof(SelectedAgentLiveConnectionState),
+            typeof(CompletionState),
+            typeof(TimelineEntryList),
+            typeof(TimelineMutationResult),
+            typeof(SidebarProjectionBuilder),
             typeof(ProjectAction),
             typeof(ProjectActionKind),
             typeof(ProjectItem),
@@ -52,14 +55,39 @@ public sealed class ClientRenderingArchitectureTests
         foreach (Type type in internalTypes)
         {
             Assert.IsFalse(type.IsPublic, $"{type.Name} should remain internal.");
+            if (type.Namespace == "CodeSnifferDog.Server.Client.Components.AgentStatus.State")
+            {
+                Assert.IsFalse(
+                    type.Name.StartsWith("AgentStatus", StringComparison.Ordinal),
+                    $"{type.Name} should rely on its AgentStatus.State namespace for page context.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ProjectAgentStatusClientServices_UseLocalRoleNames()
+    {
+        Type[] projectAgentStatusClientTypes =
+        [
+            typeof(ILiveSubscriptionClient),
+            typeof(SignalRLiveSubscriptionClient),
+            typeof(NoOpLiveSubscriptionClient),
+        ];
+
+        foreach (Type type in projectAgentStatusClientTypes)
+        {
+            Assert.IsFalse(
+                type.Name.StartsWith("ProjectAgentStatus", StringComparison.Ordinal) ||
+                type.Name.StartsWith("IProjectAgentStatus", StringComparison.Ordinal),
+                $"{type.Name} should rely on its ProjectAgentStatus namespace for client service context.");
         }
     }
 
     [TestMethod]
     public void RenderingPages_KeepFocusedBoundaries()
     {
-        Assert.IsTrue(HasFieldOfType(typeof(AgentStatusPage), typeof(AgentStatusPageState)));
-        Assert.IsTrue(HasFieldOfType(typeof(AgentStatusPageState), typeof(AgentStatusLiveUpdateReducer)));
+        Assert.IsTrue(HasFieldOfType(typeof(AgentStatusPage), typeof(PageState)));
+        Assert.IsTrue(HasFieldOfType(typeof(PageState), typeof(LiveUpdateReducer)));
         Assert.IsTrue(HasFieldOfType(typeof(ReportsPage), typeof(MarkupString)));
         Assert.AreEqual("CodeSnifferDog.Server.Client.Pages", typeof(HomePage).Namespace);
 
@@ -70,7 +98,7 @@ public sealed class ClientRenderingArchitectureTests
         string homeSource = ReadClientSource("Pages", "Home.razor");
         StringAssert.Contains(homeSource, "InputFile");
         Assert.DoesNotContain(homeSource, "<ReportsSidebarPane", StringComparison.Ordinal);
-        Assert.DoesNotContain(homeSource, "AgentStatusPageState", StringComparison.Ordinal);
+        Assert.DoesNotContain(homeSource, "PageState", StringComparison.Ordinal);
     }
 
     [TestMethod]
@@ -81,7 +109,7 @@ public sealed class ClientRenderingArchitectureTests
         Assert.DoesNotContain(navMenuSource, "private sealed record ProjectAction", StringComparison.Ordinal);
         Assert.DoesNotContain(navMenuSource, "private sealed record ProjectItem", StringComparison.Ordinal);
         Assert.DoesNotContain(navMenuSource, "private sealed class ProjectGroup", StringComparison.Ordinal);
-        StringAssert.Contains(navMenuSource, "ProjectSidebarProjectionBuilder.CreateGroups");
+        StringAssert.Contains(navMenuSource, "SidebarProjectionBuilder.CreateGroups");
     }
 
     [TestMethod]
@@ -89,10 +117,10 @@ public sealed class ClientRenderingArchitectureTests
     {
         string agentStatusSource = ReadClientSource("Pages", "AgentStatus.razor");
 
-        Assert.DoesNotContain(agentStatusSource, "private sealed class AgentStatusPageState", StringComparison.Ordinal);
-        Assert.DoesNotContain(agentStatusSource, "private sealed class AgentStatusLiveUpdateReducer", StringComparison.Ordinal);
-        Assert.DoesNotContain(agentStatusSource, "private sealed class AgentStatusSnapshotState", StringComparison.Ordinal);
-        StringAssert.Contains(agentStatusSource, "AgentStatusPageState.CreateEmpty");
+        Assert.DoesNotContain(agentStatusSource, "private sealed class PageState", StringComparison.Ordinal);
+        Assert.DoesNotContain(agentStatusSource, "private sealed class LiveUpdateReducer", StringComparison.Ordinal);
+        Assert.DoesNotContain(agentStatusSource, "private sealed class SnapshotState", StringComparison.Ordinal);
+        StringAssert.Contains(agentStatusSource, "PageState.CreateEmpty");
     }
 
     private static bool HasFieldOfType(Type declaringType, Type fieldType) =>

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
 [TestClass]
-public sealed class ProjectExecutionHostedServiceCoordinatorTests
+public sealed class HostedServiceCoordinatorTests
 {
     [TestMethod]
     public async Task StartAsync_WhenNotReady_RunsRecoveryBeforeReadiness_AndDoesNotClaim()
@@ -20,7 +20,7 @@ public sealed class ProjectExecutionHostedServiceCoordinatorTests
         TestQueueClaimer queueClaimer = new(calls, null);
         TestClaimExecutor claimExecutor = new(calls);
         TestQueueLock queueLock = new(calls);
-        using ProjectExecutionHostedService service = CreateService(
+        using HostedService service = CreateService(
             readinessGate,
             queueClaimer,
             claimExecutor,
@@ -44,12 +44,12 @@ public sealed class ProjectExecutionHostedServiceCoordinatorTests
         TestRecoveryService recoveryService = new(calls);
         TestReadinessGate readinessGate = new(calls, new ExecutionReadinessResult(true, null));
         using ProjectExecutionLease lease = new(Guid.NewGuid(), CancellationToken.None, static _ => { });
-        ProjectExecutionClaim claim = new(lease.ProjectId, "uploads/repo.zip", lease);
+        Claim claim = new(lease.ProjectId, "uploads/repo.zip", lease);
         using CancellationTokenSource stopSource = new();
         TestQueueClaimer queueClaimer = new(calls, claim);
         TestClaimExecutor claimExecutor = new(calls, stopSource);
         TestQueueLock queueLock = new(calls);
-        using ProjectExecutionHostedService service = CreateService(
+        using HostedService service = CreateService(
             readinessGate,
             queueClaimer,
             claimExecutor,
@@ -75,7 +75,7 @@ public sealed class ProjectExecutionHostedServiceCoordinatorTests
         Assert.AreEqual(1, queueLock.AcquireCount);
     }
 
-    private static ProjectExecutionHostedService CreateService(
+    private static HostedService CreateService(
         IExecutionReadinessGate readinessGate,
         IExecutionQueueClaimer queueClaimer,
         IClaimExecutor claimExecutor,
@@ -92,7 +92,7 @@ public sealed class ProjectExecutionHostedServiceCoordinatorTests
                 MaxConcurrentWorkers = 1,
                 QueuePollingIntervalSeconds = 60,
             }),
-            NullLogger<ProjectExecutionHostedService>.Instance);
+            NullLogger<HostedService>.Instance);
 
     private sealed class TestRecoveryService(List<string> calls) : IInterruptedProjectRecoveryService
     {
@@ -121,11 +121,11 @@ public sealed class ProjectExecutionHostedServiceCoordinatorTests
 
     private sealed class TestQueueClaimer(
         List<string> calls,
-        ProjectExecutionClaim? claim) : IExecutionQueueClaimer
+        Claim? claim) : IExecutionQueueClaimer
     {
         public int CallCount { get; private set; }
 
-        public Task<ProjectExecutionClaim?> TryClaimNextAsync(CancellationToken cancellationToken)
+        public Task<Claim?> TryClaimNextAsync(CancellationToken cancellationToken)
         {
             CallCount++;
             calls.Add("claim");
@@ -141,11 +141,11 @@ public sealed class ProjectExecutionHostedServiceCoordinatorTests
 
         public int CallCount { get; private set; }
 
-        public List<ProjectExecutionClaim> Claims { get; } = [];
+        public List<Claim> Claims { get; } = [];
 
         public Task ExecuteAsync(
             int workerNumber,
-            ProjectExecutionClaim claim,
+            Claim claim,
             CancellationToken stoppingToken)
         {
             CallCount++;

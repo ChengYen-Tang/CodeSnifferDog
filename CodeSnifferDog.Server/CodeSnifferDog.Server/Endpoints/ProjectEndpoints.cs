@@ -94,7 +94,7 @@ public static class ProjectEndpoints
 
     private static async Task<IResult> GetProjectSidebarSnapshotAsync(
         Guid? selectedProjectId,
-        Services.Projects.IProjectSidebarSnapshotService projectSidebarSnapshotService,
+        Services.Projects.Sidebar.ISnapshotService projectSidebarSnapshotService,
         CancellationToken cancellationToken)
     {
         ProjectSidebarSnapshotDto snapshot = await projectSidebarSnapshotService.GetSnapshotAsync(selectedProjectId, cancellationToken);
@@ -112,7 +112,7 @@ public static class ProjectEndpoints
 
     private static async Task<IResult> GetProjectReportsAsync(
         Guid projectId,
-        IProjectReportService projectReportService,
+        IReportService projectReportService,
         CancellationToken cancellationToken)
     {
         ProjectReportListDto? reports = await projectReportService.GetProjectReportListAsync(projectId, cancellationToken);
@@ -122,7 +122,7 @@ public static class ProjectEndpoints
     private static async Task<IResult> GetProjectReportAsync(
         Guid projectId,
         Guid reportId,
-        IProjectReportService projectReportService,
+        IReportService projectReportService,
         CancellationToken cancellationToken)
     {
         ProjectReportContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
@@ -132,7 +132,7 @@ public static class ProjectEndpoints
     private static async Task<IResult> GetProjectAgentStatusSnapshotAsync(
         Guid projectId,
         Guid? selectedAgentId,
-        IProjectAgentStatusSnapshotService projectAgentStatusSnapshotService,
+        ISnapshotService projectAgentStatusSnapshotService,
         CancellationToken cancellationToken)
     {
         ProjectAgentStatusSnapshotDto? snapshot = await projectAgentStatusSnapshotService.GetSnapshotAsync(
@@ -145,7 +145,7 @@ public static class ProjectEndpoints
     private static async Task<IResult> GetProjectAgentHistoryAsync(
         Guid projectId,
         Guid agentId,
-        IProjectAgentStatusSnapshotService projectAgentStatusSnapshotService,
+        ISnapshotService projectAgentStatusSnapshotService,
         CancellationToken cancellationToken)
     {
         ProjectAgentHistorySnapshotDto? history = await projectAgentStatusSnapshotService.GetAgentHistoryAsync(
@@ -158,29 +158,29 @@ public static class ProjectEndpoints
     private static async Task<IResult> DownloadProjectReportAsync(
         Guid projectId,
         Guid reportId,
-        IProjectReportService projectReportService,
-        IProjectReportExportService projectReportExportService,
+        IReportService projectReportService,
+        IExportService projectReportExportService,
         CancellationToken cancellationToken)
     {
         ProjectReportContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
         if (report is null)
             return Results.NotFound();
 
-        ProjectReportExportFile export = projectReportExportService.CreateMarkdown(report);
+        ExportFile export = projectReportExportService.CreateMarkdown(report);
         return Results.File(export.Bytes, export.ContentType, export.FileName);
     }
 
     private static async Task<IResult> DownloadProjectReportBundleAsync(
         Guid projectId,
-        IProjectReportService projectReportService,
-        IProjectReportExportService projectReportExportService,
+        IReportService projectReportService,
+        IExportService projectReportExportService,
         CancellationToken cancellationToken)
     {
         ProjectReportBundleDto? bundle = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
         if (bundle is null)
             return Results.NotFound();
 
-        ProjectReportExportFile export = await projectReportExportService.CreateBundleZipAsync(bundle, cancellationToken);
+        ExportFile export = await projectReportExportService.CreateBundleZipAsync(bundle, cancellationToken);
         return Results.File(export.Bytes, export.ContentType, export.FileName);
     }
 

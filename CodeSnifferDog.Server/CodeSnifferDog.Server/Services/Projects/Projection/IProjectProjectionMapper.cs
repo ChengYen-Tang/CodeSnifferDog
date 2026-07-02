@@ -1,5 +1,6 @@
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectIntake;
+using CodeSnifferDog.Server.Services.Projects.Sidebar.Projection;
 using CodeSnifferDog.Server.Shared.Projects;
 
 namespace CodeSnifferDog.Server.Services.Projects.Projection;
@@ -12,5 +13,5 @@ internal interface IProjectProjectionMapper
 
     ProjectListItemDto MapListItem(ProjectListItemProjection project);
 
-    ProjectSidebarProjectDto MapSidebarProject(ProjectSidebarProjectProjection project, ProjectStatus status, int sortOrder);
+    ProjectSidebarProjectDto MapSidebarProject(ProjectProjection project, ProjectStatus status, int sortOrder);
 }

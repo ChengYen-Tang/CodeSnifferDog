@@ -10,7 +10,7 @@
 @using CodeSnifferDog.Server.Shared.AgentStatus
 @using CodeSnifferDog.Server.Shared.Projects
 @inject HttpClient HttpClient
-@inject IProjectAgentStatusLiveSubscriptionClient LiveSubscriptionClient
+@inject ILiveSubscriptionClient LiveSubscriptionClient
 
 <PageTitle>Agent Status</PageTitle>
 
@@ -18,24 +18,24 @@
     [SupplyParameterFromQuery(Name = "projectId")]
     public Guid? ProjectId { get; set; }
 
-    private readonly AgentStatusPageState _pageState = AgentStatusPageState.CreateEmpty();
+    private readonly PageState _pageState = PageState.CreateEmpty();
     private bool _hasHandledParameters;
     private Guid? _loadedProjectId;
     private int _reconnectReloadInProgress;
     private int _historyLoadVersion;
     private bool _disposed;
 
-    private AgentStatusSnapshotState Snapshot => _pageState.Snapshot;
+    private SnapshotState Snapshot => _pageState.Snapshot;
 
-    private AgentStatusLiveConnectionState LiveConnection => _pageState.LiveConnection;
+    private LiveConnectionState LiveConnection => _pageState.LiveConnection;
 
-    private AgentStatusSelectionState Selection => _pageState.Selection;
+    private SelectionState Selection => _pageState.Selection;
 
-    private AgentStatusHistoryState History => _pageState.History;
+    private HistoryState History => _pageState.History;
 
-    private AgentStatusSelectedAgentLiveConnectionState SelectedAgentLiveConnection => _pageState.SelectedAgentLiveConnection;
+    private SelectedAgentLiveConnectionState SelectedAgentLiveConnection => _pageState.SelectedAgentLiveConnection;
 
-    private AgentStatusCompletionState Completion => _pageState.Completion;
+    private CompletionState Completion => _pageState.Completion;
 
     private ProjectAgentSnapshotDto? SelectedAgent =>
         Selection.SelectedAgentId is null

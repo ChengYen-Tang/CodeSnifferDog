@@ -1,10 +1,9 @@
 using CodeSnifferDog.Agents.Scan;
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.Scan;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
-using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
+using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Workflows.Scan;
 using FluentResults;
 using System.Diagnostics;

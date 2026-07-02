@@ -2,7 +2,7 @@ using Bunit;
 using System.Net;
 using System.Net.Http.Json;
 using CodeSnifferDog.Server.Client.Layout;
-using CodeSnifferDog.Server.Client.Services.Projects;
+using CodeSnifferDog.Server.Client.Services.Projects.Sidebar;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -95,7 +95,7 @@ public sealed class NavMenuTests
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
-        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        SyncService sidebarSyncService = context.Services.GetRequiredService<SyncService>();
 
         Guid projectAId = Guid.Parse("70000000-0000-0000-0000-000000000411");
         Guid projectBId = Guid.Parse("70000000-0000-0000-0000-000000000412");
@@ -131,7 +131,7 @@ public sealed class NavMenuTests
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
-        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        SyncService sidebarSyncService = context.Services.GetRequiredService<SyncService>();
 
         Guid projectAId = Guid.Parse("70000000-0000-0000-0000-000000000421");
         Guid projectBId = Guid.Parse("70000000-0000-0000-0000-000000000422");
@@ -169,7 +169,7 @@ public sealed class NavMenuTests
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
-        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        SyncService sidebarSyncService = context.Services.GetRequiredService<SyncService>();
 
         Guid projectAId = Guid.Parse("70000000-0000-0000-0000-000000000431");
         Guid projectBId = Guid.Parse("70000000-0000-0000-0000-000000000432");
@@ -223,7 +223,7 @@ public sealed class NavMenuTests
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
-        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        SyncService sidebarSyncService = context.Services.GetRequiredService<SyncService>();
 
         Guid reviewingProjectId = Guid.Parse("70000000-0000-0000-0000-000000000441");
         Guid completedProjectId = Guid.Parse("70000000-0000-0000-0000-000000000442");
@@ -315,7 +315,7 @@ public sealed class NavMenuTests
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
-        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        SyncService sidebarSyncService = context.Services.GetRequiredService<SyncService>();
 
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000451");
         ProjectSidebarSnapshotDto initialSnapshot = CreateSnapshot(
@@ -361,7 +361,7 @@ public sealed class NavMenuTests
     public void InteractiveRefreshSignal_ReloadsSidebarThroughFullNavMenuFlow()
     {
         using Bunit.TestContext context = new();
-        ControlledProjectSidebarRefreshSignalClient refreshSignalClient = new();
+        ControlledRefreshSignalClient refreshSignalClient = new();
         RegisterSidebarServices(
             context,
             new SidebarSnapshotMessageHandler(
@@ -414,7 +414,7 @@ public sealed class NavMenuTests
     public void InteractiveReconnect_RehydratesWithoutBlankingSidebar()
     {
         using Bunit.TestContext context = new();
-        ControlledProjectSidebarRefreshSignalClient refreshSignalClient = new();
+        ControlledRefreshSignalClient refreshSignalClient = new();
         RegisterSidebarServices(
             context,
             new SidebarSnapshotMessageHandler(
@@ -491,7 +491,7 @@ public sealed class NavMenuTests
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
-        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        SyncService sidebarSyncService = context.Services.GetRequiredService<SyncService>();
         Guid selectedProjectId = Guid.Parse("70000000-0000-0000-0001-000000000001");
         ProjectSidebarSnapshotDto initialSnapshot = CreateSnapshot(
             selectedProjectId,
@@ -530,7 +530,7 @@ public sealed class NavMenuTests
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
         context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
-        ProjectSidebarSyncService sidebarSyncService = context.Services.GetRequiredService<ProjectSidebarSyncService>();
+        SyncService sidebarSyncService = context.Services.GetRequiredService<SyncService>();
         Guid selectedProjectId = Guid.Parse("70000000-0000-0000-0000-000000000481");
         ProjectSidebarSnapshotDto initialSnapshot = CreateSnapshot(
             selectedProjectId,
@@ -573,19 +573,19 @@ public sealed class NavMenuTests
     private static void RegisterSidebarServices(
         Bunit.TestContext context,
         HttpMessageHandler messageHandler,
-        IProjectSidebarRefreshSignalClient? refreshSignalClient = null)
+        IRefreshSignalClient? refreshSignalClient = null)
     {
         context.Services.AddSingleton(new HttpClient(messageHandler)
         {
             BaseAddress = new Uri("http://localhost"),
         });
 
-        context.Services.AddSingleton<IProjectSidebarRefreshSignalClient>(
-            refreshSignalClient ?? new StubProjectSidebarRefreshSignalClient());
-        context.Services.AddSingleton<IProjectSidebarPollingFallback, StubProjectSidebarPollingFallback>();
-        context.Services.AddSingleton<ProjectSidebarSyncService>();
-        context.Services.AddSingleton<IProjectSidebarController>(serviceProvider =>
-            serviceProvider.GetRequiredService<ProjectSidebarSyncService>());
+        context.Services.AddSingleton<IRefreshSignalClient>(
+            refreshSignalClient ?? new StubRefreshSignalClient());
+        context.Services.AddSingleton<IPollingFallback, StubPollingFallback>();
+        context.Services.AddSingleton<SyncService>();
+        context.Services.AddSingleton<IController>(serviceProvider =>
+            serviceProvider.GetRequiredService<SyncService>());
     }
 
     private static ProjectSidebarGroupDto CreateReviewingGroup(
@@ -643,7 +643,7 @@ public sealed class NavMenuTests
             throw new AssertFailedException($"HTTP should not be called during non-interactive initial render. Request: {request.RequestUri}");
     }
 
-    private sealed class StubProjectSidebarRefreshSignalClient : IProjectSidebarRefreshSignalClient
+    private sealed class StubRefreshSignalClient : IRefreshSignalClient
     {
         public Task StartAsync(
             Func<CancellationToken, Task> onRefreshRequested,
@@ -653,7 +653,7 @@ public sealed class NavMenuTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class ControlledProjectSidebarRefreshSignalClient : IProjectSidebarRefreshSignalClient
+    private sealed class ControlledRefreshSignalClient : IRefreshSignalClient
     {
         private Func<CancellationToken, Task>? _onRefreshRequested;
         private Action<bool, bool, string?>? _onConnectionStateChanged;
@@ -692,7 +692,7 @@ public sealed class NavMenuTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class StubProjectSidebarPollingFallback : IProjectSidebarPollingFallback
+    private sealed class StubPollingFallback : IPollingFallback
     {
         public bool IsActive { get; private set; }
 

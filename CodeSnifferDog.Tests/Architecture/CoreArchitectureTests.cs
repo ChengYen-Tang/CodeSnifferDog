@@ -3,11 +3,14 @@ using CodeSnifferDog.Models.Preparation;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Events;
 using CodeSnifferDog.Models.ReviewGroup;
 using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
@@ -25,6 +28,19 @@ using CodeSnifferDog.Workflows.Scan;
 using FluentResults;
 using Microsoft.Extensions.AI;
 using System.Reflection;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Scheduling;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
+using ProjectPlanMessageBuilder = CodeSnifferDog.Workflows.ProjectPlan.MessageBuilder;
+using ProjectPlanResultFactory = CodeSnifferDog.Workflows.ProjectPlan.ResultFactory;
+using ReportDiffService = CodeSnifferDog.Workflows.Report.DiffService;
+using ReportMessageBuilder = CodeSnifferDog.Workflows.Report.MessageBuilder;
+using ReportResultFactory = CodeSnifferDog.Workflows.Report.ResultFactory;
+using RuleReviewMessageBuilder = CodeSnifferDog.Workflows.RuleReview.MessageBuilder;
+using RuleReviewResultFactory = CodeSnifferDog.Workflows.RuleReview.ResultFactory;
+using ScanMessageBuilder = CodeSnifferDog.Workflows.Scan.MessageBuilder;
+using ScanResultFactory = CodeSnifferDog.Workflows.Scan.ResultFactory;
 
 namespace CodeSnifferDog.Tests.Architecture;
 
@@ -57,15 +73,15 @@ public sealed class CoreArchitectureTests
     {
         Type[] collaboratorTypes =
         [
-            typeof(ScanWorkflowMessageBuilder),
-            typeof(ScanWorkflowResultFactory),
-            typeof(ProjectPlanWorkflowMessageBuilder),
-            typeof(ProjectPlanWorkflowResultFactory),
-            typeof(RuleReviewWorkflowMessageBuilder),
-            typeof(RuleReviewWorkflowResultFactory),
-            typeof(RuleReportWorkflowMessageBuilder),
-            typeof(RuleReportWorkflowResultFactory),
-            typeof(RuleReportDiffService),
+            typeof(ScanMessageBuilder),
+            typeof(ScanResultFactory),
+            typeof(ProjectPlanMessageBuilder),
+            typeof(ProjectPlanResultFactory),
+            typeof(RuleReviewMessageBuilder),
+            typeof(RuleReviewResultFactory),
+            typeof(ReportMessageBuilder),
+            typeof(ReportResultFactory),
+            typeof(ReportDiffService),
         ];
 
         foreach (Type collaboratorType in collaboratorTypes)
@@ -159,7 +175,72 @@ public sealed class CoreArchitectureTests
         Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime", typeof(AgentFrameworkCompactionRuntime).Namespace);
         Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime", typeof(StagedCollapseTracker).Namespace);
         Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry", typeof(ReactiveRetryService).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions", typeof(AutomaticCompactionSessionState).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Core.Estimation", typeof(TokenEstimator).Namespace);
         Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Core.Reduction", typeof(ReductionPipeline).Namespace);
+    }
+
+    [TestMethod]
+    public void ReviewStageModels_DoNotRepeatNamespaceContextInTypeNames()
+    {
+        Type[] reviewStageModelTypes = typeof(WorkflowResult).Assembly.GetTypes()
+            .Where(type => type.Namespace == "CodeSnifferDog.Models.ReviewStage")
+            .ToArray();
+
+        Assert.IsNotEmpty(reviewStageModelTypes);
+        Assert.IsTrue(
+            reviewStageModelTypes.All(type => !type.Name.StartsWith("ReviewStage", StringComparison.Ordinal)),
+            "ReviewStage model type names should rely on their namespace for domain context.");
+    }
+
+    [TestMethod]
+    public void ReviewAgentTeamModule_UsesRoleBasedSubNamespaces()
+    {
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Runtime", typeof(ReviewAgentTeamWorker).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Runtime", typeof(ReviewAgentTeamFactory).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Scheduling", typeof(RuleLaneScheduler).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Events", typeof(AgentStatusEventStream).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Events", typeof(NoOpAgentEventBus).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Events", typeof(AgentCompactionEventHook).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Transcript", typeof(AgentTranscriptEventAgentBuilderExtensions).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Transcript", typeof(AgentToolEventPublisher).Namespace);
+        Assert.IsFalse(
+            typeof(RuleLaneScheduler).Name.StartsWith("ReviewStage", StringComparison.Ordinal),
+            "Scheduling collaborators should rely on their namespace for review-stage context.");
+    }
+
+    [TestMethod]
+    public void ReviewAgentTeamEventModels_UseEventsSubNamespaceAndLocalNames()
+    {
+        Type[] eventTypes =
+        [
+            typeof(StatusEvent),
+            typeof(CreatedEvent),
+            typeof(GroupCreatedEvent),
+            typeof(StatusChangedEvent),
+            typeof(CompactionEvent),
+            typeof(TranscriptClearedEvent),
+            typeof(AssistantMessageAppendedEvent),
+            typeof(UserMessageAppendedEvent),
+            typeof(ToolCallStartedEvent),
+            typeof(ToolCallCompletedEvent),
+        ];
+
+        foreach (Type eventType in eventTypes)
+        {
+            Assert.AreEqual(
+                "CodeSnifferDog.Models.ReviewAgentTeam.Events",
+                eventType.Namespace,
+                $"{eventType.Name} should stay under the review-agent-team events namespace.");
+            Assert.IsFalse(eventType.IsPublic, $"{eventType.Name} should remain internal.");
+            Assert.IsFalse(
+                eventType.Name.StartsWith("Agent", StringComparison.Ordinal),
+                $"{eventType.Name} should rely on its namespace for agent/team context.");
+        }
+
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam", typeof(AgentCreationResult).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam", typeof(IAgentEventBus).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam", typeof(AgentStatusCatalog).Namespace);
     }
 
     [TestMethod]
@@ -174,7 +255,7 @@ public sealed class CoreArchitectureTests
             MethodInfo[] publicMethods = builderType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
 
             Assert.AreEqual(1, fieldTypes.Length, $"{builderType.Name} should only hold its workflow message templates.");
-            Assert.IsTrue(fieldTypes[0].Name.EndsWith("WorkflowMessageTemplates", StringComparison.Ordinal), $"{builderType.Name} should only depend on workflow message templates.");
+            Assert.AreEqual("MessageTemplates", fieldTypes[0].Name, $"{builderType.Name} should only depend on workflow message templates.");
             Assert.IsTrue(publicMethods.All(method => method.Name.Contains("Message", StringComparison.Ordinal)), $"{builderType.Name} should expose message construction methods only.");
             Assert.IsTrue(publicMethods.All(method => ContainsType(method.ReturnType, typeof(ChatMessage))), $"{builderType.Name} public methods should return ChatMessage payloads.");
             Assert.IsFalse(
@@ -191,10 +272,10 @@ public sealed class CoreArchitectureTests
     {
         Type[] factoryTypes =
         [
-            typeof(ScanWorkflowResultFactory),
-            typeof(ProjectPlanWorkflowResultFactory),
-            typeof(RuleReviewWorkflowResultFactory),
-            typeof(RuleReportWorkflowResultFactory),
+            typeof(ScanResultFactory),
+            typeof(ProjectPlanResultFactory),
+            typeof(RuleReviewResultFactory),
+            typeof(ReportResultFactory),
         ];
 
         foreach (Type factoryType in factoryTypes)
@@ -242,7 +323,7 @@ public sealed class CoreArchitectureTests
             ["repositoryRootPath", "cancellationToken"]),
         new(
             typeof(CodeSnifferDog.Workflows.ReviewStage.ReviewStageWorkflow),
-            typeof(Task<Result<ReviewStageWorkflowResult>>),
+            typeof(Task<Result<WorkflowResult>>),
             [typeof(string), typeof(RepositoryPreparationWorkflowResult), typeof(IReadOnlyList<ReviewAgentRuleDefinition>), typeof(CancellationToken)],
             ["repositoryRootPath", "preparationResult", "ruleDefinitions", "cancellationToken"]),
     ];
@@ -270,10 +351,10 @@ public sealed class CoreArchitectureTests
 
     private static Type[] WorkflowMessageBuilderTypes() =>
     [
-        typeof(ScanWorkflowMessageBuilder),
-        typeof(ProjectPlanWorkflowMessageBuilder),
-        typeof(RuleReviewWorkflowMessageBuilder),
-        typeof(RuleReportWorkflowMessageBuilder),
+        typeof(ScanMessageBuilder),
+        typeof(ProjectPlanMessageBuilder),
+        typeof(RuleReviewMessageBuilder),
+        typeof(ReportMessageBuilder),
     ];
 
     private static bool ContainsType(Type candidate, Type expected)

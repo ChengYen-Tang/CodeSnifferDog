@@ -1,8 +1,8 @@
 @rendermode InteractiveWebAssembly
 @using CodeSnifferDog.Server.Client.Layout.Navigation
-@using CodeSnifferDog.Server.Client.Services.Projects
+@using CodeSnifferDog.Server.Client.Services.Projects.Sidebar
 @using CodeSnifferDog.Server.Shared.Projects
-@inject IProjectSidebarController SidebarSyncService
+@inject IController SidebarSyncService
 @inject NavigationManager NavigationManager
 
 @implements IDisposable
@@ -12,7 +12,7 @@
     public ProjectSidebarSnapshotDto? InitialSnapshot { get; set; }
 
     private readonly HashSet<string> _actingProjectIds = [];
-    private ProjectSidebarState _state = ProjectSidebarState.CreateEmpty();
+    private State _state = State.CreateEmpty();
     private IReadOnlyList<ProjectGroup> _groups = [];
 
     protected override async Task OnInitializedAsync()
@@ -107,7 +107,7 @@
     private void RefreshSidebarProjection()
     {
         _state = SidebarSyncService.Current;
-        _groups = ProjectSidebarProjectionBuilder.CreateGroups(_state);
+        _groups = SidebarProjectionBuilder.CreateGroups(_state);
     }
 
     public void Dispose()

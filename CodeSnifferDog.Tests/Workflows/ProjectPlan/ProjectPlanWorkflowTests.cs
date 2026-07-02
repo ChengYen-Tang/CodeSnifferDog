@@ -377,7 +377,7 @@ public sealed class ProjectPlanWorkflowTests
             ProjectName = "RuntimeProject",
             ProjectPath = "src/RuntimeProject/RuntimeProject.csproj",
             ProjectType = ".csproj",
-            Reason = "Runtime-selected project.",
+            Reason = "RuntimeContext-selected project.",
         };
         string? verifierPrompt = null;
         ScriptedChatClient planChatClient = new(HandlePlanInvocation);
@@ -431,7 +431,7 @@ public sealed class ProjectPlanWorkflowTests
             ProjectName = "RuntimeProject",
             ProjectPath = "src/RuntimeProject/RuntimeProject.csproj",
             ProjectType = ".csproj",
-            Reason = "Runtime-selected project.",
+            Reason = "RuntimeContext-selected project.",
         };
         ProjectPlanWorkflow workflow = CreateWorkflow(
             HandlePlanInvocation,
@@ -589,7 +589,7 @@ public sealed class ProjectPlanWorkflowTests
         =>
         new(new InMemoryProjectPlanTaskItemStore(), new ReviewVerdictBuffer());
 
-    private static ProjectPlanWorkflowMessageTemplates CreateMessageTemplates()
+    private static MessageTemplates CreateMessageTemplates()
         =>
         new(new PromptAssetReader());
 

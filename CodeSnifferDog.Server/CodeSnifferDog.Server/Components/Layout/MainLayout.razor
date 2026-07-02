@@ -1,15 +1,15 @@
 @inherits LayoutComponentBase
 
-@using CodeSnifferDog.Server.Services.Projects
+@using CodeSnifferDog.Server.Services.Projects.Sidebar
 @using CodeSnifferDog.Server.Shared.Projects
-@inject IProjectSidebarSnapshotService ProjectSidebarSnapshotService
+@inject ISnapshotService SnapshotService
 @inject NavigationManager NavigationManager
 @code {
     private ProjectSidebarSnapshotDto? _initialSidebarSnapshot;
 
     protected override async Task OnInitializedAsync()
     {
-        _initialSidebarSnapshot = await ProjectSidebarSnapshotService.GetSnapshotAsync(
+        _initialSidebarSnapshot = await SnapshotService.GetSnapshotAsync(
             ExtractSelectedProjectIdFromUri(),
             CancellationToken.None);
     }

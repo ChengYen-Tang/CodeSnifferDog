@@ -1,5 +1,5 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
 using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;

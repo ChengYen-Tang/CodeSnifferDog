@@ -7,6 +7,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Artifacts;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Cancellation;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue;
 using CodeSnifferDog.Server.Services.Projects;
 using CodeSnifferDog.Server.Services.Projects.Projection;
@@ -21,7 +22,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
 [TestClass]
-public sealed class ProjectExecutionHostedServiceCancellationTests
+public sealed class HostedServiceCancellationTests
 {
     public required TestContext TestContext { get; init; }
 
@@ -30,14 +31,14 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         Guid projectId = Guid.NewGuid();
         TestProjectChangePublisher projectChangePublisher = new();
-        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new CancelAwareAnalysisRunner());
         await SeedReviewingProjectAsync(services, projectId);
         EnsureExtractedProjectDirectory(projectId);
 
         using CancellationTokenSource hostStoppingTokenSource = new();
         using ProjectExecutionLease lease = new(projectId, hostStoppingTokenSource.Token, static _ => { });
-        lease.TryCancel(ProjectExecutionCancellationSource.UserRequest);
+        lease.TryCancel(Source.UserRequest);
 
         ClaimExecutor claimExecutor = CreateClaimExecutor(services);
 
@@ -59,7 +60,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         Guid projectId = Guid.NewGuid();
         TestProjectChangePublisher projectChangePublisher = new();
-        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new CancelAwareAnalysisRunner());
         await SeedReviewingProjectAsync(services, projectId);
         EnsureExtractedProjectDirectory(projectId);
@@ -88,7 +89,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         Guid projectId = Guid.NewGuid();
         TestProjectChangePublisher projectChangePublisher = new();
-        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new SuccessfulAnalysisRunner());
         await SeedReviewingProjectAsync(services, projectId);
         EnsureExtractedProjectDirectory(projectId);
@@ -111,7 +112,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         Guid projectId = Guid.NewGuid();
         TestProjectChangePublisher projectChangePublisher = new();
-        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new FailingAnalysisRunner());
         await SeedReviewingProjectAsync(services, projectId);
         EnsureExtractedProjectDirectory(projectId);
@@ -134,7 +135,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
     {
         Guid projectId = Guid.NewGuid();
         TestProjectChangePublisher projectChangePublisher = new();
-        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier = new();
+        TestLiveUpdateNotifier liveUpdateNotifier = new();
         TrackingAnalysisRunner analysisRunner = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, analysisRunner);
         await SeedProjectAsync(services, projectId, ProjectProcessingStatus.Queued);
@@ -158,11 +159,11 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
             new ExecutionStateService(
                 services.GetRequiredService<IServiceScopeFactory>(),
                 services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-                services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+                services.GetRequiredService<ILiveUpdateNotifier>(),
                 new ProjectStatusMapper()),
             NullLogger<ClaimExecutor>.Instance);
 
-    private static ProjectExecutionClaim CreateClaim(
+    private static Claim CreateClaim(
         Guid projectId,
         string storedZipRelativePath,
         ProjectExecutionLease lease) =>
@@ -170,7 +171,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
 
     private static ServiceProvider CreateServices(
         TestProjectChangePublisher projectChangePublisher,
-        TestProjectAgentStatusLiveUpdateNotifier liveUpdateNotifier,
+        TestLiveUpdateNotifier liveUpdateNotifier,
         IProjectAnalysisRunner analysisRunner)
     {
         InMemoryDatabaseRoot databaseRoot = new();
@@ -181,7 +182,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
         services.AddSingleton<ProjectTemporaryStoragePaths>(_ => GetStoragePaths());
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
         services.AddScoped<IProjectAnalysisRunner>(_ => analysisRunner);
-        services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier>(liveUpdateNotifier);
+        services.AddSingleton<ILiveUpdateNotifier>(liveUpdateNotifier);
         services.AddSingleton<IProjectExecutionLeaseRegistry, ProjectExecutionLeaseRegistry>();
         services.AddSingleton<IProjectExecutionQueueLock, ImmediateProjectExecutionQueueLock>();
         return services.BuildServiceProvider();
@@ -290,7 +291,7 @@ public sealed class ProjectExecutionHostedServiceCancellationTests
             Task.FromResult<IDisposable>(new NoopDisposable());
     }
 
-    private sealed class TestProjectAgentStatusLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
+    private sealed class TestLiveUpdateNotifier : ILiveUpdateNotifier
     {
         public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
 

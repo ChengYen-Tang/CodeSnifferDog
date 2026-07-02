@@ -1,7 +1,7 @@
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 
-namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker;
+namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 
 public sealed class ExecutionOptions
 {

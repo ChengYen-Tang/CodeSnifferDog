@@ -4,28 +4,29 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewGroup;
 using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using FluentResults;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Scheduling;
 
 namespace CodeSnifferDog.Workflows.ReviewStage;
 
 internal sealed class ReviewStageWorkflow(
-    ReviewStageRuleLaneScheduler scheduler,
+    RuleLaneScheduler scheduler,
     Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner,
     IAgentEventBus? agentEventBus = null)
 {
-    private readonly ReviewStageRuleLaneScheduler _scheduler = scheduler;
+    private readonly RuleLaneScheduler _scheduler = scheduler;
     private readonly Func<StoredProjectPlanTaskItem, IReadOnlyList<ReviewAgentRuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> _reviewGroupWorkflowRunner = reviewGroupWorkflowRunner;
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
-    public async Task<Result<ReviewStageWorkflowResult>> RunAsync(
+    public async Task<Result<WorkflowResult>> RunAsync(
         string repositoryRootPath,
         RepositoryPreparationWorkflowResult preparationResult,
         IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repositoryRootPath))
-            return Result.Fail<ReviewStageWorkflowResult>("Repository root path is required.");
+            return Result.Fail<WorkflowResult>("Repository root path is required.");
 
         ArgumentNullException.ThrowIfNull(preparationResult);
         ArgumentNullException.ThrowIfNull(ruleDefinitions);
@@ -34,10 +35,10 @@ internal sealed class ReviewStageWorkflow(
 
         if (preparationResult.ProjectPlanResults.Count == 0)
         {
-            return Result.Ok(new ReviewStageWorkflowResult
+            return Result.Ok(new WorkflowResult
             {
                 ProjectResults =
-                    [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ReviewStageProjectResult
+                    [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ProjectResult
                     {
                         ProjectPlanResult = projectPlanResult,
                         ReviewGroupResults = [],
@@ -45,8 +46,8 @@ internal sealed class ReviewStageWorkflow(
             });
         }
 
-        ReviewStageProjectResult[] projectResults =
-            [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ReviewStageProjectResult
+        ProjectResult[] projectResults =
+            [.. preparationResult.ProjectPlanResults.Select(projectPlanResult => new ProjectResult
             {
                 ProjectPlanResult = projectPlanResult,
                 ReviewGroupResults = new ReviewGroupWorkflowResult[projectPlanResult.TaskItems.Count],
@@ -66,21 +67,21 @@ internal sealed class ReviewStageWorkflow(
             }
         }
 
-        Result<IReadOnlyList<ReviewStageProjectFlowResult>> scheduledFlowResults =
+        Result<IReadOnlyList<ProjectFlowResult>> scheduledFlowResults =
             await _scheduler.RunAsync(repositoryRootPath, preparationResult.ProjectPlanResults, ruleDefinitions, cancellationToken).ConfigureAwait(false);
 
         if (scheduledFlowResults.IsFailed)
-            return scheduledFlowResults.ToResult<ReviewStageWorkflowResult>();
+            return scheduledFlowResults.ToResult<WorkflowResult>();
 
         List<IError> errors = [];
 
         for (int projectIndex = 0; projectIndex < scheduledFlowResults.Value.Count; projectIndex++)
         {
-            ReviewStageProjectFlowResult projectFlowResult = scheduledFlowResults.Value[projectIndex];
+            ProjectFlowResult projectFlowResult = scheduledFlowResults.Value[projectIndex];
 
             for (int taskItemIndex = 0; taskItemIndex < projectFlowResult.TaskItemResults.Count; taskItemIndex++)
             {
-                ReviewStageTaskItemFlowResult taskItemFlowResult = projectFlowResult.TaskItemResults[taskItemIndex];
+                TaskItemFlowResult taskItemFlowResult = projectFlowResult.TaskItemResults[taskItemIndex];
                 StoredProjectPlanTaskItem taskItem = preparationResult.ProjectPlanResults[projectIndex].TaskItems[taskItemIndex];
                 Result<ReviewGroupWorkflowResult> reviewGroupResult =
                     _reviewGroupWorkflowRunner(taskItem, ruleDefinitions, taskItemFlowResult.FlowResults);
@@ -96,9 +97,9 @@ internal sealed class ReviewStageWorkflow(
         }
 
         if (errors.Count > 0)
-            return Result.Fail<ReviewStageWorkflowResult>(errors);
+            return Result.Fail<WorkflowResult>(errors);
 
-        return Result.Ok(new ReviewStageWorkflowResult
+        return Result.Ok(new WorkflowResult
         {
             ProjectResults = projectResults,
         });

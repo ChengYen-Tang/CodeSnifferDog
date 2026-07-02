@@ -21,7 +21,7 @@ internal sealed class ExecutionQueueClaimer(
     private readonly IExecutionStateService _executionStateService = executionStateService;
     private readonly ILogger<ExecutionQueueClaimer> _logger = logger ?? NullLogger<ExecutionQueueClaimer>.Instance;
 
-    public async Task<ProjectExecutionClaim?> TryClaimNextAsync(CancellationToken cancellationToken)
+    public async Task<Claim?> TryClaimNextAsync(CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();
         IProjectChangePublisher projectChangePublisher = scope.ServiceProvider.GetRequiredService<IProjectChangePublisher>();
@@ -41,7 +41,7 @@ internal sealed class ExecutionQueueClaimer(
 
             _logger.LogInformation("Project {ProjectId} was claimed for execution.", claimData.ProjectId);
 
-            return new ProjectExecutionClaim(
+            return new Claim(
                 claimData.ProjectId,
                 claimData.StoredZipRelativePath,
                 executionLease);

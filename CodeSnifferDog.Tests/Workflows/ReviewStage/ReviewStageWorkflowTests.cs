@@ -8,10 +8,10 @@ using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Concurrency;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Workflows.ReviewStage;
 using FluentResults;
 using RuleReviewModels = CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Scheduling;
 
 namespace CodeSnifferDog.Tests.Workflows.ReviewStage;
 
@@ -65,7 +65,7 @@ public sealed class ReviewStageWorkflowTests
             },
             new ReviewAgentConcurrencyGate(4));
 
-        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+        Result<WorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")),
@@ -122,7 +122,7 @@ public sealed class ReviewStageWorkflowTests
             },
             new ReviewAgentConcurrencyGate(4));
 
-        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+        Result<WorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")),
@@ -150,7 +150,7 @@ public sealed class ReviewStageWorkflowTests
             },
             new ReviewAgentConcurrencyGate(6));
 
-        Task<Result<ReviewStageWorkflowResult>> runTask = workflow.RunAsync(
+        Task<Result<WorkflowResult>> runTask = workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B")),
@@ -162,7 +162,7 @@ public sealed class ReviewStageWorkflowTests
 
         releaseFlows.SetResult();
 
-        Result<ReviewStageWorkflowResult> result = await runTask;
+        Result<WorkflowResult> result = await runTask;
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
     }
 
@@ -189,7 +189,7 @@ public sealed class ReviewStageWorkflowTests
             },
             concurrencyGate);
 
-        Task<Result<ReviewStageWorkflowResult>> runTask = workflow.RunAsync(
+        Task<Result<WorkflowResult>> runTask = workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A"), ("rule-b", "- Rule B"), ("rule-c", "- Rule C")),
@@ -203,7 +203,7 @@ public sealed class ReviewStageWorkflowTests
 
         holdRuleB.SetResult();
 
-        Result<ReviewStageWorkflowResult> result = await runTask;
+        Result<WorkflowResult> result = await runTask;
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
     }
 
@@ -222,7 +222,7 @@ public sealed class ReviewStageWorkflowTests
             },
             new ReviewAgentConcurrencyGate(4));
 
-        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+        Result<WorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A")),
@@ -247,7 +247,7 @@ public sealed class ReviewStageWorkflowTests
             },
             new ReviewAgentConcurrencyGate(4));
 
-        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+        Result<WorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A")),
@@ -274,7 +274,7 @@ public sealed class ReviewStageWorkflowTests
             new ReviewAgentConcurrencyGate(4),
             eventBus);
 
-        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+        Result<WorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A")),
@@ -301,7 +301,7 @@ public sealed class ReviewStageWorkflowTests
             },
             new ReviewAgentConcurrencyGate(4));
 
-        Result<ReviewStageWorkflowResult> result = await workflow.RunAsync(
+        Result<WorkflowResult> result = await workflow.RunAsync(
             @"Z:\GitHub\CodeSnifferDog",
             preparationResult,
             CreateRuleDefinitions(("rule-a", "- Rule A")),
@@ -316,7 +316,7 @@ public sealed class ReviewStageWorkflowTests
         ReviewAgentConcurrencyGate concurrencyGate,
         IAgentEventBus? agentEventBus = null) =>
         new(
-            new ReviewStageRuleLaneScheduler(ruleFlowWorkflowRunner, concurrencyGate),
+            new RuleLaneScheduler(ruleFlowWorkflowRunner, concurrencyGate),
             (taskItem, ruleDefinitions, flowResults) => Result.Ok(CreateReviewGroupResult(taskItem, ruleDefinitions, flowResults)),
             agentEventBus);
 

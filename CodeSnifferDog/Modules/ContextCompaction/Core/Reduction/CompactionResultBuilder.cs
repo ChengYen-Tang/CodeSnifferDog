@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using Microsoft.Extensions.AI;
 
@@ -154,7 +155,7 @@ internal sealed class CompactionResultBuilder(
         for (int index = nonSystemMessages.Count - 1; index >= 0; index--)
         {
             ChatMessage message = nonSystemMessages[index];
-            int messageTokens = OperationalContextTokenEstimator.Estimate([message]);
+            int messageTokens = TokenEstimator.Estimate([message]);
 
             if (keptMessages.Count > 0 && totalTokens >= options.PreservedTailMaxTokens)
                 break;

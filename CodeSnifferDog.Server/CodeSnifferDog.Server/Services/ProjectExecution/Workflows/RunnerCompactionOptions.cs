@@ -1,7 +1,7 @@
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 

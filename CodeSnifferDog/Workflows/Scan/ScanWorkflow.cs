@@ -1,6 +1,5 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -9,6 +8,7 @@ using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.Scan;
 
@@ -25,8 +25,8 @@ public sealed class ScanWorkflow(
     private readonly Func<string, IAgentEventScope, AgentCreationResult> _scanVerifierAgentFactory = scanVerifierAgentFactory;
     private readonly IScanProjectStore _scanProjectStore = scanProjectStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
-    private readonly ScanWorkflowMessageBuilder _messageBuilder =
-        new(new ScanWorkflowMessageTemplates(promptAssetReader ?? new PromptAssetReader()));
+    private readonly MessageBuilder _messageBuilder =
+        new(new MessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly ScanWorkflowOptions _options = options ?? new ScanWorkflowOptions();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
@@ -149,7 +149,7 @@ public sealed class ScanWorkflow(
             }
 
             if (verdict.Approved)
-                return Result.Ok(ScanWorkflowResultFactory.Create(
+                return Result.Ok(ResultFactory.Create(
                     projects,
                     verdict,
                     scanAttempts,
@@ -161,7 +161,7 @@ public sealed class ScanWorkflow(
             if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
             {
                 await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Ok(ScanWorkflowResultFactory.Create(
+                return Result.Ok(ResultFactory.Create(
                     projects,
                     verdict,
                     scanAttempts,

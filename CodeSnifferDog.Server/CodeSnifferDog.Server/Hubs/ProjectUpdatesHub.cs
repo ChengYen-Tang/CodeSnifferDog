@@ -7,11 +7,11 @@ namespace CodeSnifferDog.Server.Hubs;
 
 public sealed class ProjectUpdatesHub : Hub
 {
-    private readonly IProjectAgentStatusLiveBackfillService _backfillService;
+    private readonly ILiveBackfillService _backfillService;
     private const string CurrentTimelineProjectIdKey = "agent-status-current-project-id";
     private const string CurrentTimelineAgentIdKey = "agent-status-current-agent-id";
 
-    public ProjectUpdatesHub(IProjectAgentStatusLiveBackfillService backfillService)
+    public ProjectUpdatesHub(ILiveBackfillService backfillService)
     {
         _backfillService = backfillService;
     }

@@ -1,3 +1,5 @@
+using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Cancellation;
+
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 
 public sealed class ProjectExecutionLease : IDisposable
@@ -7,7 +9,7 @@ public sealed class ProjectExecutionLease : IDisposable
     private readonly Action<Guid> _onDispose;
     private readonly Lock _syncRoot = new();
     private readonly CancellationTokenRegistration _hostStoppingRegistration;
-    private int _cancellationSource = (int)ProjectExecutionCancellationSource.None;
+    private int _cancellationSource = (int)Source.None;
     private bool _disposed;
 
     internal ProjectExecutionLease(Guid projectId, CancellationToken hostStoppingToken, Action<Guid> onDispose)
@@ -17,7 +19,7 @@ public sealed class ProjectExecutionLease : IDisposable
         _hostStoppingRegistration = hostStoppingToken.Register(static state =>
         {
             ProjectExecutionLease lease = (ProjectExecutionLease)state!;
-            lease.TryCancel(ProjectExecutionCancellationSource.HostShutdown);
+            lease.TryCancel(Source.HostShutdown);
         }, this);
     }
 
@@ -25,12 +27,12 @@ public sealed class ProjectExecutionLease : IDisposable
 
     public CancellationToken CancellationToken => _cancellationTokenSource.Token;
 
-    internal ProjectExecutionCancellationSource CancellationSource =>
-        (ProjectExecutionCancellationSource)Volatile.Read(ref _cancellationSource);
+    internal Source CancellationSource =>
+        (Source)Volatile.Read(ref _cancellationSource);
 
     internal Task Completion => _completionSource.Task;
 
-    internal bool TryCancel(ProjectExecutionCancellationSource source)
+    internal bool TryCancel(Source source)
     {
         lock (_syncRoot)
         {

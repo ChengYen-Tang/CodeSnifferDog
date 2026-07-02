@@ -1,5 +1,6 @@
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectIntake;
+using CodeSnifferDog.Server.Services.Projects.Sidebar.Projection;
 using CodeSnifferDog.Server.Shared.Projects;
 
 namespace CodeSnifferDog.Server.Services.Projects.Projection;
@@ -38,7 +39,7 @@ internal sealed class ProjectProjectionMapper : IProjectProjectionMapper
     };
 
     public ProjectSidebarProjectDto MapSidebarProject(
-        ProjectSidebarProjectProjection project,
+        ProjectProjection project,
         ProjectStatus status,
         int sortOrder) => new()
     {

@@ -609,7 +609,7 @@ public sealed class ScanWorkflowTests
         =>
         new(new InMemoryScanProjectStore(), new ReviewVerdictBuffer());
 
-    private static ScanWorkflowMessageTemplates CreateMessageTemplates()
+    private static MessageTemplates CreateMessageTemplates()
         =>
         new(new PromptAssetReader());
 

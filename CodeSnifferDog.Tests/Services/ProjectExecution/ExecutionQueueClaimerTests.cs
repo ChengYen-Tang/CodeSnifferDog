@@ -30,7 +30,7 @@ public sealed class ExecutionQueueClaimerTests
         Guid olderProjectId = await SeedQueuedProjectAsync(services, DateTimeOffset.UtcNow);
         ExecutionQueueClaimer claimer = CreateClaimer(services, leaseRegistry);
 
-        ProjectExecutionClaim? claim = await claimer.TryClaimNextAsync(CancellationToken.None);
+        Claim? claim = await claimer.TryClaimNextAsync(CancellationToken.None);
 
         Assert.IsNotNull(claim);
         Assert.AreEqual(olderProjectId, claim.ProjectId);
@@ -70,7 +70,7 @@ public sealed class ExecutionQueueClaimerTests
             new ExecutionStateService(
                 services.GetRequiredService<IServiceScopeFactory>(),
                 services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>(),
-                services.GetRequiredService<IProjectAgentStatusLiveUpdateNotifier>(),
+                services.GetRequiredService<ILiveUpdateNotifier>(),
                 new ProjectStatusMapper()));
 
     private static ServiceProvider CreateServices(
@@ -82,7 +82,7 @@ public sealed class ExecutionQueueClaimerTests
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot));
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
-        services.AddSingleton<IProjectAgentStatusLiveUpdateNotifier>(liveUpdateNotifier);
+        services.AddSingleton<ILiveUpdateNotifier>(liveUpdateNotifier);
         return services.BuildServiceProvider();
     }
 
@@ -137,7 +137,7 @@ public sealed class ExecutionQueueClaimerTests
         }
     }
 
-    private sealed class TestLiveUpdateNotifier : IProjectAgentStatusLiveUpdateNotifier
+    private sealed class TestLiveUpdateNotifier : ILiveUpdateNotifier
     {
         public bool ThrowOnNotify { get; init; }
 

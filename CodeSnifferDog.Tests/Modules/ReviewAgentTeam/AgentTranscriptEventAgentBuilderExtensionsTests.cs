@@ -1,9 +1,9 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ReviewAgentTeam;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
 
 namespace CodeSnifferDog.Tests.Modules.ReviewAgentTeam;
 

@@ -3,10 +3,10 @@ using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.Scan;
-using CodeSnifferDog.Workflows.ProjectPlan;
-using CodeSnifferDog.Workflows.Report;
-using CodeSnifferDog.Workflows.RuleReview;
-using CodeSnifferDog.Workflows.Scan;
+using ProjectPlanResultFactory = CodeSnifferDog.Workflows.ProjectPlan.ResultFactory;
+using ReportResultFactory = CodeSnifferDog.Workflows.Report.ResultFactory;
+using RuleReviewResultFactory = CodeSnifferDog.Workflows.RuleReview.ResultFactory;
+using ScanResultFactory = CodeSnifferDog.Workflows.Scan.ResultFactory;
 
 namespace CodeSnifferDog.Tests.Workflows.Common;
 
@@ -19,7 +19,7 @@ public sealed class WorkflowResultFactoryTests
         StoredScanProject[] projects = [CreateScanProject()];
         ReviewVerdict verdict = CreateVerdict(approved: true);
 
-        ScanWorkflowResult result = ScanWorkflowResultFactory.Create(projects, verdict, 2, 3, 1);
+        ScanWorkflowResult result = ScanResultFactory.Create(projects, verdict, 2, 3, 1);
 
         Assert.AreSame(projects, result.Projects);
         Assert.AreSame(verdict, result.Verdict);
@@ -35,7 +35,7 @@ public sealed class WorkflowResultFactoryTests
         StoredProjectPlanTaskItem[] taskItems = [CreateTaskItem()];
         ReviewVerdict verdict = CreateVerdict(approved: false);
 
-        ProjectPlanWorkflowResult result = ProjectPlanWorkflowResultFactory.Create(
+        ProjectPlanWorkflowResult result = ProjectPlanResultFactory.Create(
             scanProject,
             taskItems,
             verdict,
@@ -61,7 +61,7 @@ public sealed class WorkflowResultFactoryTests
         NoIssueConclusion noIssueConclusion = CreateNoIssueConclusion();
         ReviewVerdict verdict = CreateVerdict(approved: false);
 
-        RuleReviewWorkflowResult result = RuleReviewWorkflowResultFactory.Create(
+        RuleReviewWorkflowResult result = RuleReviewResultFactory.Create(
             taskItem,
             "performance",
             issues,
@@ -98,7 +98,7 @@ public sealed class WorkflowResultFactoryTests
         };
         ReviewVerdict verdict = CreateVerdict(approved: true);
 
-        RuleReportWorkflowResult result = RuleReportWorkflowResultFactory.Create(
+        RuleReportWorkflowResult result = ReportResultFactory.Create(
             "performance",
             taskItem,
             diff,

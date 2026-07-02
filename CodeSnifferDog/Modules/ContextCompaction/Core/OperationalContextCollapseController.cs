@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
@@ -40,7 +41,7 @@ public sealed class OperationalContextCollapseController(
         ArgumentNullException.ThrowIfNull(requestMessages);
 
         IReadOnlyList<ChatMessage> committedProjectionMessages = PrepareMessages(requestMessages, session);
-        int estimatedTokens = OperationalContextTokenEstimator.Estimate(committedProjectionMessages);
+        int estimatedTokens = TokenEstimator.Estimate(committedProjectionMessages);
         bool shouldArm = estimatedTokens >= _reducer.Options.GetCollapseProactiveThreshold();
         _sessionState.RecordSpawnObservation(session, estimatedTokens, shouldArm);
 
