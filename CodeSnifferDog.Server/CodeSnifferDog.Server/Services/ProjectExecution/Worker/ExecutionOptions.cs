@@ -17,5 +17,9 @@ public sealed class ExecutionOptions
 
     public int MaxConsecutiveAgentRunFailures { get; init; } = 5;
 
+    public int MaxMissingSubmissionAttempts { get; init; } = 3;
+
+    public int MaxVerifierRejectionAttempts { get; init; } = 3;
+
     public TimeSpan AgentRunTimeout => TimeSpan.FromSeconds(Math.Max(1, AgentRunTimeoutSeconds));
 }

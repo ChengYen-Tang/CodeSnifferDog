@@ -13,6 +13,7 @@ using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
+using CodeSnifferDog.Workflows.Common;
 using CodeSnifferDog.Workflows.Scan;
 using FluentResults;
 using Microsoft.Agents.AI;
@@ -544,6 +545,59 @@ public sealed class WorkflowTests
         Assert.IsTrue(result.IsFailed);
         Assert.IsTrue(result.Errors.Any(error =>
             error.Message.Contains("without submitting a verdict", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task RunAsync_RetriesVerifierWithUserReminder_WhenVerifierDoesNotSubmitVerdict()
+    {
+        int verifierInvocations = 0;
+        bool reminderObserved = false;
+        Workflow workflow = CreateWorkflow(
+            invocation =>
+            {
+                if (HasFunctionResult(invocation.Messages, "scan-add-primary"))
+                    return CreateAssistantResponse("Primary project recorded.");
+
+                return CreateFunctionCallResponse(
+                    "scan-add-primary",
+                    "AddScanProject",
+                    new Dictionary<string, object?>
+                    {
+                        ["ProjectName"] = "CodeSnifferDog",
+                        ["ProjectPath"] = "CodeSnifferDog/CodeSnifferDog.csproj",
+                        ["ProjectType"] = ".csproj",
+                        ["Reason"] = "Primary application project.",
+                    });
+            },
+            invocation =>
+            {
+                verifierInvocations++;
+                reminderObserved |= invocation.Messages.Any(message =>
+                    message.Role == ChatRole.User &&
+                    message.Text == WorkflowRetryMessages.MissingVerifierVerdictMessage);
+
+                if (HasFunctionResult(invocation.Messages, "verdict-approve"))
+                    return CreateAssistantResponse("Scan approved.");
+
+                if (verifierInvocations == 1)
+                    return CreateAssistantResponse("No verdict submitted.");
+
+                return CreateFunctionCallResponse(
+                    "verdict-approve",
+                    "SubmitReviewVerdict",
+                    new Dictionary<string, object?>
+                    {
+                        ["Approved"] = true,
+                        ["Message"] = "The scan result is acceptable.",
+                    });
+            });
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(TestRepositoryPaths.RootPath, TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.AreEqual(2, result.Value.VerifierAttempts);
+        Assert.AreEqual(3, verifierInvocations);
+        Assert.IsTrue(reminderObserved);
     }
 
     [TestMethod]

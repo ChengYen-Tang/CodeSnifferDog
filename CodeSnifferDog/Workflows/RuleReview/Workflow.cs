@@ -127,11 +127,11 @@ public sealed class Workflow(
                 {
                     missingSubmissionAttempts++;
 
-                    if (missingSubmissionAttempts >= _options.MaxMissingSubmissionAttempts)
+                    if (RetryLimit.IsReached(missingSubmissionAttempts, _options.MaxMissingSubmissionAttempts))
                     {
                         ruleReviewAgentResetCount++;
 
-                        if (ruleReviewAgentResetCount > _options.MaxRuleReviewAgentResets)
+                        if (RetryLimit.IsExceeded(ruleReviewAgentResetCount, _options.MaxRuleReviewAgentResets))
                         {
                             await reviewAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                             ReviewVerdict missingSubmissionVerdict = new()
@@ -173,67 +173,80 @@ public sealed class Workflow(
                 }
 
                 missingSubmissionAttempts = 0;
-                verifierAttempts++;
-                _verdictBuffer.Reset(reviewVerdictScopeKey);
-
                 List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(issues, noIssueConclusion);
                 int verifierPublishedMessageCount = 0;
+                int verifierMissingVerdictAttempts = 0;
 
-                (Result runVerifierResult, verifierPublishedMessageCount, reviewVerifierAgent) = await WorkflowAgentRunService.RunAsync(
-                    reviewVerifierAgent,
-                    () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope).Agent,
-                    PrepareAttempt,
-                    static state => state.Restore(),
-                    verifierMessages,
-                    verifierAgentScope,
-                    verifierPublishedMessageCount,
-                    _options.AgentRunTimeout,
-                    _options.MaxConsecutiveRunFailures,
-                    cancellationToken).ConfigureAwait(false);
-
-                if (runVerifierResult.IsFailed)
-                    return runVerifierResult.ToResult<WorkflowResult>();
-
-                if (_verdictBuffer.GetLatest(reviewVerdictScopeKey) is not ReviewVerdict verdict)
+                while (true)
                 {
-                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    return Result.Fail<WorkflowResult>("Review Verifier Agent finished without submitting a verdict.");
+                    verifierAttempts++;
+                    _verdictBuffer.Reset(reviewVerdictScopeKey);
+
+                    (Result runVerifierResult, verifierPublishedMessageCount, reviewVerifierAgent) = await WorkflowAgentRunService.RunAsync(
+                        reviewVerifierAgent,
+                        () => _reviewVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, verifierAgentScope).Agent,
+                        PrepareAttempt,
+                        static state => state.Restore(),
+                        verifierMessages,
+                        verifierAgentScope,
+                        verifierPublishedMessageCount,
+                        _options.AgentRunTimeout,
+                        _options.MaxConsecutiveRunFailures,
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (runVerifierResult.IsFailed)
+                        return runVerifierResult.ToResult<WorkflowResult>();
+
+                    if (_verdictBuffer.GetLatest(reviewVerdictScopeKey) is not ReviewVerdict verdict)
+                    {
+                        verifierMissingVerdictAttempts++;
+
+                        if (RetryLimit.IsReached(verifierMissingVerdictAttempts, _options.MaxMissingSubmissionAttempts))
+                        {
+                            await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                            return Result.Fail<WorkflowResult>("Review Verifier Agent finished without submitting a verdict.");
+                        }
+
+                        verifierMessages.Add(_messageBuilder.CreateMissingVerifierVerdictMessage());
+                        continue;
+                    }
+
+                    if (verdict.Approved)
+                    {
+                        return Result.Ok(ResultFactory.Create(
+                            taskItem,
+                            ruleKey,
+                            issues,
+                            noIssueConclusion,
+                            verdict,
+                            reviewAttempts,
+                            verifierAttempts,
+                            ruleReviewAgentResetCount,
+                            continuedAfterVerifierRejectionLimit: false,
+                            stoppedAfterMissingSubmissionLimit: false));
+                    }
+
+                    verifierRejectionAttempts++;
+
+                    if (RetryLimit.IsReached(verifierRejectionAttempts, _options.MaxVerifierRejectionAttempts))
+                    {
+                        await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                        return Result.Ok(ResultFactory.Create(
+                            taskItem,
+                            ruleKey,
+                            issues,
+                            noIssueConclusion,
+                            verdict,
+                            reviewAttempts,
+                            verifierAttempts,
+                            ruleReviewAgentResetCount,
+                            continuedAfterVerifierRejectionLimit: true,
+                            stoppedAfterMissingSubmissionLimit: false));
+                    }
+
+                    reviewMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+                    break;
                 }
-
-                if (verdict.Approved)
-                {
-                    return Result.Ok(ResultFactory.Create(
-                        taskItem,
-                        ruleKey,
-                        issues,
-                        noIssueConclusion,
-                        verdict,
-                        reviewAttempts,
-                        verifierAttempts,
-                        ruleReviewAgentResetCount,
-                        continuedAfterVerifierRejectionLimit: false,
-                        stoppedAfterMissingSubmissionLimit: false));
-                }
-
-                verifierRejectionAttempts++;
-
-                if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
-                {
-                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    return Result.Ok(ResultFactory.Create(
-                        taskItem,
-                        ruleKey,
-                        issues,
-                        noIssueConclusion,
-                        verdict,
-                        reviewAttempts,
-                        verifierAttempts,
-                        ruleReviewAgentResetCount,
-                        continuedAfterVerifierRejectionLimit: true,
-                        stoppedAfterMissingSubmissionLimit: false));
-                }
-
-                reviewMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
             }
         }
         finally

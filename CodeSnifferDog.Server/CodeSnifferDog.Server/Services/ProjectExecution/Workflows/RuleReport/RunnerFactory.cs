@@ -90,5 +90,7 @@ internal sealed class RunnerFactory(
         {
             AgentRunTimeout = executionOptions.AgentRunTimeout,
             MaxConsecutiveRunFailures = executionOptions.MaxConsecutiveAgentRunFailures,
+            MaxMissingSubmissionAttempts = executionOptions.MaxMissingSubmissionAttempts,
+            MaxVerifierRejectionAttempts = executionOptions.MaxVerifierRejectionAttempts,
         };
 }

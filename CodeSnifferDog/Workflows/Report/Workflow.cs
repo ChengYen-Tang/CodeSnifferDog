@@ -130,71 +130,84 @@ public sealed class Workflow(
 
                 Diff diff = await _diffService.ComputeAndStoreDiffAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
-                verifierAttempts++;
-                _verdictBuffer.Reset(reportVerdictScopeKey);
-
                 List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(diff);
                 int verifierPublishedMessageCount = 0;
+                int verifierMissingVerdictAttempts = 0;
 
-                (Result runVerifierResult, verifierPublishedMessageCount, reportVerifierAgent) = await WorkflowAgentRunService.RunAsync(
-                    reportVerifierAgent,
-                    () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope).Agent,
-                    PrepareAttempt,
-                    static state => state.Restore(),
-                    verifierMessages,
-                    verifierAgentScope,
-                    verifierPublishedMessageCount,
-                    _options.AgentRunTimeout,
-                    _options.MaxConsecutiveRunFailures,
-                    cancellationToken).ConfigureAwait(false);
-
-                if (runVerifierResult.IsFailed)
-                    return runVerifierResult.ToResult<ReportWorkflowResult>();
-
-                if (_verdictBuffer.GetLatest(reportVerdictScopeKey) is not ReviewVerdict verdict)
+                while (true)
                 {
-                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    return Result.Fail<ReportWorkflowResult>("Report Verifier Agent finished without submitting a verdict.");
+                    verifierAttempts++;
+                    _verdictBuffer.Reset(reportVerdictScopeKey);
+
+                    (Result runVerifierResult, verifierPublishedMessageCount, reportVerifierAgent) = await WorkflowAgentRunService.RunAsync(
+                        reportVerifierAgent,
+                        () => _reportVerifierAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, verifierAgentScope).Agent,
+                        PrepareAttempt,
+                        static state => state.Restore(),
+                        verifierMessages,
+                        verifierAgentScope,
+                        verifierPublishedMessageCount,
+                        _options.AgentRunTimeout,
+                        _options.MaxConsecutiveRunFailures,
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (runVerifierResult.IsFailed)
+                        return runVerifierResult.ToResult<ReportWorkflowResult>();
+
+                    if (_verdictBuffer.GetLatest(reportVerdictScopeKey) is not ReviewVerdict verdict)
+                    {
+                        verifierMissingVerdictAttempts++;
+
+                        if (RetryLimit.IsReached(verifierMissingVerdictAttempts, _options.MaxMissingSubmissionAttempts))
+                        {
+                            await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                            return Result.Fail<ReportWorkflowResult>("Report Verifier Agent finished without submitting a verdict.");
+                        }
+
+                        verifierMessages.Add(_messageBuilder.CreateMissingVerifierVerdictMessage());
+                        continue;
+                    }
+
+                    if (verdict.Approved)
+                    {
+                        await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+                        IReadOnlyList<ReportStoredIssue> repositoryIssues =
+                            await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
+
+                        return Result.Ok(ResultFactory.Create(
+                            ruleKey,
+                            taskItem,
+                            diff,
+                            repositoryIssues,
+                            verdict,
+                            continuedAfterVerifierRejectionLimit: false,
+                            aggregatorAttempts,
+                            verifierAttempts));
+                    }
+
+                    verifierRejectionAttempts++;
+
+                    if (RetryLimit.IsReached(verifierRejectionAttempts, _options.MaxVerifierRejectionAttempts))
+                    {
+                        await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                        await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
+                        IReadOnlyList<ReportStoredIssue> repositoryIssues =
+                            await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
+
+                        return Result.Ok(ResultFactory.Create(
+                            ruleKey,
+                            taskItem,
+                            diff,
+                            repositoryIssues,
+                            verdict,
+                            continuedAfterVerifierRejectionLimit: true,
+                            aggregatorAttempts,
+                            verifierAttempts));
+                    }
+
+                    aggregatorMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+                    break;
                 }
-
-                if (verdict.Approved)
-                {
-                    await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
-                    IReadOnlyList<ReportStoredIssue> repositoryIssues =
-                        await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
-
-                    return Result.Ok(ResultFactory.Create(
-                        ruleKey,
-                        taskItem,
-                        diff,
-                        repositoryIssues,
-                        verdict,
-                        continuedAfterVerifierRejectionLimit: false,
-                        aggregatorAttempts,
-                        verifierAttempts));
-                }
-
-                verifierRejectionAttempts++;
-
-                if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
-                {
-                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    await _reportIssueStore.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
-                    IReadOnlyList<ReportStoredIssue> repositoryIssues =
-                        await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
-
-                    return Result.Ok(ResultFactory.Create(
-                        ruleKey,
-                        taskItem,
-                        diff,
-                        repositoryIssues,
-                        verdict,
-                        continuedAfterVerifierRejectionLimit: true,
-                        aggregatorAttempts,
-                        verifierAttempts));
-                }
-
-                aggregatorMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
             }
         }
         finally

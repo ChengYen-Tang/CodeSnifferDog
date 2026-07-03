@@ -96,6 +96,33 @@ public sealed class WorkflowAgentRunServiceTests
     }
 
     [TestMethod]
+    public async Task RunAsync_AllowsZeroMaxConsecutiveFailures_AsUnlimited()
+    {
+        RecordingAgentEventScope eventScope = new();
+        List<ChatMessage> messages = [new(ChatRole.User, "scan")];
+        AIAgent agent = CreateStreamingAgent(
+            eventScope,
+        [
+            new AgentResponseUpdate(ChatRole.Assistant, "done"),
+        ]);
+
+        (Result result, _, _) = await WorkflowAgentRunService.RunAsync(
+            agent,
+            () => throw new InvalidOperationException("Factory should not be called."),
+            static _ => new AttemptState(),
+            static state => state.Restored = true,
+            messages,
+            eventScope,
+            publishedMessageCount: 0,
+            timeout: TimeSpan.FromSeconds(5),
+            maxConsecutiveFailures: 0,
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess);
+        CollectionAssert.Contains(eventScope.Events, "status:Completed");
+    }
+
+    [TestMethod]
     public async Task RunAsync_Cancellation_PropagatesWithoutPublishingTerminalStatus()
     {
         RecordingAgentEventScope eventScope = new();

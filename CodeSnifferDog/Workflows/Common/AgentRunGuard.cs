@@ -29,12 +29,12 @@ internal static class AgentRunGuard
 
         if (timeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(timeout), "Agent run timeout must be greater than zero.");
-        if (maxConsecutiveFailures <= 0)
-            throw new ArgumentOutOfRangeException(nameof(maxConsecutiveFailures), "Max consecutive failures must be greater than zero.");
+        if (maxConsecutiveFailures < 0)
+            throw new ArgumentOutOfRangeException(nameof(maxConsecutiveFailures), "Max consecutive failures must be zero or greater.");
 
         Exception? lastException = null;
 
-        for (int attempt = 1; attempt <= maxConsecutiveFailures; attempt++)
+        for (int attempt = 1; maxConsecutiveFailures == 0 || attempt <= maxConsecutiveFailures; attempt++)
         {
             Guid attemptId = Guid.NewGuid();
             TSnapshot snapshot = prepareAttempt(attemptId);
