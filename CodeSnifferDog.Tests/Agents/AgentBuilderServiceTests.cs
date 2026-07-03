@@ -1,13 +1,18 @@
 using CodeSnifferDog.Agents.Common;
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using TranscriptAgentBuilderExtensions = CodeSnifferDog.Modules.ReviewAgentTeam.Transcript.AgentBuilderExtensions;
 
 namespace CodeSnifferDog.Tests.Agents;
 
@@ -62,7 +67,7 @@ public sealed class AgentBuilderServiceTests
             [new ChatMessage(ChatRole.User, "hello")],
             cancellationToken: TestContext.CancellationToken);
 
-        Assert.IsTrue(AgentTranscriptEventAgentBuilderExtensions.HasPublishedTranscriptEvents(response));
+        Assert.IsTrue(TranscriptAgentBuilderExtensions.HasPublishedTranscriptEvents(response));
         CollectionAssert.AreEqual(
             new[]
             {
@@ -74,11 +79,11 @@ public sealed class AgentBuilderServiceTests
             eventScope.Events.ToArray());
     }
 
-    private static OperationalContextAgentCompactionOptions CreateCompactionOptions() =>
+    private static AgentCompactionOptions CreateCompactionOptions() =>
         new()
         {
-            Reducer = new OperationalContextChatReducer(
-                new OperationalContextCompactionOptions
+            Reducer = new ChatReducer(
+                new CompactionOptions
                 {
                     ModelContextWindowTokens = 100_000,
                     SummaryReservedOutputTokens = 1,
@@ -86,16 +91,16 @@ public sealed class AgentBuilderServiceTests
                     PreservedTailMinTokens = 1,
                     PreservedTailMinMessages = 1,
                 },
-                new StaticOperationalContextSummaryPromptProvider("Summarize."),
+                new StaticSummaryPromptProvider("Summarize."),
                 new StaticSummarizer()),
         };
 
-    private sealed class StaticSummarizer : IOperationalContextCompactionSummarizer
+    private sealed class StaticSummarizer : ISummarizer
     {
         public ValueTask<string> SummarizeAsync(
             IReadOnlyList<ChatMessage> messages,
             string summaryPrompt,
-            OperationalContextCompactionOptions options,
+            CompactionOptions options,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(
                 """

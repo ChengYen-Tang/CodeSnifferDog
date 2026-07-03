@@ -9,10 +9,16 @@ using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
 using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
-using CodeSnifferDog.Modules.Tools.Report;
-using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Modules.Tools.Scan;
 using Microsoft.Extensions.AI;
+using ReportToolFactory = CodeSnifferDog.Modules.Tools.Report.ToolFactory;
+using ReportToolCallbacks = CodeSnifferDog.Modules.Tools.Report.AggregatorToolCallbacks;
+using ReportVerifierToolCallbacks = CodeSnifferDog.Modules.Tools.Report.VerifierToolCallbacks;
+using RuleReviewToolFactory = CodeSnifferDog.Modules.Tools.RuleReview.ToolFactory;
+using RuleReviewAgentToolCallbacks = CodeSnifferDog.Modules.Tools.RuleReview.AgentToolCallbacks;
+using RuleReviewVerifierToolCallbacks = CodeSnifferDog.Modules.Tools.RuleReview.VerifierToolCallbacks;
+using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using ReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Tests.Modules.Tools;
 
@@ -81,12 +87,12 @@ public sealed class ToolFactoryTypedSeamTests
     [TestMethod]
     public void ProjectPlanToolFactory_UsesTypedCallbacks()
     {
-        IList<AITool> agentTools = ProjectPlanToolFactory.CreateAgentTools(new ProjectPlanAgentToolCallbacks(
+        IList<AITool> agentTools = ToolFactory.CreateAgentTools(new ProjectPlanAgentToolCallbacks(
             AddProjectPlanTaskItemTool,
             AddProjectPlanTaskItemsTool,
             DeleteProjectPlanTaskItemTool,
             ListProjectPlanTaskItemsTool));
-        IList<AITool> verifierTools = ProjectPlanToolFactory.CreateVerifierTools(new ProjectPlanVerifierToolCallbacks(
+        IList<AITool> verifierTools = ToolFactory.CreateVerifierTools(new ProjectPlanVerifierToolCallbacks(
             ListProjectPlanTaskItemsTool,
             SubmitReviewVerdictTool));
 
@@ -120,7 +126,7 @@ public sealed class ToolFactoryTypedSeamTests
     [TestMethod]
     public void ReportToolFactory_UsesTypedCallbacks()
     {
-        IList<AITool> aggregatorTools = ReportToolFactory.CreateAggregatorTools(new ReportAggregatorToolCallbacks(
+        IList<AITool> aggregatorTools = ReportToolFactory.CreateAggregatorTools(new ReportToolCallbacks(
             GetRuleReportIssueTool,
             ListRuleReportIssuesTool,
             CreateRuleReportIssueTool,
@@ -161,7 +167,7 @@ public sealed class ToolFactoryTypedSeamTests
         ValueTask.FromResult<IReadOnlyList<StoredScanProject>>([]);
 
     private static ValueTask<AddProjectPlanTaskItemResult> AddProjectPlanTaskItemTool(
-        IReadOnlyList<ProjectPlanFile> Files,
+        IReadOnlyList<PlanFile> Files,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(new AddProjectPlanTaskItemResult { ProjectPlanTaskItemId = "task-item" });
 
@@ -173,8 +179,8 @@ public sealed class ToolFactoryTypedSeamTests
     private static ValueTask<bool> DeleteProjectPlanTaskItemTool(string ProjectPlanTaskItemId, CancellationToken cancellationToken) =>
         ValueTask.FromResult(true);
 
-    private static ValueTask<IReadOnlyList<StoredProjectPlanTaskItem>> ListProjectPlanTaskItemsTool(CancellationToken cancellationToken) =>
-        ValueTask.FromResult<IReadOnlyList<StoredProjectPlanTaskItem>>([]);
+    private static ValueTask<IReadOnlyList<StoredTaskItem>> ListProjectPlanTaskItemsTool(CancellationToken cancellationToken) =>
+        ValueTask.FromResult<IReadOnlyList<StoredTaskItem>>([]);
 
     private static ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueTool(
         string IssueType,
@@ -191,13 +197,13 @@ public sealed class ToolFactoryTypedSeamTests
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(new CreateRuleReviewIssueResult { RuleReviewIssueId = "review-issue" });
 
-    private static ValueTask<StoredRuleReviewIssue> GetRuleReviewIssueTool(string RuleReviewIssueId, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new StoredRuleReviewIssue { RuleReviewIssueId = RuleReviewIssueId, IssueType = "", Severity = RuleReviewSeverity.Low, FileOrFunction = "", RelevantCodePatternOrExpression = "", WhyThisIsAProblem = "", Confidence = "", FollowUpFiles = "", SuggestedFixDirection = "", ScopeCoverage = "", CrossScopeAnalysis = "", ReviewStrategy = "" });
+    private static ValueTask<ReviewStoredIssue> GetRuleReviewIssueTool(string RuleReviewIssueId, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ReviewStoredIssue { RuleReviewIssueId = RuleReviewIssueId, IssueType = "", Severity = Severity.Low, FileOrFunction = "", RelevantCodePatternOrExpression = "", WhyThisIsAProblem = "", Confidence = "", FollowUpFiles = "", SuggestedFixDirection = "", ScopeCoverage = "", CrossScopeAnalysis = "", ReviewStrategy = "" });
 
-    private static ValueTask<IReadOnlyList<StoredRuleReviewIssue>> ListRuleReviewIssuesTool(CancellationToken cancellationToken) =>
-        ValueTask.FromResult<IReadOnlyList<StoredRuleReviewIssue>>([]);
+    private static ValueTask<IReadOnlyList<ReviewStoredIssue>> ListRuleReviewIssuesTool(CancellationToken cancellationToken) =>
+        ValueTask.FromResult<IReadOnlyList<ReviewStoredIssue>>([]);
 
-    private static ValueTask<StoredRuleReviewIssue> UpdateRuleReviewIssueTool(
+    private static ValueTask<ReviewStoredIssue> UpdateRuleReviewIssueTool(
         string RuleReviewIssueId,
         string IssueType,
         string Severity,
@@ -224,11 +230,11 @@ public sealed class ToolFactoryTypedSeamTests
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(true);
 
-    private static ValueTask<StoredRuleReportIssue> GetRuleReportIssueTool(string RuleReportIssueId, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new StoredRuleReportIssue { RuleReportIssueId = RuleReportIssueId, IssueType = "", Severity = RuleReviewSeverity.Low, FileOrFunction = "", RelevantCodePatternOrExpression = "", WhyThisIsAProblem = "", Confidence = "", FollowUpFiles = "", SuggestedFixDirection = "", ScopeCoverage = "", CrossScopeAnalysis = "", ReviewStrategy = "" });
+    private static ValueTask<ReportStoredIssue> GetRuleReportIssueTool(string RuleReportIssueId, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ReportStoredIssue { RuleReportIssueId = RuleReportIssueId, IssueType = "", Severity = Severity.Low, FileOrFunction = "", RelevantCodePatternOrExpression = "", WhyThisIsAProblem = "", Confidence = "", FollowUpFiles = "", SuggestedFixDirection = "", ScopeCoverage = "", CrossScopeAnalysis = "", ReviewStrategy = "" });
 
-    private static ValueTask<IReadOnlyList<StoredRuleReportIssue>> ListRuleReportIssuesTool(CancellationToken cancellationToken) =>
-        ValueTask.FromResult<IReadOnlyList<StoredRuleReportIssue>>([]);
+    private static ValueTask<IReadOnlyList<ReportStoredIssue>> ListRuleReportIssuesTool(CancellationToken cancellationToken) =>
+        ValueTask.FromResult<IReadOnlyList<ReportStoredIssue>>([]);
 
     private static ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueTool(
         string IssueType,
@@ -245,7 +251,7 @@ public sealed class ToolFactoryTypedSeamTests
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(new CreateRuleReportIssueResult { RuleReportIssueId = "report-issue" });
 
-    private static ValueTask<StoredRuleReportIssue> UpdateRuleReportIssueTool(
+    private static ValueTask<ReportStoredIssue> UpdateRuleReportIssueTool(
         string RuleReportIssueId,
         string IssueType,
         string Severity,

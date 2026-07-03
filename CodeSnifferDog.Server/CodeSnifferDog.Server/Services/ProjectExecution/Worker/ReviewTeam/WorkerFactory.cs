@@ -1,8 +1,12 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ReviewAgentTeam.Runtime;
-using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using Microsoft.Extensions.AI;
+using AnalysisRuleDefinition = CodeSnifferDog.Server.Services.ProjectExecution.Analysis.RuleDefinition;
+using TeamFactory = CodeSnifferDog.Modules.ReviewAgentTeam.Runtime.Factory;
+using TeamExecutionOptions = CodeSnifferDog.Models.ReviewAgentTeam.Runtime.ExecutionOptions;
+using TeamRuleDefinition = CodeSnifferDog.Models.ReviewAgentTeam.Agents.RuleDefinition;
+using TeamWorker = CodeSnifferDog.Modules.ReviewAgentTeam.Runtime.Worker;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 
@@ -23,16 +27,16 @@ internal sealed class WorkerFactory(
     public IWorker CreateWorker(
         IChatClient chatClient,
         string repositoryRootPath,
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+        IReadOnlyList<AnalysisRuleDefinition> rules,
         ExecutionOptions executionOptions,
         IAgentEventBus agentEventBus)
     {
-        ReviewAgentTeamDependencies dependencies = _dependenciesFactory.CreateDependencies(
+        Dependencies dependencies = _dependenciesFactory.CreateDependencies(
             chatClient,
             executionOptions,
             agentEventBus);
 
-        ReviewAgentTeamWorker worker = _workerFactory(
+        TeamWorker worker = _workerFactory(
             dependencies,
             repositoryRootPath,
             MapRules(rules),
@@ -41,27 +45,27 @@ internal sealed class WorkerFactory(
         return new Worker(worker);
     }
 
-    internal delegate ReviewAgentTeamWorker CreateWorkerDelegate(
-        ReviewAgentTeamDependencies dependencies,
+    internal delegate TeamWorker CreateWorkerDelegate(
+        Dependencies dependencies,
         string repositoryRootPath,
-        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
-        ReviewAgentTeamExecutionOptions executionOptions);
+        IReadOnlyList<TeamRuleDefinition> ruleDefinitions,
+        TeamExecutionOptions executionOptions);
 
-    private static ReviewAgentTeamWorker DefaultWorkerFactory(
-        ReviewAgentTeamDependencies dependencies,
+    private static TeamWorker DefaultWorkerFactory(
+        Dependencies dependencies,
         string repositoryRootPath,
-        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
-        ReviewAgentTeamExecutionOptions executionOptions) =>
-        new ReviewAgentTeamFactory(dependencies).CreateWorker(repositoryRootPath, ruleDefinitions, executionOptions);
+        IReadOnlyList<TeamRuleDefinition> ruleDefinitions,
+        TeamExecutionOptions executionOptions) =>
+        new TeamFactory(dependencies).CreateWorker(repositoryRootPath, ruleDefinitions, executionOptions);
 
-    private static ReviewAgentRuleDefinition[] MapRules(IReadOnlyList<ProjectExecutionRuleDefinition> rules) =>
-        [.. rules.Select(rule => new ReviewAgentRuleDefinition
+    private static TeamRuleDefinition[] MapRules(IReadOnlyList<AnalysisRuleDefinition> rules) =>
+        [.. rules.Select(rule => new TeamRuleDefinition
         {
             RuleKey = rule.RuleKey,
             RuleMarkdown = rule.RuleMarkdown,
         })];
 
-    private static ReviewAgentTeamExecutionOptions MapExecutionOptions(ExecutionOptions executionOptions) =>
+    private static TeamExecutionOptions MapExecutionOptions(ExecutionOptions executionOptions) =>
         new()
         {
             MaxParallelAgents = executionOptions.MaxParallelAgents,

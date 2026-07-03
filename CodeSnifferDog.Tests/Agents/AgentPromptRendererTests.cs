@@ -13,7 +13,7 @@ public sealed class AgentPromptRendererTests
     {
         AgentPromptRenderer renderer = new();
 
-        string prompt = renderer.ReadRequiredPrompt(ScanPromptAssetPaths.ScanAgentPrompt);
+        string prompt = renderer.ReadRequiredPrompt(ScanAgentPromptAssets.ScanAgentPrompt);
 
         Assert.IsFalse(string.IsNullOrWhiteSpace(prompt));
     }

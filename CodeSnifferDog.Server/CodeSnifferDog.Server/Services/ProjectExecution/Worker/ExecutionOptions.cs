@@ -1,5 +1,5 @@
-using CodeSnifferDog.Models.ContextCompaction;
-using CodeSnifferDog.Models.ReviewAgentTeam;
+using TeamExecutionOptions = CodeSnifferDog.Models.ReviewAgentTeam.Runtime.ExecutionOptions;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 
@@ -8,10 +8,10 @@ public sealed class ExecutionOptions
     public int MaxParallelAgents { get; init; } = 2;
 
     public long ModelContextWindowTokens { get; init; } =
-        ReviewAgentTeamExecutionOptions.DefaultModelContextWindowTokens;
+        TeamExecutionOptions.DefaultModelContextWindowTokens;
 
-    public OperationalContextCompactionMode ContextCompactionMode { get; init; } =
-        OperationalContextCompactionMode.Standard;
+    public CompactionMode ContextCompactionMode { get; init; } =
+        CompactionMode.Standard;
 
     public int AgentRunTimeoutSeconds { get; init; } = 300;
 

@@ -4,6 +4,7 @@ using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Workflows.Common;
 using CodeSnifferDog.Workflows.Report;
+using StoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 
 namespace CodeSnifferDog.Tests.Workflows.Report;
 
@@ -18,15 +19,15 @@ public sealed class DiffServiceTests
     [TestMethod]
     public async Task ComputeAndStoreDiffAsync_WhenSnapshotEmpty_AddsAllCurrentIssuesToCreated()
     {
-        StoredRuleReportIssue currentIssue = CreateIssue("issue-1");
-        FakeRuleReportIssueStore store = new()
+        StoredIssue currentIssue = CreateIssue("issue-1");
+        FakeIssueStore store = new()
         {
             PreviousSnapshot = [],
             CurrentIssues = [currentIssue],
         };
         DiffService service = new(store);
 
-        RuleReportDiff diff = await service.ComputeAndStoreDiffAsync(
+        Diff diff = await service.ComputeAndStoreDiffAsync(
             RuleReportKey,
             RuleFlowKey,
             TestContext.CancellationToken);
@@ -40,15 +41,15 @@ public sealed class DiffServiceTests
     [TestMethod]
     public async Task ComputeAndStoreDiffAsync_WhenSnapshotIssueMissingFromCurrent_AddsIssueToDeleted()
     {
-        StoredRuleReportIssue previousIssue = CreateIssue("issue-1");
-        FakeRuleReportIssueStore store = new()
+        StoredIssue previousIssue = CreateIssue("issue-1");
+        FakeIssueStore store = new()
         {
             PreviousSnapshot = [previousIssue],
             CurrentIssues = [],
         };
         DiffService service = new(store);
 
-        RuleReportDiff diff = await service.ComputeAndStoreDiffAsync(
+        Diff diff = await service.ComputeAndStoreDiffAsync(
             RuleReportKey,
             RuleFlowKey,
             TestContext.CancellationToken);
@@ -62,16 +63,16 @@ public sealed class DiffServiceTests
     [TestMethod]
     public async Task ComputeAndStoreDiffAsync_WhenSameIdHasChangedField_AddsCurrentIssueToUpdated()
     {
-        StoredRuleReportIssue previousIssue = CreateIssue("issue-1", suggestedFixDirection: "Investigate the hot path.");
-        StoredRuleReportIssue currentIssue = CreateIssue("issue-1", suggestedFixDirection: "Use a cached async path.");
-        FakeRuleReportIssueStore store = new()
+        StoredIssue previousIssue = CreateIssue("issue-1", suggestedFixDirection: "Investigate the hot path.");
+        StoredIssue currentIssue = CreateIssue("issue-1", suggestedFixDirection: "Use a cached async path.");
+        FakeIssueStore store = new()
         {
             PreviousSnapshot = [previousIssue],
             CurrentIssues = [currentIssue],
         };
         DiffService service = new(store);
 
-        RuleReportDiff diff = await service.ComputeAndStoreDiffAsync(
+        Diff diff = await service.ComputeAndStoreDiffAsync(
             RuleReportKey,
             RuleFlowKey,
             TestContext.CancellationToken);
@@ -83,30 +84,30 @@ public sealed class DiffServiceTests
     }
 
     [TestMethod]
-    [DataRow(nameof(StoredRuleReportIssue.IssueType))]
-    [DataRow(nameof(StoredRuleReportIssue.Severity))]
-    [DataRow(nameof(StoredRuleReportIssue.FileOrFunction))]
-    [DataRow(nameof(StoredRuleReportIssue.RelevantCodePatternOrExpression))]
-    [DataRow(nameof(StoredRuleReportIssue.WhyThisIsAProblem))]
-    [DataRow(nameof(StoredRuleReportIssue.Confidence))]
-    [DataRow(nameof(StoredRuleReportIssue.FollowUpFiles))]
-    [DataRow(nameof(StoredRuleReportIssue.SuggestedFixDirection))]
-    [DataRow(nameof(StoredRuleReportIssue.ReviewStrategy))]
-    [DataRow(nameof(StoredRuleReportIssue.ScopeCoverage))]
-    [DataRow(nameof(StoredRuleReportIssue.CrossScopeAnalysis))]
+    [DataRow(nameof(StoredIssue.IssueType))]
+    [DataRow(nameof(StoredIssue.Severity))]
+    [DataRow(nameof(StoredIssue.FileOrFunction))]
+    [DataRow(nameof(StoredIssue.RelevantCodePatternOrExpression))]
+    [DataRow(nameof(StoredIssue.WhyThisIsAProblem))]
+    [DataRow(nameof(StoredIssue.Confidence))]
+    [DataRow(nameof(StoredIssue.FollowUpFiles))]
+    [DataRow(nameof(StoredIssue.SuggestedFixDirection))]
+    [DataRow(nameof(StoredIssue.ReviewStrategy))]
+    [DataRow(nameof(StoredIssue.ScopeCoverage))]
+    [DataRow(nameof(StoredIssue.CrossScopeAnalysis))]
     public async Task ComputeAndStoreDiffAsync_WhenAnySameIdEquivalenceFieldChanges_AddsCurrentIssueToUpdated(
         string changedField)
     {
-        StoredRuleReportIssue previousIssue = CreateIssue("issue-1");
-        StoredRuleReportIssue currentIssue = CreateIssueWithChangedField(changedField);
-        FakeRuleReportIssueStore store = new()
+        StoredIssue previousIssue = CreateIssue("issue-1");
+        StoredIssue currentIssue = CreateIssueWithChangedField(changedField);
+        FakeIssueStore store = new()
         {
             PreviousSnapshot = [previousIssue],
             CurrentIssues = [currentIssue],
         };
         DiffService service = new(store);
 
-        RuleReportDiff diff = await service.ComputeAndStoreDiffAsync(
+        Diff diff = await service.ComputeAndStoreDiffAsync(
             RuleReportKey,
             RuleFlowKey,
             TestContext.CancellationToken);
@@ -120,16 +121,16 @@ public sealed class DiffServiceTests
     [TestMethod]
     public async Task ComputeAndStoreDiffAsync_WhenSameIdHasIdenticalFields_DoesNotUpdateIssue()
     {
-        StoredRuleReportIssue previousIssue = CreateIssue("issue-1");
-        StoredRuleReportIssue currentIssue = CreateIssue("issue-1");
-        FakeRuleReportIssueStore store = new()
+        StoredIssue previousIssue = CreateIssue("issue-1");
+        StoredIssue currentIssue = CreateIssue("issue-1");
+        FakeIssueStore store = new()
         {
             PreviousSnapshot = [previousIssue],
             CurrentIssues = [currentIssue],
         };
         DiffService service = new(store);
 
-        RuleReportDiff diff = await service.ComputeAndStoreDiffAsync(
+        Diff diff = await service.ComputeAndStoreDiffAsync(
             RuleReportKey,
             RuleFlowKey,
             TestContext.CancellationToken);
@@ -142,27 +143,27 @@ public sealed class DiffServiceTests
     [TestMethod]
     public async Task ComputeAndStoreDiffAsync_StoresComputedDiffAndReturnsSameInstance()
     {
-        StoredRuleReportIssue currentIssue = CreateIssue("issue-1");
-        FakeRuleReportIssueStore store = new()
+        StoredIssue currentIssue = CreateIssue("issue-1");
+        FakeIssueStore store = new()
         {
             PreviousSnapshot = [],
             CurrentIssues = [currentIssue],
         };
         DiffService service = new(store);
 
-        RuleReportDiff diff = await service.ComputeAndStoreDiffAsync(
+        Diff diff = await service.ComputeAndStoreDiffAsync(
             RuleReportKey,
             RuleFlowKey,
             TestContext.CancellationToken);
 
         Assert.AreEqual(RuleFlowKey, store.StoredRuleFlowKey);
         Assert.AreSame(diff, store.StoredDiff);
-        RuleReportDiff storedDiff = store.StoredDiff ?? throw new InvalidOperationException("Expected stored diff.");
+        Diff storedDiff = store.StoredDiff ?? throw new InvalidOperationException("Expected stored diff.");
         Assert.HasCount(1, storedDiff.CreatedIssues);
         Assert.AreSame(currentIssue, storedDiff.CreatedIssues[0]);
     }
 
-    private static StoredRuleReportIssue CreateIssue(
+    private static StoredIssue CreateIssue(
         string ruleReportIssueId,
         string issueType = "Performance",
         string severity = "High",
@@ -192,40 +193,40 @@ public sealed class DiffServiceTests
             CrossScopeAnalysis = crossScopeAnalysis,
         };
 
-    private static StoredRuleReportIssue CreateIssueWithChangedField(string changedField)
+    private static StoredIssue CreateIssueWithChangedField(string changedField)
     {
         return changedField switch
         {
-            nameof(StoredRuleReportIssue.IssueType) => CreateIssue("issue-1", issueType: "Reliability"),
-            nameof(StoredRuleReportIssue.Severity) => CreateIssue("issue-1", severity: "Medium"),
-            nameof(StoredRuleReportIssue.FileOrFunction) => CreateIssue("issue-1", fileOrFunction: "Cache.cs"),
-            nameof(StoredRuleReportIssue.RelevantCodePatternOrExpression) => CreateIssue("issue-1", relevantCodePatternOrExpression: "Repeated cache miss"),
-            nameof(StoredRuleReportIssue.WhyThisIsAProblem) => CreateIssue("issue-1", whyThisIsAProblem: "This repeatedly misses the cache."),
-            nameof(StoredRuleReportIssue.Confidence) => CreateIssue("issue-1", confidence: "Medium"),
-            nameof(StoredRuleReportIssue.FollowUpFiles) => CreateIssue("issue-1", followUpFiles: "Program.cs;Cache.cs"),
-            nameof(StoredRuleReportIssue.SuggestedFixDirection) => CreateIssue("issue-1", suggestedFixDirection: "Investigate the hot path."),
-            nameof(StoredRuleReportIssue.ReviewStrategy) => CreateIssue(
+            nameof(StoredIssue.IssueType) => CreateIssue("issue-1", issueType: "Reliability"),
+            nameof(StoredIssue.Severity) => CreateIssue("issue-1", severity: "Medium"),
+            nameof(StoredIssue.FileOrFunction) => CreateIssue("issue-1", fileOrFunction: "Cache.cs"),
+            nameof(StoredIssue.RelevantCodePatternOrExpression) => CreateIssue("issue-1", relevantCodePatternOrExpression: "Repeated cache miss"),
+            nameof(StoredIssue.WhyThisIsAProblem) => CreateIssue("issue-1", whyThisIsAProblem: "This repeatedly misses the cache."),
+            nameof(StoredIssue.Confidence) => CreateIssue("issue-1", confidence: "Medium"),
+            nameof(StoredIssue.FollowUpFiles) => CreateIssue("issue-1", followUpFiles: "Program.cs;Cache.cs"),
+            nameof(StoredIssue.SuggestedFixDirection) => CreateIssue("issue-1", suggestedFixDirection: "Investigate the hot path."),
+            nameof(StoredIssue.ReviewStrategy) => CreateIssue(
                 "issue-1",
                 reviewStrategy: "Reviewed the cache path first."),
-            nameof(StoredRuleReportIssue.ScopeCoverage) => CreateIssue(
+            nameof(StoredIssue.ScopeCoverage) => CreateIssue(
                 "issue-1",
                 scopeCoverage: "Inspected Program.cs and Cache.cs."),
-            nameof(StoredRuleReportIssue.CrossScopeAnalysis) => CreateIssue(
+            nameof(StoredIssue.CrossScopeAnalysis) => CreateIssue(
                 "issue-1",
                 crossScopeAnalysis: "Compared Program.cs with Cache.cs."),
             _ => throw new ArgumentOutOfRangeException(nameof(changedField), changedField, "Unsupported changed field."),
         };
     }
 
-    private sealed class FakeRuleReportIssueStore : IRuleReportIssueStore
+    private sealed class FakeIssueStore : IIssueStore
     {
-        public IReadOnlyList<StoredRuleReportIssue> PreviousSnapshot { get; init; } = [];
+        public IReadOnlyList<StoredIssue> PreviousSnapshot { get; init; } = [];
 
-        public IReadOnlyList<StoredRuleReportIssue> CurrentIssues { get; init; } = [];
+        public IReadOnlyList<StoredIssue> CurrentIssues { get; init; } = [];
 
         public RuleFlowKey? StoredRuleFlowKey { get; private set; }
 
-        public RuleReportDiff? StoredDiff { get; private set; }
+        public Diff? StoredDiff { get; private set; }
 
         public IAgentAttemptLease BeginAttempt(RuleFlowKey scope, Guid attemptId) => new NoOpAttemptLease();
 
@@ -236,27 +237,27 @@ public sealed class DiffServiceTests
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public ValueTask<StoredRuleReportIssue> AddAsync(
+        public ValueTask<StoredIssue> AddAsync(
             RuleFlowKey ruleFlowKey,
-            RuleReviewIssue issue,
+            Issue issue,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public ValueTask<StoredRuleReportIssue> GetAsync(
+        public ValueTask<StoredIssue> GetAsync(
             RuleFlowKey ruleFlowKey,
             string ruleReportIssueId,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public ValueTask<IReadOnlyList<StoredRuleReportIssue>> ListAsync(
+        public ValueTask<IReadOnlyList<StoredIssue>> ListAsync(
             RuleFlowKey ruleFlowKey,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(CurrentIssues);
 
-        public ValueTask<StoredRuleReportIssue> UpdateAsync(
+        public ValueTask<StoredIssue> UpdateAsync(
             RuleFlowKey ruleFlowKey,
             string ruleReportIssueId,
-            RuleReviewIssue issue,
+            Issue issue,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
@@ -266,19 +267,19 @@ public sealed class DiffServiceTests
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public ValueTask<IReadOnlyList<StoredRuleReportIssue>> GetLatestSnapshotAsync(
+        public ValueTask<IReadOnlyList<StoredIssue>> GetLatestSnapshotAsync(
             RuleReportKey ruleReportKey,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(PreviousSnapshot);
 
-        public ValueTask<RuleReportDiff> GetLatestDiffAsync(
+        public ValueTask<Diff> GetLatestDiffAsync(
             RuleFlowKey ruleFlowKey,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public ValueTask SetLatestDiffAsync(
             RuleFlowKey ruleFlowKey,
-            RuleReportDiff diff,
+            Diff diff,
             CancellationToken cancellationToken)
         {
             StoredRuleFlowKey = ruleFlowKey;

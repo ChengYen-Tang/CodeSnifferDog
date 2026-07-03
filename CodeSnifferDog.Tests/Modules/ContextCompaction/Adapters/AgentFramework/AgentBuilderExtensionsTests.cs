@@ -1,0 +1,326 @@
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions;
+using CodeSnifferDog.Modules.ContextCompaction.Core;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
+using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Collapse;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using CodeSnifferDog.Models.ContextCompaction.Failures;
+
+namespace CodeSnifferDog.Tests.Modules.ContextCompaction.Adapters.AgentFramework;
+
+[TestClass]
+public sealed class AgentBuilderExtensionsTests
+{
+    private static readonly string[] Call3Only =
+    [
+        "call-3",
+    ];
+
+    public required TestContext TestContext { get; init; }
+
+    [TestMethod]
+    public async Task InvokeWithReactiveCompactionRetryAsync_RetriesWithCompactedMessages_WhenExceptionIsCompactable()
+    {
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        AgentCompactionOptions options = CreateOptions(
+            CreateReducer(summarizer),
+            new DefaultReactiveExceptionDecider());
+
+        ChatMessage[] originalMessages =
+        [
+            new(ChatRole.System, "system"),
+            new(ChatRole.User, "user-1"),
+            new(ChatRole.Assistant, "assistant-1"),
+            new(ChatRole.User, "user-2"),
+        ];
+
+        List<IReadOnlyList<ChatMessage>> invocations = [];
+
+        await AgentBuilderExtensions.InvokeWithReactiveCompactionRetryAsync(
+            originalMessages,
+            options,
+            (messages, cancellationToken) =>
+            {
+                invocations.Add(messages);
+
+                if (invocations.Count == 1)
+                    throw new ModelInvocationException(
+                        ModelInvocationFailureKind.ContextWindowExceeded,
+                        "context too large");
+
+                return Task.CompletedTask;
+            },
+            TestContext.CancellationToken);
+
+        Assert.HasCount(2, invocations);
+        CollectionAssert.AreEqual(originalMessages, invocations[0].ToArray());
+        Assert.HasCount(5, invocations[1]);
+        Assert.AreEqual("Operational compact boundary", invocations[1][1].Text);
+        Assert.AreEqual("Operational summary checkpoint", invocations[1][2].Text?.Split(Environment.NewLine)[0]);
+        Assert.AreEqual(
+            CompactionArtifactMetadata.ContinuityArtifactKind,
+            invocations[1][3].AdditionalProperties![CompactionArtifactMetadata.ArtifactKindKey]);
+    }
+
+    [TestMethod]
+    public async Task InvokeWithReactiveCompactionRetryAsync_DoesNotRetry_WhenExceptionIsNotCompactable()
+    {
+        AgentCompactionOptions options = CreateOptions(
+            CreateReducer(new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>")),
+            new DefaultReactiveExceptionDecider());
+
+        ChatMessage[] originalMessages = [new(ChatRole.User, "user")];
+        int callCount = 0;
+
+        await Assert.ThrowsExactlyAsync<ModelInvocationException>(
+            () => AgentBuilderExtensions.InvokeWithReactiveCompactionRetryAsync(
+                originalMessages,
+                options,
+                (messages, cancellationToken) =>
+                {
+                    callCount++;
+                    throw new ModelInvocationException(
+                        ModelInvocationFailureKind.Unknown,
+                        "boom");
+                },
+                TestContext.CancellationToken));
+
+        Assert.AreEqual(1, callCount);
+    }
+
+    [TestMethod]
+    public async Task InvokeWithReactiveCompactionRetryAsync_ThrowsCompactionException_WhenReactiveCompactionFails()
+    {
+        AgentCompactionOptions options = CreateOptions(
+            CreateReducer(new ThrowingSummarizer()),
+            new DefaultReactiveExceptionDecider());
+
+        ChatMessage[] originalMessages = [new(ChatRole.User, "user")];
+
+        await Assert.ThrowsExactlyAsync<CompactionException>(
+            () => AgentBuilderExtensions.InvokeWithReactiveCompactionRetryAsync(
+                originalMessages,
+                options,
+                (messages, cancellationToken) => throw new ModelInvocationException(
+                    ModelInvocationFailureKind.ContextWindowExceeded,
+                    "context too large"),
+                TestContext.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task InvokeWithReactiveCompactionRetryAsync_SnipsOlderCompactableToolMessages_BeforeReactiveCompaction()
+    {
+        CapturingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        AgentCompactionOptions options = CreateOptions(
+            CreateReducer(
+                summarizer,
+                new CompactionOptions
+                {
+                    ModelContextWindowTokens = 100,
+                    SummaryReservedOutputTokens = 1,
+                    AutoCompactBufferTokens = 1,
+                    PreservedTailMinTokens = 1,
+                    PreservedTailMinMessages = 1,
+                    SnipTriggerToolResultCount = 3,
+                    SnipKeepRecentToolResultCount = 1,
+                }),
+            new DefaultReactiveExceptionDecider());
+
+        ChatMessage[] originalMessages =
+        [
+            new(ChatRole.Assistant, [new FunctionCallContent("call-1", "RunShellCommand", new Dictionary<string, object?>())]),
+            new(ChatRole.Tool, [new FunctionResultContent("call-1", "result-1")]),
+            new(ChatRole.Assistant, [new FunctionCallContent("call-2", "RunShellCommand", new Dictionary<string, object?>())]),
+            new(ChatRole.Tool, [new FunctionResultContent("call-2", "result-2")]),
+            new(ChatRole.Assistant, [new FunctionCallContent("call-3", "RunShellCommand", new Dictionary<string, object?>())]),
+            new(ChatRole.Tool, [new FunctionResultContent("call-3", "result-3")]),
+        ];
+
+        await AgentBuilderExtensions.InvokeWithReactiveCompactionRetryAsync(
+            originalMessages,
+            options,
+            (messages, cancellationToken) =>
+            {
+                if (messages.SequenceEqual(originalMessages))
+                    throw new ModelInvocationException(
+                        ModelInvocationFailureKind.ContextWindowExceeded,
+                        "context too large");
+
+                return Task.CompletedTask;
+            },
+            TestContext.CancellationToken);
+
+        string[] summarizedCallIds = [.. summarizer.LastMessages!
+            .SelectMany(static message => message.Contents.OfType<FunctionCallContent>())
+            .Select(static call => call.CallId)];
+
+        CollectionAssert.AreEqual(Call3Only, summarizedCallIds);
+    }
+
+    [TestMethod]
+    public async Task PrepareReactiveRetryAsync_CommitsCollapseState_InContextCollapseMode()
+    {
+        CapturingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        AgentCompactionOptions options = CreateOptions(
+            CreateReducer(
+                summarizer,
+                new CompactionOptions
+                {
+                    ModelContextWindowTokens = 100,
+                    SummaryReservedOutputTokens = 1,
+                    AutoCompactBufferTokens = 1,
+                    PreservedTailMinTokens = 1,
+                    PreservedTailMinMessages = 1,
+                    Mode = CompactionMode.ContextCollapse,
+                }),
+            new DefaultReactiveExceptionDecider());
+
+        ChatMessage[] originalMessages =
+        [
+            new(ChatRole.User, "user-1"),
+            new(ChatRole.Assistant, "assistant-1"),
+            new(ChatRole.User, new string('x', 1_000)),
+        ];
+        TestSession session = new();
+
+        _ = await options.CollapseController!
+            .PrepareReactiveRetryAsync(originalMessages, session, TestContext.CancellationToken)
+            .AsTask()
+            .ConfigureAwait(false);
+
+        CollapseState state = new CollapseSessionState().Get(session);
+        Assert.AreEqual(CompactionReason.Reactive.ToString(), state.LastCollapseReason);
+        Assert.HasCount(1, state.Commits);
+        Assert.IsEmpty(state.StagedSpans);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(state.Commits[0].CollapseId));
+        Assert.IsFalse(string.IsNullOrWhiteSpace(state.Commits[0].SummaryMessageId));
+        Assert.IsFalse(string.IsNullOrWhiteSpace(state.Commits[0].ProjectionMessageId));
+        Assert.IsFalse(string.IsNullOrWhiteSpace(state.Commits[0].ContinuityProjectionMessageId));
+        Assert.IsFalse(string.IsNullOrWhiteSpace(state.Commits[0].Summary));
+        Assert.AreEqual(ChatRole.User.ToString(), state.Commits[0].FirstArchivedMessageRole);
+        Assert.AreEqual(ChatRole.Assistant.ToString(), state.Commits[0].LastArchivedMessageRole);
+        Assert.AreEqual(state.Commits[0].CollapseId, state.Snapshot.LastCommittedCollapseId);
+        Assert.IsNull(state.Snapshot.LastStagedCollapseId);
+    }
+
+    [TestMethod]
+    public void MessagesAreEquivalentForRetry_ReturnsFalse_WhenAdditionalPropertiesDiffer()
+    {
+        ChatMessage left = new(ChatRole.Assistant, "same")
+        {
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                ["artifact"] = "a",
+            },
+        };
+        ChatMessage right = new(ChatRole.Assistant, "same")
+        {
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                ["artifact"] = "b",
+            },
+        };
+
+        bool equivalent = AgentBuilderExtensions.MessagesAreEquivalentForRetry([left], [right]);
+
+        Assert.IsFalse(equivalent);
+    }
+
+    [TestMethod]
+    public void MessagesAreEquivalentForRetry_ReturnsTrue_WhenAdditionalPropertiesMatchInDifferentOrder()
+    {
+        ChatMessage left = new(ChatRole.Assistant, "same")
+        {
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                ["b"] = 2,
+                ["a"] = "x",
+            },
+        };
+        ChatMessage right = new(ChatRole.Assistant, "same")
+        {
+            AdditionalProperties = new AdditionalPropertiesDictionary
+            {
+                ["a"] = "x",
+                ["b"] = 2,
+            },
+        };
+
+        bool equivalent = AgentBuilderExtensions.MessagesAreEquivalentForRetry([left], [right]);
+
+        Assert.IsTrue(equivalent);
+    }
+
+    [TestMethod]
+    public void MessagesAreEquivalentForRetry_ReturnsFalse_WhenContentsDiffer()
+    {
+        ChatMessage left = new(ChatRole.Assistant, [new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?> { ["value"] = 1 })]);
+        ChatMessage right = new(ChatRole.Assistant, [new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?> { ["value"] = 2 })]);
+
+        bool equivalent = AgentBuilderExtensions.MessagesAreEquivalentForRetry([left], [right]);
+
+        Assert.IsFalse(equivalent);
+    }
+
+    private static AgentCompactionOptions CreateOptions(
+        ChatReducer reducer,
+        IReactiveExceptionDecider decider) => new()
+        {
+            Reducer = reducer,
+            CollapseController = new CollapseController(reducer),
+            MessageShrinker = new MessageShrinker(),
+            ReactiveExceptionDecider = decider,
+        };
+
+    private static ChatReducer CreateReducer(
+        ISummarizer summarizer,
+        CompactionOptions? options = null) => new(
+        options ?? new CompactionOptions
+        {
+            ModelContextWindowTokens = 100,
+            SummaryReservedOutputTokens = 1,
+            AutoCompactBufferTokens = 1,
+            PreservedTailMinTokens = 1,
+            PreservedTailMinMessages = 1,
+        },
+        new StaticSummaryPromptProvider("summarize"),
+        summarizer);
+
+    private sealed class RecordingSummarizer(string response) : ISummarizer
+    {
+        public ValueTask<string> SummarizeAsync(
+            IReadOnlyList<ChatMessage> messages,
+            string summaryPrompt,
+            CompactionOptions options,
+            CancellationToken cancellationToken) => ValueTask.FromResult(response);
+    }
+
+    private sealed class CapturingSummarizer(string response) : ISummarizer
+    {
+        public IReadOnlyList<ChatMessage>? LastMessages { get; private set; }
+
+        public ValueTask<string> SummarizeAsync(
+            IReadOnlyList<ChatMessage> messages,
+            string summaryPrompt,
+            CompactionOptions options,
+            CancellationToken cancellationToken)
+        {
+            LastMessages = messages;
+            return ValueTask.FromResult(response);
+        }
+    }
+
+    private sealed class ThrowingSummarizer : ISummarizer
+    {
+        public ValueTask<string> SummarizeAsync(
+            IReadOnlyList<ChatMessage> messages,
+            string summaryPrompt,
+            CompactionOptions options,
+            CancellationToken cancellationToken) => throw new InvalidOperationException("boom");
+    }
+
+    private sealed class TestSession : Microsoft.Agents.AI.AgentSession;
+}

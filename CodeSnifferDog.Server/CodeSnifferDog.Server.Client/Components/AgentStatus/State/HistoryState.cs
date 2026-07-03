@@ -2,13 +2,13 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 
-internal sealed class HistoryState(Guid? agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries, bool isLoading)
+internal sealed class HistoryState(Guid? agentId, IReadOnlyList<TimelineEntryDto> timelineEntries, bool isLoading)
 {
     private long _latestSequence = TimelineEntryList.GetLatestSequence(timelineEntries);
 
     public Guid? AgentId { get; private set; } = agentId;
 
-    public IReadOnlyList<ProjectAgentTimelineEntryDto> TimelineEntries { get; private set; } = timelineEntries;
+    public IReadOnlyList<TimelineEntryDto> TimelineEntries { get; private set; } = timelineEntries;
 
     public bool IsLoading { get; private set; } = isLoading;
 
@@ -29,7 +29,7 @@ internal sealed class HistoryState(Guid? agentId, IReadOnlyList<ProjectAgentTime
         ApplySelectedAgentSnapshot(snapshot.GetHistory(selectedAgentId.Value), selectedAgentId.Value);
     }
 
-    public void ApplySelectedAgentSnapshot(IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries, Guid agentId)
+    public void ApplySelectedAgentSnapshot(IReadOnlyList<TimelineEntryDto> timelineEntries, Guid agentId)
     {
         ApplySelectedAgentSnapshot(
             timelineEntries,
@@ -38,7 +38,7 @@ internal sealed class HistoryState(Guid? agentId, IReadOnlyList<ProjectAgentTime
     }
 
     public void ApplySelectedAgentSnapshot(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
         Guid agentId,
         long latestSequence)
     {

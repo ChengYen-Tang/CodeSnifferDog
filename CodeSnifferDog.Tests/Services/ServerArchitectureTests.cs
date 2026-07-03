@@ -24,7 +24,7 @@ using ReportProjectionMapperInterface = CodeSnifferDog.Server.Services.ProjectRe
 using ReportProjectProjection = CodeSnifferDog.Server.Services.ProjectReports.Projection.ProjectProjection;
 using ReportQueryService = CodeSnifferDog.Server.Services.ProjectReports.Queries.QueryService;
 using ReportQueryServiceInterface = CodeSnifferDog.Server.Services.ProjectReports.Queries.IQueryService;
-using ReportRuleReportDraft = CodeSnifferDog.Server.Services.ProjectReports.RuleReportDraft;
+using ReportRuleDraft = CodeSnifferDog.Server.Services.ProjectReports.RuleDraft;
 using ReportRuleReportProjection = CodeSnifferDog.Server.Services.ProjectReports.Projection.RuleReportProjection;
 using ReportsService = CodeSnifferDog.Server.Services.ProjectReports.ReportService;
 using ReportsServiceInterface = CodeSnifferDog.Server.Services.ProjectReports.IReportService;
@@ -115,7 +115,7 @@ public sealed class ServerArchitectureTests
             typeof(CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam.IWorker),
         ];
 
-        Type[] internalInterfaces = typeof(CodeSnifferDogServerServiceCollectionExtensions)
+        Type[] internalInterfaces = typeof(ServiceCollectionExtensions)
             .Assembly
             .GetTypes()
             .Where(type =>
@@ -223,6 +223,12 @@ public sealed class ServerArchitectureTests
         Type[] infrastructureTypes =
         [
             typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.HostedService),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.ILeaseRegistry),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.IQueueLock),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Lease),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.LeaseRegistry),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.QueueLock),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Settings),
         ];
 
         foreach (Type type in infrastructureTypes)
@@ -243,8 +249,8 @@ public sealed class ServerArchitectureTests
         Type[] queueTypes =
         [
             typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue.Claim),
-            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue.ExecutionQueueClaimer),
-            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue.IExecutionQueueClaimer),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue.Claimer),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue.IClaimer),
         ];
 
         foreach (Type type in queueTypes)
@@ -254,8 +260,59 @@ public sealed class ServerArchitectureTests
                 type.Namespace,
                 $"{type.Name} should stay in the project execution queue namespace.");
             Assert.IsFalse(
-                type.Name.StartsWith("ProjectExecution", StringComparison.Ordinal),
+                type.Name.StartsWith("ProjectExecution", StringComparison.Ordinal) ||
+                type.Name.StartsWith("ExecutionQueue", StringComparison.Ordinal) ||
+                type.Name.StartsWith("IExecutionQueue", StringComparison.Ordinal),
                 $"{type.Name} should rely on its folder/namespace for project execution queue context.");
+        }
+    }
+
+    [TestMethod]
+    public void ProjectExecutionReadinessServices_UseLocalRoleNames()
+    {
+        Type[] readinessTypes =
+        [
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Readiness.Gate),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Readiness.IGate),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Readiness.Result),
+        ];
+
+        foreach (Type type in readinessTypes)
+        {
+            Assert.AreEqual(
+                "CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Readiness",
+                type.Namespace,
+                $"{type.Name} should stay in the project execution readiness namespace.");
+            Assert.IsFalse(
+                type.Name.StartsWith("ProjectExecution", StringComparison.Ordinal) ||
+                type.Name.StartsWith("ExecutionReadiness", StringComparison.Ordinal) ||
+                type.Name.StartsWith("IExecutionReadiness", StringComparison.Ordinal),
+                $"{type.Name} should rely on its folder/namespace for project execution readiness context.");
+        }
+    }
+
+    [TestMethod]
+    public void ProjectExecutionExecutionServices_UseLocalRoleNames()
+    {
+        Type[] executionTypes =
+        [
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution.ClaimExecutor),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution.IClaimExecutor),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution.StateService),
+            typeof(CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution.IStateService),
+        ];
+
+        foreach (Type type in executionTypes)
+        {
+            Assert.AreEqual(
+                "CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution",
+                type.Namespace,
+                $"{type.Name} should stay in the project execution infrastructure execution namespace.");
+            Assert.IsFalse(
+                type.Name.StartsWith("ProjectExecution", StringComparison.Ordinal) ||
+                type.Name.StartsWith("ExecutionState", StringComparison.Ordinal) ||
+                type.Name.StartsWith("IExecutionState", StringComparison.Ordinal),
+                $"{type.Name} should rely on its folder/namespace for project execution state context.");
         }
     }
 
@@ -386,7 +443,7 @@ public sealed class ServerArchitectureTests
         [
             typeof(ReportsServiceInterface),
             typeof(ReportsService),
-            typeof(ReportRuleReportDraft),
+            typeof(ReportRuleDraft),
             typeof(ReportQueryServiceInterface),
             typeof(ReportQueryService),
             typeof(ReportQueryService.QueryRow),

@@ -1,6 +1,6 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam.Compaction;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution.Worker.ReviewTeam.Compaction;
 
@@ -15,7 +15,7 @@ public sealed class OptionsFactoryTests
         {
             MaxParallelAgents = 2,
             ModelContextWindowTokens = 48_000,
-            ContextCompactionMode = OperationalContextCompactionMode.ReactiveOnly,
+            ContextCompactionMode = CompactionMode.ReactiveOnly,
         };
 
         Settings settings = factory.Create(executionOptions);
@@ -26,9 +26,9 @@ public sealed class OptionsFactoryTests
         AssertCompactionOptions(settings.Report);
     }
 
-    private static void AssertCompactionOptions(OperationalContextCompactionOptions options)
+    private static void AssertCompactionOptions(CompactionOptions options)
     {
         Assert.AreEqual(48_000L, options.ModelContextWindowTokens);
-        Assert.AreEqual(OperationalContextCompactionMode.ReactiveOnly, options.Mode);
+        Assert.AreEqual(CompactionMode.ReactiveOnly, options.Mode);
     }
 }

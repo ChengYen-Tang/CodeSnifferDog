@@ -43,7 +43,7 @@ public sealed class MessageBuilderTests
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
-        StoredProjectPlanTaskItem[] taskItems = [CreateTaskItem()];
+        StoredTaskItem[] taskItems = [CreateTaskItem()];
 
         List<ChatMessage> messages = builder.CreateVerifierMessages(taskItems);
 
@@ -64,13 +64,13 @@ public sealed class MessageBuilderTests
             Reason = "Contains workflow logic.",
         };
 
-    private static StoredProjectPlanTaskItem CreateTaskItem() =>
+    private static StoredTaskItem CreateTaskItem() =>
         new()
         {
             ProjectPlanTaskItemId = "task-1",
             Files =
             [
-                new ProjectPlanFile
+                new PlanFile
                 {
                     FilePath = "Program.cs",
                     TotalLines = 120,

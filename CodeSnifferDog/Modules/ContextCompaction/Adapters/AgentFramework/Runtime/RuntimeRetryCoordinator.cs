@@ -1,7 +1,8 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 
@@ -10,12 +11,12 @@ internal static class RuntimeRetryCoordinator
     public static async Task<StagedProjectionRetryResult<T>> TryRunStagedProjectionRetryAsync<T>(
         IReadOnlyList<ChatMessage> originalMessages,
         StagedCollapseTracker collapseTracker,
-        OperationalContextAgentCompactionOptions options,
+        AgentCompactionOptions options,
         Func<IReadOnlyList<ChatMessage>, Task<T>> runAsync)
     {
         HashSet<string> stagedCollapseIdsAfterFailure = collapseTracker.CaptureNewIds();
         if (stagedCollapseIdsAfterFailure.Count == 0 ||
-            options.Reducer.Options.Mode != OperationalContextCompactionMode.ContextCollapse)
+            options.Reducer.Options.Mode != CompactionMode.ContextCollapse)
             return StagedProjectionRetryResult<T>.NotRun();
 
         IReadOnlyList<ChatMessage> committedProjectionMessages = collapseTracker.CommitAndPrepareRetryMessages(
@@ -29,7 +30,7 @@ internal static class RuntimeRetryCoordinator
         {
             return StagedProjectionRetryResult<T>.Success(await runAsync(committedProjectionMessages).ConfigureAwait(false));
         }
-        catch (OperationalContextModelInvocationException retryEx) when (ReactiveRetryService.ShouldRetry(options, retryEx))
+        catch (ModelInvocationException retryEx) when (ReactiveRetryService.ShouldRetry(options, retryEx))
         {
             return StagedProjectionRetryResult<T>.NotRun();
         }
@@ -38,7 +39,7 @@ internal static class RuntimeRetryCoordinator
     public static async Task<IReadOnlyList<ChatMessage>> PrepareDeepReactiveRetryMessagesAsync(
         IReadOnlyList<ChatMessage> originalMessages,
         AgentSession? session,
-        OperationalContextAgentCompactionOptions options,
+        AgentCompactionOptions options,
         CancellationToken cancellationToken)
     {
         ReactiveRetryPreparation retryPreparation = await ReactiveRetryService.PrepareAsync(

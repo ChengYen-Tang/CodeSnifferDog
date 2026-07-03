@@ -1,16 +1,17 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.RuleReview;
+using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 
 namespace CodeSnifferDog.Workflows.Report;
 
 public static class RuleMarkdownReportRenderer
 {
-    public static string Render(string ruleName, IReadOnlyList<StoredRuleReportIssue> issues)
+    public static string Render(string ruleName, IReadOnlyList<ReportStoredIssue> issues)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleName);
         ArgumentNullException.ThrowIfNull(issues);
-        StoredRuleReportIssue[] sortedIssues =
-            [.. issues.OrderBy(issue => RuleReviewSeverity.GetSortOrder(issue.Severity))
+        ReportStoredIssue[] sortedIssues =
+            [.. issues.OrderBy(issue => Severity.GetSortOrder(issue.Severity))
                      .ThenBy(issue => issue.FileOrFunction, StringComparer.Ordinal)
                      .ThenBy(issue => issue.IssueType, StringComparer.Ordinal)];
 
@@ -28,13 +29,13 @@ public static class RuleMarkdownReportRenderer
 
         writer.WriteLine($"{sortedIssues.Length} issue(s) were reported for this rule in the latest completed analysis.");
         writer.WriteLine();
-        writer.WriteLine($"- High: {sortedIssues.Count(issue => issue.Severity == RuleReviewSeverity.High)}");
-        writer.WriteLine($"- Medium: {sortedIssues.Count(issue => issue.Severity == RuleReviewSeverity.Medium)}");
-        writer.WriteLine($"- Low: {sortedIssues.Count(issue => issue.Severity == RuleReviewSeverity.Low)}");
+        writer.WriteLine($"- High: {sortedIssues.Count(issue => issue.Severity == Severity.High)}");
+        writer.WriteLine($"- Medium: {sortedIssues.Count(issue => issue.Severity == Severity.Medium)}");
+        writer.WriteLine($"- Low: {sortedIssues.Count(issue => issue.Severity == Severity.Low)}");
 
         for (int index = 0; index < sortedIssues.Length; index++)
         {
-            StoredRuleReportIssue issue = sortedIssues[index];
+            ReportStoredIssue issue = sortedIssues[index];
             writer.WriteLine();
             writer.WriteLine($"## Finding {index + 1}");
             writer.WriteLine();

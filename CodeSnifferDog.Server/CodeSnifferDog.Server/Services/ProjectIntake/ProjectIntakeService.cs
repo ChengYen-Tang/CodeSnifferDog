@@ -18,8 +18,8 @@ internal sealed class ProjectIntakeService(
     IQueueService projectQueueService,
     IDeletionService projectDeletionService,
     IProjectProjectionMapper projectionMapper,
-    IProjectExecutionLeaseRegistry executionLeaseRegistry,
-    IProjectExecutionQueueLock queueLock,
+    ILeaseRegistry executionLeaseRegistry,
+    IQueueLock queueLock,
     ILogger<ProjectIntakeService> logger) : IProjectIntakeService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
@@ -28,8 +28,8 @@ internal sealed class ProjectIntakeService(
     private readonly IQueueService _projectQueueService = projectQueueService;
     private readonly IDeletionService _projectDeletionService = projectDeletionService;
     private readonly IProjectProjectionMapper _projectionMapper = projectionMapper;
-    private readonly IProjectExecutionLeaseRegistry _executionLeaseRegistry = executionLeaseRegistry;
-    private readonly IProjectExecutionQueueLock _queueLock = queueLock;
+    private readonly ILeaseRegistry _executionLeaseRegistry = executionLeaseRegistry;
+    private readonly IQueueLock _queueLock = queueLock;
     private readonly ILogger<ProjectIntakeService> _logger = logger;
 
     public async Task<ProjectUploadResult> UploadAsync(IFormFile zipFile, CancellationToken cancellationToken = default)

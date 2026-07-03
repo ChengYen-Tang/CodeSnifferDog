@@ -34,7 +34,7 @@
 
 @code {
     [Parameter]
-    public IReadOnlyList<ProjectAgentGroupSnapshotDto> Groups { get; set; } = [];
+    public IReadOnlyList<GroupSnapshotDto> Groups { get; set; } = [];
 
     [Parameter]
     public Guid? SelectedAgentId { get; set; }
@@ -42,21 +42,21 @@
     [Parameter]
     public EventCallback<Guid> OnSelectAgent { get; set; }
 
-    private static string StatusCss(ProjectAgentRunStatus status) => status switch
+    private static string StatusCss(RunStatus status) => status switch
     {
-        ProjectAgentRunStatus.Running => "status-running",
-        ProjectAgentRunStatus.Waiting => "status-waiting",
-        ProjectAgentRunStatus.Completed => "status-completed",
-        ProjectAgentRunStatus.Degraded => "status-degraded",
+        RunStatus.Running => "status-running",
+        RunStatus.Waiting => "status-waiting",
+        RunStatus.Completed => "status-completed",
+        RunStatus.Degraded => "status-degraded",
         _ => "status-waiting"
     };
 
-    private static string FormatStatus(ProjectAgentRunStatus status) => status switch
+    private static string FormatStatus(RunStatus status) => status switch
     {
-        ProjectAgentRunStatus.Running => "Running",
-        ProjectAgentRunStatus.Waiting => "Waiting",
-        ProjectAgentRunStatus.Completed => "Completed",
-        ProjectAgentRunStatus.Degraded => "Degraded",
+        RunStatus.Running => "Running",
+        RunStatus.Waiting => "Waiting",
+        RunStatus.Completed => "Completed",
+        RunStatus.Degraded => "Degraded",
         _ => "Waiting"
     };
 

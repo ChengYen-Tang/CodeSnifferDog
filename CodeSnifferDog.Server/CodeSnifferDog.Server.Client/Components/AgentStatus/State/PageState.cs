@@ -47,7 +47,7 @@ internal sealed class PageState(
             new HistoryState(agentId: null, timelineEntries: [], isLoading: false),
             new SelectedAgentLiveConnectionState(agentId: null, isConnected: false, isSubscribed: false, statusText: "Idle"));
 
-    public void SetSnapshot(ProjectAgentStatusSnapshotDto? snapshot)
+    public void SetSnapshot(StatusSnapshotDto? snapshot)
     {
         Snapshot.Replace(snapshot);
         Selection.ApplySnapshot(Snapshot);
@@ -76,10 +76,10 @@ internal sealed class PageState(
         SnapshotLoadErrorMessage = errorMessage;
     }
 
-    public bool ApplyLiveUpdate(ProjectAgentLiveUpdateDto update) =>
+    public bool ApplyLiveUpdate(LiveUpdateDto update) =>
         _liveUpdateReducer.Apply(update, Snapshot, Selection, History);
 
-    public void SetAgentHistory(Guid agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
+    public void SetAgentHistory(Guid agentId, IReadOnlyList<TimelineEntryDto> timelineEntries)
     {
         Snapshot.ReplaceAgentHistory(agentId, timelineEntries);
         History.ApplySelectedAgentSnapshot(timelineEntries, agentId);

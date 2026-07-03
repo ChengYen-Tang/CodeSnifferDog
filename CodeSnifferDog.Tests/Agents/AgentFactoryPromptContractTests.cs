@@ -3,9 +3,12 @@ using CodeSnifferDog.Agents.Report;
 using CodeSnifferDog.Agents.RuleReview;
 using CodeSnifferDog.Agents.Scan;
 using CodeSnifferDog.Json;
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
@@ -18,6 +21,14 @@ using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Modules.Tools.Scan;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using ProjectPlanAgentFactory = CodeSnifferDog.Agents.ProjectPlan.AgentFactory;
+using ProjectVerifierFactory = CodeSnifferDog.Agents.ProjectPlan.VerifierFactory;
+using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.InMemoryIssueStore;
+using RuleReviewAgentFactory = CodeSnifferDog.Agents.RuleReview.AgentFactory;
+using RuleReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.InMemoryIssueStore;
+using ReviewVerifierFactory = CodeSnifferDog.Agents.RuleReview.VerifierFactory;
 
 namespace CodeSnifferDog.Tests.Agents;
 
@@ -37,7 +48,7 @@ public sealed class AgentFactoryPromptContractTests
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            _promptAssetReader.ReadRequiredPrompt(ScanPromptAssetPaths.ScanAgentPrompt),
+            _promptAssetReader.ReadRequiredPrompt(ScanAgentPromptAssets.ScanAgentPrompt),
             result.SystemPrompt);
     }
 
@@ -52,7 +63,7 @@ public sealed class AgentFactoryPromptContractTests
 
         Assert.AreEqual(
             Render(
-                ScanPromptAssetPaths.ScanVerifierAgentPrompt,
+                ScanAgentPromptAssets.ScanVerifierAgentPrompt,
                 new Dictionary<string, string>
                 {
                     ["RepositoryRootPath"] = AppContext.BaseDirectory,
@@ -66,12 +77,12 @@ public sealed class AgentFactoryPromptContractTests
         AgentCreationResult result = new ProjectPlanAgentFactory(CreateCompactionOptions()).Create(
             new NoOpChatClient(),
             AppContext.BaseDirectory,
-            new InMemoryProjectPlanTaskItemStore(),
+            new InMemoryTaskItemStore(),
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
             Render(
-                ProjectPlanPromptAssetPaths.ProjectPlanAgentPrompt,
+                ProjectPlanAgentPromptAssets.ProjectPlanAgentPrompt,
                 new Dictionary<string, string>
                 {
                     ["RepositoryRootPath"] = AppContext.BaseDirectory,
@@ -84,16 +95,16 @@ public sealed class AgentFactoryPromptContractTests
     {
         StoredScanProject scanProject = CreateScanProject();
 
-        AgentCreationResult result = new ProjectVerifierAgentFactory(CreateCompactionOptions()).Create(
+        AgentCreationResult result = new ProjectVerifierFactory(CreateCompactionOptions()).Create(
             new NoOpChatClient(),
             AppContext.BaseDirectory,
             scanProject,
-            new InMemoryProjectPlanTaskItemStore(),
+            new InMemoryTaskItemStore(),
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
             Render(
-                ProjectPlanPromptAssetPaths.ProjectVerifierAgentPrompt,
+                ProjectPlanAgentPromptAssets.ProjectVerifierAgentPrompt,
                 new Dictionary<string, string>
                 {
                     ["RepositoryRootPath"] = AppContext.BaseDirectory,
@@ -105,7 +116,7 @@ public sealed class AgentFactoryPromptContractTests
     [TestMethod]
     public void RuleReviewAgent_RendersRuleReviewPlaceholders()
     {
-        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        StoredTaskItem taskItem = CreateTaskItem();
         string ruleMarkdown = "# Rule";
 
         AgentCreationResult result = new RuleReviewAgentFactory(CreateCompactionOptions()).Create(
@@ -114,38 +125,38 @@ public sealed class AgentFactoryPromptContractTests
             "rule-key",
             ruleMarkdown,
             taskItem,
-            new InMemoryRuleReviewIssueStore(),
+            new RuleReviewIssueStore(),
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            RenderRuleScopePrompt(RuleReviewPromptAssetPaths.RuleReviewAgentPrompt, ruleMarkdown, taskItem),
+            RenderRuleScopePrompt(RuleReviewAgentPromptAssets.RuleReviewAgentPrompt, ruleMarkdown, taskItem),
             result.SystemPrompt);
     }
 
     [TestMethod]
     public void ReviewVerifier_RendersRuleReviewPlaceholders()
     {
-        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        StoredTaskItem taskItem = CreateTaskItem();
         string ruleMarkdown = "# Rule";
 
-        AgentCreationResult result = new ReviewVerifierAgentFactory(CreateCompactionOptions()).Create(
+        AgentCreationResult result = new ReviewVerifierFactory(CreateCompactionOptions()).Create(
             new NoOpChatClient(),
             AppContext.BaseDirectory,
             "rule-key",
             ruleMarkdown,
             taskItem,
-            new InMemoryRuleReviewIssueStore(),
+            new RuleReviewIssueStore(),
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            RenderRuleScopePrompt(RuleReviewPromptAssetPaths.ReviewVerifierAgentPrompt, ruleMarkdown, taskItem),
+            RenderRuleScopePrompt(RuleReviewAgentPromptAssets.ReviewVerifierAgentPrompt, ruleMarkdown, taskItem),
             result.SystemPrompt);
     }
 
     [TestMethod]
     public void ReportAggregator_RendersRuleScopePlaceholders()
     {
-        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        StoredTaskItem taskItem = CreateTaskItem();
         string ruleMarkdown = "# Rule";
 
         AgentCreationResult result = new ReportAggregatorAgentFactory(CreateCompactionOptions()).Create(
@@ -154,19 +165,19 @@ public sealed class AgentFactoryPromptContractTests
             "rule-key",
             ruleMarkdown,
             taskItem,
-            new InMemoryRuleReportIssueStore(),
+            new ReportIssueStore(),
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            RenderRuleScopePrompt(ReportPromptAssetPaths.ReportAggregatorAgentPrompt, ruleMarkdown, taskItem),
+            RenderRuleScopePrompt(ReportAgentPromptAssets.ReportAggregatorAgentPrompt, ruleMarkdown, taskItem),
             result.SystemPrompt);
     }
 
     [TestMethod]
     public void ReportVerifier_RendersCurrentFlowIssuesJsonPlaceholder()
     {
-        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
-        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues = [CreateRuleReviewIssue()];
+        StoredTaskItem taskItem = CreateTaskItem();
+        IReadOnlyList<StoredIssue> currentFlowIssues = [CreateRuleReviewIssue()];
         string ruleMarkdown = "# Rule";
 
         AgentCreationResult result = new ReportVerifierAgentFactory(CreateCompactionOptions()).Create(
@@ -176,12 +187,12 @@ public sealed class AgentFactoryPromptContractTests
             ruleMarkdown,
             taskItem,
             currentFlowIssues,
-            new InMemoryRuleReportIssueStore(),
+            new ReportIssueStore(),
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
             Render(
-                ReportPromptAssetPaths.ReportVerifierAgentPrompt,
+                ReportAgentPromptAssets.ReportVerifierAgentPrompt,
                 new Dictionary<string, string>
                 {
                     ["RepositoryRootPath"] = AppContext.BaseDirectory,
@@ -194,7 +205,7 @@ public sealed class AgentFactoryPromptContractTests
     private string RenderRuleScopePrompt(
         string promptAssetPath,
         string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem) =>
+        StoredTaskItem taskItem) =>
         Render(
             promptAssetPath,
             new Dictionary<string, string>
@@ -209,11 +220,11 @@ public sealed class AgentFactoryPromptContractTests
             _promptAssetReader.ReadRequiredPrompt(promptAssetPath),
             placeholders);
 
-    private static OperationalContextAgentCompactionOptions CreateCompactionOptions() =>
+    private static AgentCompactionOptions CreateCompactionOptions() =>
         new()
         {
-            Reducer = new OperationalContextChatReducer(
-                new OperationalContextCompactionOptions
+            Reducer = new ChatReducer(
+                new CompactionOptions
                 {
                     ModelContextWindowTokens = 100_000,
                     SummaryReservedOutputTokens = 1,
@@ -221,7 +232,7 @@ public sealed class AgentFactoryPromptContractTests
                     PreservedTailMinTokens = 1,
                     PreservedTailMinMessages = 1,
                 },
-                new StaticOperationalContextSummaryPromptProvider("Summarize."),
+                new StaticSummaryPromptProvider("Summarize."),
                 new StaticSummarizer()),
         };
 
@@ -235,13 +246,13 @@ public sealed class AgentFactoryPromptContractTests
             Reason = "review target",
         };
 
-    private static StoredProjectPlanTaskItem CreateTaskItem() =>
+    private static StoredTaskItem CreateTaskItem() =>
         new()
         {
             ProjectPlanTaskItemId = "task-item",
             Files =
             [
-                new ProjectPlanFile
+                new PlanFile
                 {
                     FilePath = "src/Project/Program.cs",
                     TotalLines = 42,
@@ -249,7 +260,7 @@ public sealed class AgentFactoryPromptContractTests
             ],
         };
 
-    private static StoredRuleReviewIssue CreateRuleReviewIssue() =>
+    private static StoredIssue CreateRuleReviewIssue() =>
         new()
         {
             RuleReviewIssueId = "review-issue",
@@ -266,12 +277,12 @@ public sealed class AgentFactoryPromptContractTests
             CrossScopeAnalysis = "analysis",
         };
 
-    private sealed class StaticSummarizer : IOperationalContextCompactionSummarizer
+    private sealed class StaticSummarizer : ISummarizer
     {
         public ValueTask<string> SummarizeAsync(
             IReadOnlyList<ChatMessage> messages,
             string summaryPrompt,
-            OperationalContextCompactionOptions options,
+            CompactionOptions options,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(
                 """

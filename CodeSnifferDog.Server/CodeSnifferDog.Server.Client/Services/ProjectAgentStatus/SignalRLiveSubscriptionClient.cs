@@ -10,13 +10,13 @@ public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILive
     private HubConnection? _connection;
     private Guid? _subscribedProjectId;
     private Guid? _subscribedAgentId;
-    private Func<ProjectAgentLiveUpdateDto, Task>? _onUpdate;
+    private Func<LiveUpdateDto, Task>? _onUpdate;
     private Func<Task>? _onReconnecting;
     private Func<Task>? _onReconnectRequired;
 
     public async Task SubscribeAsync(
-        ProjectAgentLiveSubscriptionRequestDto request,
-        Func<ProjectAgentLiveUpdateDto, Task> onUpdate,
+        LiveSubscriptionRequestDto request,
+        Func<LiveUpdateDto, Task> onUpdate,
         Func<Task> onReconnecting,
         Func<Task> onReconnectRequired,
         CancellationToken cancellationToken = default)
@@ -71,9 +71,9 @@ public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILive
                 .WithAutomaticReconnect()
                 .Build();
 
-            _connection.On<ProjectAgentLiveUpdateDto>(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update =>
+            _connection.On<LiveUpdateDto>(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update =>
             {
-                Func<ProjectAgentLiveUpdateDto, Task>? handler = _onUpdate;
+                Func<LiveUpdateDto, Task>? handler = _onUpdate;
                 return handler is null ? Task.CompletedTask : handler(update);
             });
 

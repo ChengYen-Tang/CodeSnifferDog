@@ -23,13 +23,13 @@
     public Guid ProjectId { get; set; }
 
     [Parameter]
-    public ProjectReportListItemDto Report { get; set; } = null!;
+    public ListItemDto Report { get; set; } = null!;
 
     [Parameter]
     public bool IsSelected { get; set; }
 
     [Parameter]
-    public EventCallback<ProjectReportListItemDto> OnSelectReport { get; set; }
+    public EventCallback<ListItemDto> OnSelectReport { get; set; }
 
     private Task SelectReportAsync() => OnSelectReport.InvokeAsync(Report);
 }

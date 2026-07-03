@@ -10,18 +10,18 @@ namespace CodeSnifferDog.Server.Services.ProjectIntake.Queue;
 
 internal sealed class QueueService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-    IOptions<ProjectExecutionOptions> projectExecutionOptions,
+    IOptions<Settings> Settings,
     IProjectProjectionMapper projectionMapper,
     ILogger<QueueService>? logger = null) : IQueueService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
-    private readonly ProjectExecutionOptions _projectExecutionOptions = projectExecutionOptions.Value;
+    private readonly Settings _Settings = Settings.Value;
     private readonly IProjectProjectionMapper _projectionMapper = projectionMapper;
     private readonly ILogger<QueueService> _logger = logger ?? NullLogger<QueueService>.Instance;
 
     public async Task<ProjectUploadResult> QueueAsync(Request request, CancellationToken cancellationToken)
     {
-        if (_projectExecutionOptions.MaxQueuedProjects <= 0)
+        if (_Settings.MaxQueuedProjects <= 0)
             throw new InvalidOperationException("ProjectExecution:MaxQueuedProjects must be greater than zero.");
 
         await using CodeSnifferDogServerDbContext dbContext =
@@ -30,7 +30,7 @@ internal sealed class QueueService(
         int queuedProjects = await dbContext.Projects
             .CountAsync(project => project.Status == ProjectProcessingStatus.Queued, cancellationToken);
 
-        if (queuedProjects >= _projectExecutionOptions.MaxQueuedProjects)
+        if (queuedProjects >= _Settings.MaxQueuedProjects)
             throw new InvalidOperationException("The project queue is full.");
 
         ProjectRecord project = new()

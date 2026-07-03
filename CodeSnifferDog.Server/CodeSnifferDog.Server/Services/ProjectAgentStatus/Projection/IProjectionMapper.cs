@@ -9,21 +9,21 @@ internal interface IProjectionMapper
 {
     ProjectStatus MapProjectStatus(ProjectProcessingStatus status);
 
-    ProjectAgentRunStatus MapAgentStatus(
+    RunStatus MapAgentStatus(
         PersistedAgentStatus status,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted);
 
-    ProjectAgentTimelineEntryKind MapTimelineEntryKind(
+    TimelineEntryKind MapTimelineEntryKind(
         ProjectAgentTimelineEntryType entryType,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted);
 
-    ProjectAgentGroupLiveDto MapGroup(GroupProjection group);
+    GroupLiveDto MapGroup(GroupProjection group);
 
-    ProjectAgentLiveDto MapAgent(
+    LiveDto MapAgent(
         AgentProjection agent,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted);
 
-    ProjectAgentTimelineEntryDto MapTimelineEntry(
+    TimelineEntryDto MapTimelineEntry(
         TimelineEntryProjection entry,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted);
 }

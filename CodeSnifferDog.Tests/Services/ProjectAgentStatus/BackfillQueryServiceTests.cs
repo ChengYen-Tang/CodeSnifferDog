@@ -19,7 +19,7 @@ public sealed class BackfillQueryServiceTests
         Guid projectId = Guid.NewGuid();
 
         BackfillReadModel result = await service.GetBackfillAsync(
-            new ProjectAgentLiveSubscriptionRequestDto
+            new LiveSubscriptionRequestDto
             {
                 ProjectId = projectId,
                 SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
@@ -44,7 +44,7 @@ public sealed class BackfillQueryServiceTests
         BackfillQueryService service = new(dbContextFactory);
 
         BackfillReadModel result = await service.GetBackfillAsync(
-            new ProjectAgentLiveSubscriptionRequestDto
+            new LiveSubscriptionRequestDto
             {
                 ProjectId = projectId,
                 SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
@@ -75,7 +75,7 @@ public sealed class BackfillQueryServiceTests
         BackfillQueryService service = new(dbContextFactory);
 
         BackfillReadModel result = await service.GetBackfillAsync(
-            new ProjectAgentLiveSubscriptionRequestDto
+            new LiveSubscriptionRequestDto
             {
                 ProjectId = projectId,
                 SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,

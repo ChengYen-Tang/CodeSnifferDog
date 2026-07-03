@@ -6,20 +6,20 @@ namespace CodeSnifferDog.Server.Services.ProjectReports.Export;
 
 internal sealed class ExportService : IExportService
 {
-    public ExportFile CreateMarkdown(ProjectReportContentDto report) =>
+    public ExportFile CreateMarkdown(ContentDto report) =>
         new(
             Encoding.UTF8.GetBytes(report.MarkdownContent),
             "text/markdown; charset=utf-8",
             $"{report.RuleName}.md");
 
     public async Task<ExportFile> CreateBundleZipAsync(
-        ProjectReportBundleDto bundle,
+        BundleDto bundle,
         CancellationToken cancellationToken = default)
     {
         using MemoryStream archiveStream = new();
         using (ZipArchive archive = new(archiveStream, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (ProjectRuleReportDto report in bundle.Reports)
+            foreach (RuleDto report in bundle.Reports)
             {
                 ZipArchiveEntry entry = archive.CreateEntry($"{report.RuleName}.md", CompressionLevel.Fastest);
                 await using Stream entryStream = entry.Open();

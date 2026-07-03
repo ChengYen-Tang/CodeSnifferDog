@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.RuleFlow;
+using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
 
 namespace CodeSnifferDog.Models.ReviewStage;
 

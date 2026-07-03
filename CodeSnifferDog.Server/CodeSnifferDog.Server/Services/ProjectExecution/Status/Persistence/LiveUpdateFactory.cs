@@ -10,11 +10,11 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
 {
     private readonly IProjectionMapper _projectionMapper = projectionMapper;
 
-    public ProjectAgentLiveUpdateDto CreateGroupUpdate(Guid projectId, ProjectAgentGroupRecord group) =>
+    public LiveUpdateDto CreateGroupUpdate(Guid projectId, ProjectAgentGroupRecord group) =>
         new()
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.AgentGroupUpserted,
+            Kind = LiveUpdateKind.AgentGroupUpserted,
             OccurredAtUtc = group.CreatedAtUtc,
             Group = _projectionMapper.MapGroup(new GroupProjection(
                 group.Id,
@@ -23,11 +23,11 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
                 group.CreatedAtUtc)),
         };
 
-    public ProjectAgentLiveUpdateDto CreateAgentUpsertUpdate(Guid projectId, ProjectAgentRecord agent) =>
+    public LiveUpdateDto CreateAgentUpsertUpdate(Guid projectId, ProjectAgentRecord agent) =>
         new()
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
+            Kind = LiveUpdateKind.AgentUpserted,
             OccurredAtUtc = agent.CreatedAtUtc,
             Agent = _projectionMapper.MapAgent(new AgentProjection(
                 agent.Id,
@@ -39,7 +39,7 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
                 agent.CreatedAtUtc)),
         };
 
-    public ProjectAgentLiveUpdateDto CreateAgentStatusChangedUpdate(
+    public LiveUpdateDto CreateAgentStatusChangedUpdate(
         Guid projectId,
         Guid agentId,
         Data.Entities.ProjectAgentStatus status,
@@ -47,9 +47,9 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
         new()
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.AgentStatusChanged,
+            Kind = LiveUpdateKind.AgentStatusChanged,
             OccurredAtUtc = occurredAtUtc,
-            AgentStatus = new ProjectAgentStatusChangedDto
+            AgentStatus = new StatusChangedDto
             {
                 AgentId = agentId,
                 Status = _projectionMapper.MapAgentStatus(status),
@@ -57,13 +57,13 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
             },
         };
 
-    public ProjectAgentLiveUpdateDto CreateTimelineEntryUpsertUpdate(
+    public LiveUpdateDto CreateTimelineEntryUpsertUpdate(
         Guid projectId,
         ProjectAgentTimelineEntryRecord entry) =>
         new()
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
+            Kind = LiveUpdateKind.TimelineEntryUpserted,
             OccurredAtUtc = entry.OccurredAtUtc,
             TimelineEntry = _projectionMapper.MapTimelineEntry(new TimelineEntryProjection(
                 entry.Id,
@@ -78,7 +78,7 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
                 entry.ToolResult)),
         };
 
-    public ProjectAgentLiveUpdateDto CreateTimelineEntriesRemovedUpdate(
+    public LiveUpdateDto CreateTimelineEntriesRemovedUpdate(
         Guid projectId,
         Guid agentId,
         IReadOnlyList<Guid> removedEntryIds,
@@ -86,9 +86,9 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
         new()
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.TimelineEntriesRemoved,
+            Kind = LiveUpdateKind.TimelineEntriesRemoved,
             OccurredAtUtc = occurredAtUtc,
-            RemovedTimelineEntries = new ProjectAgentTimelineEntriesRemovedDto
+            RemovedTimelineEntries = new TimelineEntriesRemovedDto
             {
                 AgentId = agentId,
                 TimelineEntryIds = removedEntryIds,

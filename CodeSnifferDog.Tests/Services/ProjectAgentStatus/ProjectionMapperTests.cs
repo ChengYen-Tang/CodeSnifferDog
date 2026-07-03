@@ -29,10 +29,10 @@ public sealed class ProjectionMapperTests
     {
         ProjectionMapper mapper = CreateMapper();
 
-        Assert.AreEqual(ProjectAgentRunStatus.Waiting, mapper.MapAgentStatus(PersistedAgentStatus.Waiting));
-        Assert.AreEqual(ProjectAgentRunStatus.Running, mapper.MapAgentStatus(PersistedAgentStatus.Running));
-        Assert.AreEqual(ProjectAgentRunStatus.Completed, mapper.MapAgentStatus(PersistedAgentStatus.Completed));
-        Assert.AreEqual(ProjectAgentRunStatus.Degraded, mapper.MapAgentStatus(PersistedAgentStatus.Degraded));
+        Assert.AreEqual(RunStatus.Waiting, mapper.MapAgentStatus(PersistedAgentStatus.Waiting));
+        Assert.AreEqual(RunStatus.Running, mapper.MapAgentStatus(PersistedAgentStatus.Running));
+        Assert.AreEqual(RunStatus.Completed, mapper.MapAgentStatus(PersistedAgentStatus.Completed));
+        Assert.AreEqual(RunStatus.Degraded, mapper.MapAgentStatus(PersistedAgentStatus.Degraded));
     }
 
     [TestMethod]
@@ -40,10 +40,10 @@ public sealed class ProjectionMapperTests
     {
         ProjectionMapper mapper = CreateMapper();
 
-        Assert.AreEqual(ProjectAgentTimelineEntryKind.Input, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Input));
-        Assert.AreEqual(ProjectAgentTimelineEntryKind.Output, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Output));
-        Assert.AreEqual(ProjectAgentTimelineEntryKind.Tool, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Tool));
-        Assert.AreEqual(ProjectAgentTimelineEntryKind.Compaction, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Compaction));
+        Assert.AreEqual(TimelineEntryKind.Input, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Input));
+        Assert.AreEqual(TimelineEntryKind.Output, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Output));
+        Assert.AreEqual(TimelineEntryKind.Tool, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Tool));
+        Assert.AreEqual(TimelineEntryKind.Compaction, mapper.MapTimelineEntryKind(ProjectAgentTimelineEntryType.Compaction));
     }
 
     [TestMethod]
@@ -75,19 +75,19 @@ public sealed class ProjectionMapperTests
             "{}",
             "result");
 
-        ProjectAgentGroupLiveDto groupDto = mapper.MapGroup(group);
-        ProjectAgentLiveDto agentDto = mapper.MapAgent(agent);
-        ProjectAgentTimelineEntryDto entryDto = mapper.MapTimelineEntry(entry);
+        GroupLiveDto groupDto = mapper.MapGroup(group);
+        LiveDto agentDto = mapper.MapAgent(agent);
+        TimelineEntryDto entryDto = mapper.MapTimelineEntry(entry);
 
         Assert.AreEqual(groupId, groupDto.GroupId);
         Assert.AreEqual("group", groupDto.RuntimeKey);
         Assert.AreEqual("Group", groupDto.DisplayName);
         Assert.AreEqual(agentId, agentDto.AgentId);
         Assert.AreEqual(groupId, agentDto.GroupId);
-        Assert.AreEqual(ProjectAgentRunStatus.Running, agentDto.Status);
+        Assert.AreEqual(RunStatus.Running, agentDto.Status);
         Assert.AreEqual(timelineEntryId, entryDto.TimelineEntryId);
         Assert.AreEqual(agentId, entryDto.AgentId);
-        Assert.AreEqual(ProjectAgentTimelineEntryKind.Tool, entryDto.EntryKind);
+        Assert.AreEqual(TimelineEntryKind.Tool, entryDto.EntryKind);
         Assert.AreEqual("result", entryDto.ToolResult);
     }
 

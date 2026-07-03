@@ -12,13 +12,13 @@ public sealed class TimelineEntryListTests
     [TestMethod]
     public void UpsertInsertsEntryBySequenceAndOccurredAt()
     {
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(3, 30),
         ];
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> result =
+        IReadOnlyList<TimelineEntryDto> result =
             TimelineEntryList.Upsert(timelineEntries, CreateEntry(2, 20));
 
         CollectionAssert.AreEqual(new long[] { 1, 2, 3 }, result.Select(entry => entry.Sequence).ToArray());
@@ -27,7 +27,7 @@ public sealed class TimelineEntryListTests
     [TestMethod]
     public void UpsertWithLatestSequenceReturnsUpdatedTimelineAndLatestSequence()
     {
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(3, 30),
@@ -43,7 +43,7 @@ public sealed class TimelineEntryListTests
     [TestMethod]
     public void UpsertWithLatestSequenceUsesProvidedLatestSequence()
     {
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(3, 30),
@@ -60,14 +60,14 @@ public sealed class TimelineEntryListTests
     public void UpsertReplacesExistingEntryAndRepositionsWhenOrderChanges()
     {
         Guid replacedEntryId = Guid.Parse("73000000-0000-0000-0000-000000000010");
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(2, 20, replacedEntryId, "old"),
             CreateEntry(3, 30),
         ];
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> result =
+        IReadOnlyList<TimelineEntryDto> result =
             TimelineEntryList.Upsert(timelineEntries, CreateEntry(4, 40, replacedEntryId, "new"));
 
         CollectionAssert.AreEqual(new long[] { 1, 3, 4 }, result.Select(entry => entry.Sequence).ToArray());
@@ -79,14 +79,14 @@ public sealed class TimelineEntryListTests
     public void UpsertPreservesExistingPositionWhenOrderKeyDoesNotChange()
     {
         Guid replacedEntryId = Guid.Parse("73000000-0000-0000-0000-000000000020");
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(2, 20, replacedEntryId, "old"),
             CreateEntry(2, 20, Guid.Parse("73000000-0000-0000-0000-000000000021"), "same key"),
         ];
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> result =
+        IReadOnlyList<TimelineEntryDto> result =
             TimelineEntryList.Upsert(timelineEntries, CreateEntry(2, 20, replacedEntryId, "new"));
 
         CollectionAssert.AreEqual(
@@ -97,14 +97,14 @@ public sealed class TimelineEntryListTests
     [TestMethod]
     public void UpsertOrdersDuplicateSequenceByOccurredAt()
     {
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(2, 30, Guid.Parse("73000000-0000-0000-0000-000000000201"), "late"),
             CreateEntry(3, 40),
         ];
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> result =
+        IReadOnlyList<TimelineEntryDto> result =
             TimelineEntryList.Upsert(
                 timelineEntries,
                 CreateEntry(2, 20, Guid.Parse("73000000-0000-0000-0000-000000000202"), "early"));
@@ -117,13 +117,13 @@ public sealed class TimelineEntryListTests
     [TestMethod]
     public void UpsertNormalizesUnsortedExistingTimeline()
     {
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(3, 30),
             CreateEntry(1, 10),
         ];
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> result =
+        IReadOnlyList<TimelineEntryDto> result =
             TimelineEntryList.Upsert(timelineEntries, CreateEntry(2, 20));
 
         CollectionAssert.AreEqual(new long[] { 1, 2, 3 }, result.Select(entry => entry.Sequence).ToArray());
@@ -133,16 +133,16 @@ public sealed class TimelineEntryListTests
     public void RemoveReturnsRemainingEntriesAndPreservesNoOpShape()
     {
         Guid removedEntryId = Guid.Parse("73000000-0000-0000-0000-000000000030");
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(2, 20, removedEntryId),
             CreateEntry(3, 30),
         ];
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> removed =
+        IReadOnlyList<TimelineEntryDto> removed =
             TimelineEntryList.Remove(timelineEntries, new HashSet<Guid> { removedEntryId });
-        IReadOnlyList<ProjectAgentTimelineEntryDto> noOp =
+        IReadOnlyList<TimelineEntryDto> noOp =
             TimelineEntryList.Remove(timelineEntries, new HashSet<Guid> { Guid.Parse("73000000-0000-0000-0000-000000000099") });
 
         CollectionAssert.AreEqual(new long[] { 1, 3 }, removed.Select(entry => entry.Sequence).ToArray());
@@ -153,7 +153,7 @@ public sealed class TimelineEntryListTests
     public void RemoveWithLatestSequenceReturnsRemainingEntriesAndLatestSequence()
     {
         Guid removedEntryId = Guid.Parse("73000000-0000-0000-0000-000000000031");
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(2, 20),
@@ -171,7 +171,7 @@ public sealed class TimelineEntryListTests
     [TestMethod]
     public void RemoveWithLatestSequenceReturnsNullWhenNoEntriesAreRemoved()
     {
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(2, 20),
@@ -189,7 +189,7 @@ public sealed class TimelineEntryListTests
     public void GetLatestSequenceTracksAddReplaceAndRemoveResults()
     {
         Guid replacedEntryId = Guid.Parse("73000000-0000-0000-0000-000000000040");
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
         [
             CreateEntry(1, 10),
             CreateEntry(5, 50, replacedEntryId),
@@ -197,15 +197,15 @@ public sealed class TimelineEntryListTests
 
         Assert.AreEqual(5, TimelineEntryList.GetLatestSequence(timelineEntries));
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> lowered =
+        IReadOnlyList<TimelineEntryDto> lowered =
             TimelineEntryList.Upsert(timelineEntries, CreateEntry(2, 20, replacedEntryId));
         Assert.AreEqual(2, TimelineEntryList.GetLatestSequence(lowered));
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> raised =
+        IReadOnlyList<TimelineEntryDto> raised =
             TimelineEntryList.Upsert(lowered, CreateEntry(9, 90));
         Assert.AreEqual(9, TimelineEntryList.GetLatestSequence(raised));
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> removed =
+        IReadOnlyList<TimelineEntryDto> removed =
             TimelineEntryList.Remove(raised, new HashSet<Guid>(raised.Select(entry => entry.TimelineEntryId)));
         Assert.AreEqual(0, TimelineEntryList.GetLatestSequence(removed));
     }
@@ -213,13 +213,13 @@ public sealed class TimelineEntryListTests
     [TestMethod]
     public void LargeTimelineUpsertAndRemoveKeepExpectedStructure()
     {
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries = Enumerable.Range(1, 500)
+        IReadOnlyList<TimelineEntryDto> timelineEntries = Enumerable.Range(1, 500)
             .Select(index => CreateEntry(index * 2, index * 2))
             .ToList();
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> withInserted =
+        IReadOnlyList<TimelineEntryDto> withInserted =
             TimelineEntryList.Upsert(timelineEntries, CreateEntry(501, 501));
-        IReadOnlyList<ProjectAgentTimelineEntryDto> withRemoved =
+        IReadOnlyList<TimelineEntryDto> withRemoved =
             TimelineEntryList.Remove(withInserted, new HashSet<Guid>
             {
                 withInserted[0].TimelineEntryId,
@@ -235,7 +235,7 @@ public sealed class TimelineEntryListTests
         Assert.AreEqual(998, withRemoved[^1].Sequence);
     }
 
-    private static ProjectAgentTimelineEntryDto CreateEntry(
+    private static TimelineEntryDto CreateEntry(
         long sequence,
         int occurredSecond,
         Guid? timelineEntryId = null,
@@ -244,7 +244,7 @@ public sealed class TimelineEntryListTests
             TimelineEntryId = timelineEntryId ?? Guid.Parse($"73000000-0000-0000-0000-{sequence:000000000000}"),
             AgentId = AgentId,
             Sequence = sequence,
-            EntryKind = ProjectAgentTimelineEntryKind.Output,
+            EntryKind = TimelineEntryKind.Output,
             OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 10, 0, occurredSecond % 60, TimeSpan.Zero),
             Message = message ?? $"entry-{sequence}",
         };

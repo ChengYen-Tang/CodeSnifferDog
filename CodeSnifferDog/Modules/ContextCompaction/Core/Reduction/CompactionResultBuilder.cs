@@ -1,28 +1,29 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using CodeSnifferDog.Models.ContextCompaction.Continuity;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 
 internal sealed class CompactionResultBuilder(
-    OperationalContextCompactionOptions options,
-    IOperationalContextCompactionArtifactsProvider? artifactsProvider)
+    CompactionOptions options,
+    ICompactionArtifactsProvider? artifactsProvider)
 {
-    public async Task<OperationalContextCompactionResult> CreateResultAsync(
+    public async Task<CompactionResult> CreateResultAsync(
         IReadOnlyList<ChatMessage> originalMessages,
         string normalizedSummary,
-        OperationalContextCompactionReason reason,
+        CompactionReason reason,
         CancellationToken cancellationToken)
     {
         List<ChatMessage> preservedSystemMessages = [.. originalMessages.Where(static message => message.Role == ChatRole.System)];
         List<ChatMessage> nonSystemMessages = [.. originalMessages.Where(static message => message.Role != ChatRole.System)];
         List<ChatMessage> messagesToKeep = SelectMessagesToKeep(nonSystemMessages);
-        List<OperationalContextCompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, messagesToKeep);
-        List<OperationalContextCompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, messagesToKeep);
-        OperationalContextContinuityState continuityState = OperationalContextContinuityStateBuilder.Build(normalizedSummary);
-        OperationalContextCompactionArtifacts artifacts = artifactsProvider is null
-            ? OperationalContextCompactionArtifacts.Empty
+        List<CompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, messagesToKeep);
+        List<CompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, messagesToKeep);
+        ContinuityState continuityState = ContinuityStateBuilder.Build(normalizedSummary);
+        CompactionArtifacts artifacts = artifactsProvider is null
+            ? CompactionArtifacts.Empty
             : await artifactsProvider.GetArtifactsAsync(
                 originalMessages,
                 messagesToKeep,
@@ -32,11 +33,11 @@ internal sealed class CompactionResultBuilder(
 
         ChatMessage boundaryMessage = CreateBoundaryMessage(originalMessages, messageReferences, normalizedSummary, reason);
         ChatMessage summaryMessage = CreateSummaryMessage(normalizedSummary, reason, messagesToKeep.Count > 0);
-        ChatMessage continuityStateMessage = OperationalContextContinuityStateBuilder.CreateMessage(continuityState, reason);
-        boundaryMessage.AdditionalProperties![OperationalContextCompactionArtifactMetadata.AttachmentsCountKey] = artifacts.AttachmentMessages.Count;
-        boundaryMessage.AdditionalProperties![OperationalContextCompactionArtifactMetadata.HookResultsCountKey] = artifacts.HookResultMessages.Count;
+        ChatMessage continuityStateMessage = ContinuityStateBuilder.CreateMessage(continuityState, reason);
+        boundaryMessage.AdditionalProperties![CompactionArtifactMetadata.AttachmentsCountKey] = artifacts.AttachmentMessages.Count;
+        boundaryMessage.AdditionalProperties![CompactionArtifactMetadata.HookResultsCountKey] = artifacts.HookResultMessages.Count;
 
-        return new OperationalContextCompactionResult
+        return new CompactionResult
         {
             WasCompacted = true,
             PreservedSystemMessages = preservedSystemMessages,
@@ -52,14 +53,14 @@ internal sealed class CompactionResultBuilder(
         };
     }
 
-    public static OperationalContextCompactionResult CreatePassthroughResult(IReadOnlyList<ChatMessage> messages) => new()
+    public static CompactionResult CreatePassthroughResult(IReadOnlyList<ChatMessage> messages) => new()
     {
         WasCompacted = false,
         PreservedSystemMessages = [],
         BoundaryMessage = new ChatMessage(ChatRole.System, string.Empty),
         SummaryMessage = new ChatMessage(ChatRole.Assistant, string.Empty),
         ContinuityStateMessage = new ChatMessage(ChatRole.System, string.Empty),
-        ContinuityState = new OperationalContextContinuityState(),
+        ContinuityState = new ContinuityState(),
         MessagesToKeep = messages,
         MessageReferences = [],
         ArchivedMessageReferences = [],
@@ -73,7 +74,7 @@ internal sealed class CompactionResultBuilder(
             _ = GetMessageIdentity(messages[index], index);
     }
 
-    private static ChatMessage CreateSummaryMessage(string summary, OperationalContextCompactionReason reason, bool hasPreservedTail)
+    private static ChatMessage CreateSummaryMessage(string summary, CompactionReason reason, bool hasPreservedTail)
     {
         ChatMessage summaryMessage = new(
             ChatRole.Assistant,
@@ -81,11 +82,11 @@ internal sealed class CompactionResultBuilder(
         {
             AdditionalProperties = new AdditionalPropertiesDictionary
             {
-                [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.SummaryArtifactKind,
-                [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
-                [OperationalContextCompactionArtifactMetadata.SummaryFormatVersionKey] = OperationalContextCompactionArtifactMetadata.CurrentSummaryFormatVersion,
-                [OperationalContextCompactionArtifactMetadata.IsCompactionSummaryKey] = true,
-                [OperationalContextCompactionArtifactMetadata.HasPreservedTailKey] = hasPreservedTail,
+                [CompactionArtifactMetadata.ArtifactKindKey] = CompactionArtifactMetadata.SummaryArtifactKind,
+                [CompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
+                [CompactionArtifactMetadata.SummaryFormatVersionKey] = CompactionArtifactMetadata.CurrentSummaryFormatVersion,
+                [CompactionArtifactMetadata.IsCompactionSummaryKey] = true,
+                [CompactionArtifactMetadata.HasPreservedTailKey] = hasPreservedTail,
             },
         };
 
@@ -94,50 +95,50 @@ internal sealed class CompactionResultBuilder(
 
     private static ChatMessage CreateBoundaryMessage(
         IReadOnlyList<ChatMessage> originalMessages,
-        List<OperationalContextCompactionMessageReference> messageReferences,
+        List<CompactionMessageReference> messageReferences,
         string summary,
-        OperationalContextCompactionReason reason)
+        CompactionReason reason)
     {
         ChatMessage boundaryMessage = new(
             ChatRole.System,
             "Operational compact boundary");
 
-        OperationalContextCompactionMessageReference? tailReference = messageReferences.Count > 0 ? messageReferences[^1] : null;
-        OperationalContextCompactionMessageReference? headReference = messageReferences.Count > 0 ? messageReferences[0] : null;
+        CompactionMessageReference? tailReference = messageReferences.Count > 0 ? messageReferences[^1] : null;
+        CompactionMessageReference? headReference = messageReferences.Count > 0 ? messageReferences[0] : null;
 
         boundaryMessage.AdditionalProperties = new AdditionalPropertiesDictionary
         {
-            [OperationalContextCompactionArtifactMetadata.ArtifactKindKey] = OperationalContextCompactionArtifactMetadata.BoundaryArtifactKind,
-            [OperationalContextCompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
-            [OperationalContextCompactionArtifactMetadata.MessagesToKeepCountKey] = messageReferences.Count,
-            [OperationalContextCompactionArtifactMetadata.BoundarySummaryKey] = summary,
-            [OperationalContextCompactionArtifactMetadata.PreservedTailCountKey] = messageReferences.Count,
-            [OperationalContextCompactionArtifactMetadata.PreservedTailIndexesKey] = messageReferences.Select(static reference => reference.MessageIndex).ToArray(),
-            [OperationalContextCompactionArtifactMetadata.PreservedTailTextsKey] = messageReferences.Select(static reference => reference.Text).ToArray(),
-            [OperationalContextCompactionArtifactMetadata.PreservedTailIdsKey] = messageReferences.Select(static reference => reference.MessageId ?? string.Empty).ToArray(),
+            [CompactionArtifactMetadata.ArtifactKindKey] = CompactionArtifactMetadata.BoundaryArtifactKind,
+            [CompactionArtifactMetadata.CompactionReasonKey] = reason.ToString(),
+            [CompactionArtifactMetadata.MessagesToKeepCountKey] = messageReferences.Count,
+            [CompactionArtifactMetadata.BoundarySummaryKey] = summary,
+            [CompactionArtifactMetadata.PreservedTailCountKey] = messageReferences.Count,
+            [CompactionArtifactMetadata.PreservedTailIndexesKey] = messageReferences.Select(static reference => reference.MessageIndex).ToArray(),
+            [CompactionArtifactMetadata.PreservedTailTextsKey] = messageReferences.Select(static reference => reference.Text).ToArray(),
+            [CompactionArtifactMetadata.PreservedTailIdsKey] = messageReferences.Select(static reference => reference.MessageId ?? string.Empty).ToArray(),
         };
 
         if (headReference is not null)
         {
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIndexKey] = headReference.MessageIndex;
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentHeadIdKey] = headReference.MessageId ?? string.Empty;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.PreservedSegmentHeadIndexKey] = headReference.MessageIndex;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.PreservedSegmentHeadIdKey] = headReference.MessageId ?? string.Empty;
         }
 
         if (tailReference is not null)
         {
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIndexKey] = tailReference.MessageIndex;
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.PreservedSegmentTailIdKey] = tailReference.MessageId ?? string.Empty;
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorIndexKey] = tailReference.MessageIndex;
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorIdKey] = tailReference.MessageId ?? string.Empty;
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorRoleKey] = tailReference.Role.ToString();
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorTextKey] = tailReference.Text;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.PreservedSegmentTailIndexKey] = tailReference.MessageIndex;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.PreservedSegmentTailIdKey] = tailReference.MessageId ?? string.Empty;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.BoundaryAnchorIndexKey] = tailReference.MessageIndex;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.BoundaryAnchorIdKey] = tailReference.MessageId ?? string.Empty;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.BoundaryAnchorRoleKey] = tailReference.Role.ToString();
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.BoundaryAnchorTextKey] = tailReference.Text;
         }
         else if (originalMessages.Count > 0)
         {
             ChatMessage lastOriginalMessage = originalMessages[^1];
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorIndexKey] = originalMessages.Count - 1;
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorRoleKey] = lastOriginalMessage.Role.ToString();
-            boundaryMessage.AdditionalProperties[OperationalContextCompactionArtifactMetadata.BoundaryAnchorTextKey] = lastOriginalMessage.Text ?? string.Empty;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.BoundaryAnchorIndexKey] = originalMessages.Count - 1;
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.BoundaryAnchorRoleKey] = lastOriginalMessage.Role.ToString();
+            boundaryMessage.AdditionalProperties[CompactionArtifactMetadata.BoundaryAnchorTextKey] = lastOriginalMessage.Text ?? string.Empty;
         }
 
         return boundaryMessage;
@@ -175,18 +176,18 @@ internal sealed class CompactionResultBuilder(
         return keptMessages;
     }
 
-    private static List<OperationalContextCompactionMessageReference> CreateMessageReferences(
+    private static List<CompactionMessageReference> CreateMessageReferences(
         List<ChatMessage> sourceMessages,
         List<ChatMessage> keptMessages)
     {
-        List<OperationalContextCompactionMessageReference> references = [];
+        List<CompactionMessageReference> references = [];
 
         for (int index = 0; index < sourceMessages.Count; index++)
         {
             if (!keptMessages.Contains(sourceMessages[index]))
                 continue;
 
-            references.Add(new OperationalContextCompactionMessageReference
+            references.Add(new CompactionMessageReference
             {
                 MessageIndex = index,
                 MessageId = GetMessageIdentity(sourceMessages[index], index),
@@ -198,18 +199,18 @@ internal sealed class CompactionResultBuilder(
         return references;
     }
 
-    private static List<OperationalContextCompactionMessageReference> CreateArchivedMessageReferences(
+    private static List<CompactionMessageReference> CreateArchivedMessageReferences(
         List<ChatMessage> sourceMessages,
         List<ChatMessage> keptMessages)
     {
-        List<OperationalContextCompactionMessageReference> references = [];
+        List<CompactionMessageReference> references = [];
 
         for (int index = 0; index < sourceMessages.Count; index++)
         {
             if (keptMessages.Contains(sourceMessages[index]))
                 continue;
 
-            references.Add(new OperationalContextCompactionMessageReference
+            references.Add(new CompactionMessageReference
             {
                 MessageIndex = index,
                 MessageId = GetMessageIdentity(sourceMessages[index], index),
@@ -225,13 +226,13 @@ internal sealed class CompactionResultBuilder(
     {
         message.AdditionalProperties ??= [];
 
-        if (message.AdditionalProperties.TryGetValue(OperationalContextCompactionArtifactMetadata.MessageIdentityKey, out object? existingValue) &&
+        if (message.AdditionalProperties.TryGetValue(CompactionArtifactMetadata.MessageIdentityKey, out object? existingValue) &&
             existingValue is string existingId &&
             !string.IsNullOrWhiteSpace(existingId))
             return existingId;
 
         string generatedId = $"{index:D8}:{message.Role}:{Guid.NewGuid():N}";
-        message.AdditionalProperties[OperationalContextCompactionArtifactMetadata.MessageIdentityKey] = generatedId;
+        message.AdditionalProperties[CompactionArtifactMetadata.MessageIdentityKey] = generatedId;
         return generatedId;
     }
 }

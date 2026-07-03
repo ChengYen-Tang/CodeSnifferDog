@@ -13,7 +13,7 @@ public sealed class ReportsPreviewPaneTests
     public void RendersLoadingStateWithSelectedReportMetadata()
     {
         using Bunit.TestContext context = new();
-        ProjectReportListItemDto selectedReport = new()
+        ListItemDto selectedReport = new()
         {
             ReportId = Guid.Parse("81000000-0000-0000-0000-000000000301"),
             RuleName = "rule-loading",
@@ -32,7 +32,7 @@ public sealed class ReportsPreviewPaneTests
     public void RendersContentMarkupAndToolbar()
     {
         using Bunit.TestContext context = new();
-        ProjectReportContentDto content = new()
+        ContentDto content = new()
         {
             ReportId = Guid.Parse("81000000-0000-0000-0000-000000000302"),
             RuleName = "rule-content",

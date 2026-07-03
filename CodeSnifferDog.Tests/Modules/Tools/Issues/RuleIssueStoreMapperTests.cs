@@ -1,6 +1,8 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Tools.Issues;
+using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using ReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.Issues;
 
@@ -12,7 +14,7 @@ public sealed class RuleIssueStoreMapperTests
     {
         NormalizedRuleIssue issue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
 
-        StoredRuleReviewIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(issue, "review-id");
+        ReviewStoredIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(issue, "review-id");
 
         Assert.AreEqual("review-id", storedIssue.RuleReviewIssueId);
         Assert.AreEqual(issue.Issue.IssueType, storedIssue.IssueType);
@@ -33,7 +35,7 @@ public sealed class RuleIssueStoreMapperTests
     {
         NormalizedRuleIssue issue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
 
-        StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(issue, "report-id");
+        ReportStoredIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(issue, "report-id");
 
         Assert.AreEqual("report-id", storedIssue.RuleReportIssueId);
         Assert.AreEqual(issue.Issue.IssueType, storedIssue.IssueType);
@@ -44,12 +46,12 @@ public sealed class RuleIssueStoreMapperTests
     [TestMethod]
     public void Clone_CreatesIndependentReportIssue()
     {
-        StoredRuleReportIssue original = RuleIssueStoreMapper.CreateReportIssue(
+        ReportStoredIssue original = RuleIssueStoreMapper.CreateReportIssue(
             RuleIssueNormalizer.NormalizeToContract(CreateIssue("High")),
             "report-id");
 
-        StoredRuleReportIssue clone = RuleIssueStoreMapper.Clone(original);
-        StoredRuleReportIssue changedClone = new()
+        ReportStoredIssue clone = RuleIssueStoreMapper.Clone(original);
+        ReportStoredIssue changedClone = new()
         {
             RuleReportIssueId = clone.RuleReportIssueId,
             IssueType = clone.IssueType,
@@ -73,7 +75,7 @@ public sealed class RuleIssueStoreMapperTests
     public void IsEquivalentToNormalizedIssue_UsesExactNormalizedFields()
     {
         NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
-        StoredRuleReviewIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(normalizedIssue, "review-id");
+        ReviewStoredIssue storedIssue = RuleIssueStoreMapper.CreateReviewIssue(normalizedIssue, "review-id");
         NormalizedRuleIssue differentlyCasedIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("Medium"));
 
         Assert.IsTrue(RuleIssueStoreMapper.IsEquivalentToNormalizedIssue(storedIssue, normalizedIssue));
@@ -84,13 +86,13 @@ public sealed class RuleIssueStoreMapperTests
     public void IsEquivalentToNormalizedIssue_ForReportIssueUsesExactNormalizedFields()
     {
         NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue("High"));
-        StoredRuleReportIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(normalizedIssue, "report-id");
+        ReportStoredIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(normalizedIssue, "report-id");
         NormalizedRuleIssue equivalentIssue = RuleIssueNormalizer.NormalizeToContract(CreateIssue(" high "));
 
         Assert.IsTrue(RuleIssueStoreMapper.IsEquivalentToNormalizedIssue(storedIssue, equivalentIssue));
     }
 
-    private static RuleReviewIssue CreateIssue(string severity) => new()
+    private static Issue CreateIssue(string severity) => new()
     {
         IssueType = " Performance ",
         Severity = severity,

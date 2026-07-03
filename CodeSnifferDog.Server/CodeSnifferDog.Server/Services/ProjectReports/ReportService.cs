@@ -20,7 +20,7 @@ internal sealed class ReportService(
 
     public async Task ReplaceProjectReportsAsync(
         Guid projectId,
-        IReadOnlyList<RuleReportDraft> reports,
+        IReadOnlyList<RuleDraft> reports,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reports);
@@ -37,11 +37,11 @@ internal sealed class ReportService(
         dbContext.ProjectRuleReports.RemoveRange(project.RuleReports);
 
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-        foreach (RuleReportDraft report in reports)
+        foreach (RuleDraft report in reports)
         {
-            string ruleKey = ValidateRequiredText(report.RuleKey, nameof(RuleReportDraft.RuleKey));
-            string ruleName = ValidateRequiredText(report.RuleName, nameof(RuleReportDraft.RuleName));
-            string markdownContent = ValidateRequiredText(report.MarkdownContent, nameof(RuleReportDraft.MarkdownContent));
+            string ruleKey = ValidateRequiredText(report.RuleKey, nameof(RuleDraft.RuleKey));
+            string ruleName = ValidateRequiredText(report.RuleName, nameof(RuleDraft.RuleName));
+            string markdownContent = ValidateRequiredText(report.MarkdownContent, nameof(RuleDraft.MarkdownContent));
 
             ProjectRuleReportRecord reportRecord = new()
             {
@@ -60,13 +60,13 @@ internal sealed class ReportService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<ProjectReportBundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default)
+    public async Task<BundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         ProjectProjection? project = await _queryService.GetProjectReportsAsync(projectId, cancellationToken);
         return project is null ? null : _projectionMapper.MapBundle(project);
     }
 
-    public async Task<ProjectReportListDto?> GetProjectReportListAsync(
+    public async Task<ListDto?> GetProjectReportListAsync(
         Guid projectId,
         CancellationToken cancellationToken = default)
     {
@@ -74,7 +74,7 @@ internal sealed class ReportService(
         return project is null ? null : _projectionMapper.MapList(project);
     }
 
-    public async Task<ProjectReportContentDto?> GetProjectReportAsync(
+    public async Task<ContentDto?> GetProjectReportAsync(
         Guid projectId,
         Guid reportId,
         CancellationToken cancellationToken = default)

@@ -7,19 +7,23 @@ using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam.Compaction;
 using Microsoft.Extensions.AI;
+using ProjectPlanRunnerFactoryInterface = CodeSnifferDog.Server.Services.ProjectExecution.Workflows.ProjectPlan.IRunnerFactory;
+using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.IIssueStore;
+using RuleFlowRunnerFactoryInterface = CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleFlow.IRunnerFactory;
+using ReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.IIssueStore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
 internal sealed class ReviewRunnerFactory : IReviewRunnerFactory
 {
     private readonly IScanRunnerFactory _scanRunnerFactory;
-    private readonly IProjectPlanRunnerFactory _projectPlanRunnerFactory;
-    private readonly IRuleFlowRunnerFactory _ruleFlowRunnerFactory;
+    private readonly ProjectPlanRunnerFactoryInterface _projectPlanRunnerFactory;
+    private readonly RuleFlowRunnerFactoryInterface _ruleFlowRunnerFactory;
 
     public ReviewRunnerFactory(
         IScanRunnerFactory scanRunnerFactory,
-        IProjectPlanRunnerFactory projectPlanRunnerFactory,
-        IRuleFlowRunnerFactory ruleFlowRunnerFactory)
+        ProjectPlanRunnerFactoryInterface projectPlanRunnerFactory,
+        RuleFlowRunnerFactoryInterface ruleFlowRunnerFactory)
     {
         _scanRunnerFactory = scanRunnerFactory;
         _projectPlanRunnerFactory = projectPlanRunnerFactory;
@@ -30,17 +34,17 @@ internal sealed class ReviewRunnerFactory : IReviewRunnerFactory
         IChatClient chatClient,
         ExecutionOptions executionOptions,
         Settings compactionSettings,
-        IRuleReviewIssueStore ruleReviewIssueStore,
-        IRuleReportIssueStore ruleReportIssueStore,
+        ReviewIssueStore ruleReviewIssueStore,
+        ReportIssueStore ruleReportIssueStore,
         IAgentEventBus agentEventBus)
     {
         PromptAssetReader promptAssetReader = new();
         WorkflowRuntimeContext context = new(
             chatClient,
             executionOptions,
-            new OperationalContextAgentCompactionOptionsFactory(
+            new AgentOptionsFactory(
                 promptAssetReader,
-                new ChatClientOperationalContextCompactionSummarizer(chatClient)),
+                new ChatClientSummarizer(chatClient)),
             promptAssetReader,
             agentEventBus);
 

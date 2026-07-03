@@ -19,8 +19,8 @@
         .Build();
 
     private PersistingComponentStateSubscription? _persistingSubscription;
-    private ProjectReportListDto? _reportList;
-    private ProjectReportContentDto? _selectedReportContent;
+    private ListDto? _reportList;
+    private ContentDto? _selectedReportContent;
     private MarkupString _selectedReportMarkup;
     private Guid? _selectedReportId;
     private Guid? _loadedProjectId;
@@ -48,7 +48,7 @@
         await LoadReportListAsync();
     }
 
-    private ProjectReportListItemDto? SelectedReportListItem =>
+    private ListItemDto? SelectedReportListItem =>
         _selectedReportId is null || _reportList is null
             ? null
             : _reportList.Reports.FirstOrDefault(report => report.ReportId == _selectedReportId.Value);
@@ -61,11 +61,11 @@
 
         try
         {
-            _reportList = await Http.GetFromJsonAsync<ProjectReportListDto>($"/api/projects/{ProjectId}/reports");
+            _reportList = await Http.GetFromJsonAsync<ListDto>($"/api/projects/{ProjectId}/reports");
             SetSelectedReportContent(null);
             _selectedReportId = null;
 
-            ProjectReportListItemDto? firstReport = _reportList?.Reports.FirstOrDefault();
+            ListItemDto? firstReport = _reportList?.Reports.FirstOrDefault();
             if (firstReport is not null)
                 await LoadReportContentAsync(firstReport.ReportId);
         }
@@ -82,7 +82,7 @@
         }
     }
 
-    private Task SelectReportAsync(ProjectReportListItemDto report)
+    private Task SelectReportAsync(ListItemDto report)
     {
         if (_selectedReportId == report.ReportId
             && _selectedReportContent?.ReportId == report.ReportId
@@ -104,7 +104,7 @@
 
         try
         {
-            ProjectReportContentDto? reportContent = await Http.GetFromJsonAsync<ProjectReportContentDto>(
+            ContentDto? reportContent = await Http.GetFromJsonAsync<ContentDto>(
                 $"/api/projects/{ProjectId}/reports/{reportId}");
 
             if (!IsCurrentContentRequest(requestVersion, reportId))
@@ -128,7 +128,7 @@
         }
     }
 
-    private void SetSelectedReportContent(ProjectReportContentDto? reportContent)
+    private void SetSelectedReportContent(ContentDto? reportContent)
     {
         _selectedReportContent = reportContent;
         _selectedReportMarkup = reportContent is null
@@ -144,10 +144,10 @@
         string reportListKey = CreateReportListStateKey();
         string selectedReportContentKey = CreateSelectedReportContentStateKey();
 
-        if (!PersistentComponentState.TryTakeFromJson<ProjectReportListDto>(reportListKey, out ProjectReportListDto? reportList))
+        if (!PersistentComponentState.TryTakeFromJson<ListDto>(reportListKey, out ListDto? reportList))
             return false;
 
-        if (!PersistentComponentState.TryTakeFromJson<ProjectReportContentDto>(selectedReportContentKey, out ProjectReportContentDto? selectedReportContent))
+        if (!PersistentComponentState.TryTakeFromJson<ContentDto>(selectedReportContentKey, out ContentDto? selectedReportContent))
             return false;
 
         if (selectedReportContent is null)

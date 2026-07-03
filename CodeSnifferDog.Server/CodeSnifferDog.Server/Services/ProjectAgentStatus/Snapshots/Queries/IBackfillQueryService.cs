@@ -5,6 +5,6 @@ namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 internal interface IBackfillQueryService
 {
     Task<BackfillReadModel> GetBackfillAsync(
-        ProjectAgentLiveSubscriptionRequestDto request,
+        LiveSubscriptionRequestDto request,
         CancellationToken cancellationToken = default);
 }

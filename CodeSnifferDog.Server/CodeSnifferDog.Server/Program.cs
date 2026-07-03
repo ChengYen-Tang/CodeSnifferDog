@@ -44,7 +44,7 @@ builder.Services.AddScoped(sp =>
 
 var app = builder.Build();
 
-await CodeSnifferDogServerDatabaseMigrator.MigrateAsync(app.Services).ConfigureAwait(false);
+await DatabaseMigrator.MigrateAsync(app.Services).ConfigureAwait(false);
 
 if (app.Environment.IsDevelopment())
 {

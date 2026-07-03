@@ -34,8 +34,8 @@ public sealed class LiveBackfillServiceTests
 
         await SeedProjectAsync(dbContextFactory, projectId, groupId, agentAId, agentBId, TestContext.CancellationToken);
 
-        IReadOnlyList<ProjectAgentLiveUpdateDto> updates = await service.GetBackfillAsync(
-            new ProjectAgentLiveSubscriptionRequestDto
+        IReadOnlyList<LiveUpdateDto> updates = await service.GetBackfillAsync(
+            new LiveSubscriptionRequestDto
             {
                 ProjectId = projectId,
                 SnapshotGeneratedAtUtc = new DateTimeOffset(2026, 5, 10, 14, 0, 0, TimeSpan.Zero),
@@ -44,17 +44,17 @@ public sealed class LiveBackfillServiceTests
             },
             TestContext.CancellationToken);
 
-        List<ProjectAgentLiveUpdateDto> groupUpdates = updates
-            .Where(update => update.Kind == ProjectAgentLiveUpdateKind.AgentGroupUpserted)
+        List<LiveUpdateDto> groupUpdates = updates
+            .Where(update => update.Kind == LiveUpdateKind.AgentGroupUpserted)
             .ToList();
-        List<ProjectAgentLiveUpdateDto> projectStatusUpdates = updates
-            .Where(update => update.Kind == ProjectAgentLiveUpdateKind.ProjectStatusChanged)
+        List<LiveUpdateDto> projectStatusUpdates = updates
+            .Where(update => update.Kind == LiveUpdateKind.ProjectStatusChanged)
             .ToList();
-        List<ProjectAgentLiveUpdateDto> agentUpdates = updates
-            .Where(update => update.Kind == ProjectAgentLiveUpdateKind.AgentUpserted)
+        List<LiveUpdateDto> agentUpdates = updates
+            .Where(update => update.Kind == LiveUpdateKind.AgentUpserted)
             .ToList();
-        List<ProjectAgentLiveUpdateDto> timelineUpdates = updates
-            .Where(update => update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
+        List<LiveUpdateDto> timelineUpdates = updates
+            .Where(update => update.Kind == LiveUpdateKind.TimelineEntryUpserted)
             .ToList();
 
         Assert.HasCount(1, projectStatusUpdates);
@@ -104,7 +104,7 @@ public sealed class LiveBackfillServiceTests
 
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.GetBackfillAsync(
-                new ProjectAgentLiveSubscriptionRequestDto
+                new LiveSubscriptionRequestDto
                 {
                     ProjectId = projectId,
                     SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,

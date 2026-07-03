@@ -1,4 +1,6 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
 using CodeSnifferDog.Server.Services.ProjectReports;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
@@ -9,12 +11,12 @@ internal sealed class CompletionService(IReportService projectReportService) : I
 
     public async Task CompleteAnalysisAsync(
         Guid projectId,
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
-        ReviewAgentTeamAnalysisResult analysisResult,
+        IReadOnlyList<RuleDefinition> rules,
+        AnalysisResult analysisResult,
         CancellationToken cancellationToken = default)
     {
-        ReviewAgentTeamAnalysisCompletionDecision completionDecision =
-            ReviewAgentTeamAnalysisCompletionPolicy.Evaluate(analysisResult);
+        CompletionDecision completionDecision =
+            CompletionPolicy.Evaluate(analysisResult);
 
         if (completionDecision.ShouldPersistReports)
             await PersistReportsAsync(projectId, rules, analysisResult.RuleReports, cancellationToken).ConfigureAwait(false);
@@ -27,18 +29,18 @@ internal sealed class CompletionService(IReportService projectReportService) : I
 
     private async Task PersistReportsAsync(
         Guid projectId,
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
-        IReadOnlyList<ReviewAgentTeamRuleReport> ruleReports,
+        IReadOnlyList<RuleDefinition> rules,
+        IReadOnlyList<RuleReport> ruleReports,
         CancellationToken cancellationToken)
     {
         Dictionary<string, string> ruleNamesByKey = rules.ToDictionary(rule => rule.RuleKey, rule => rule.RuleName, StringComparer.Ordinal);
-        List<RuleReportDraft> drafts = [];
-        foreach (ReviewAgentTeamRuleReport ruleReport in ruleReports)
+        List<RuleDraft> drafts = [];
+        foreach (RuleReport ruleReport in ruleReports)
         {
             if (!ruleNamesByKey.TryGetValue(ruleReport.RuleKey, out string? ruleName))
                 throw new InvalidOperationException($"Rule name mapping was not found for rule key '{ruleReport.RuleKey}'.");
 
-            drafts.Add(new RuleReportDraft
+            drafts.Add(new RuleDraft
             {
                 RuleKey = ruleReport.RuleKey,
                 RuleName = ruleName,

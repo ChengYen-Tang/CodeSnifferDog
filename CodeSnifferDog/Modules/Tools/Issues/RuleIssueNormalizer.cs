@@ -4,7 +4,7 @@ namespace CodeSnifferDog.Modules.Tools.Issues;
 
 internal static class RuleIssueNormalizer
 {
-    public static RuleReviewIssue Create(
+    public static Issue Create(
         string issueType,
         string severity,
         string fileOrFunction,
@@ -16,7 +16,7 @@ internal static class RuleIssueNormalizer
         string scopeCoverage,
         string crossScopeAnalysis,
         string reviewStrategy) =>
-        Normalize(new RuleReviewIssue
+        Normalize(new Issue
         {
             IssueType = issueType,
             Severity = severity,
@@ -43,7 +43,7 @@ internal static class RuleIssueNormalizer
         string scopeCoverage,
         string crossScopeAnalysis,
         string reviewStrategy) =>
-        NormalizeToContract(new RuleReviewIssue
+        NormalizeToContract(new Issue
         {
             IssueType = issueType,
             Severity = severity,
@@ -58,17 +58,17 @@ internal static class RuleIssueNormalizer
             ReviewStrategy = reviewStrategy,
         });
 
-    public static RuleReviewIssue Normalize(RuleReviewIssue issue)
+    public static Issue Normalize(Issue issue)
         =>
         NormalizeToContract(issue).Issue;
 
-    public static NormalizedRuleIssue NormalizeToContract(RuleReviewIssue issue)
+    public static NormalizedRuleIssue NormalizeToContract(Issue issue)
     {
         Validate(issue);
-        return new NormalizedRuleIssue(new RuleReviewIssue
+        return new NormalizedRuleIssue(new Issue
         {
             IssueType = issue.IssueType.Trim(),
-            Severity = RuleReviewSeverity.Normalize(issue.Severity),
+            Severity = Severity.Normalize(issue.Severity),
             FileOrFunction = issue.FileOrFunction.Trim(),
             RelevantCodePatternOrExpression = issue.RelevantCodePatternOrExpression.Trim(),
             WhyThisIsAProblem = issue.WhyThisIsAProblem.Trim(),
@@ -81,10 +81,10 @@ internal static class RuleIssueNormalizer
         });
     }
 
-    private static void Validate(RuleReviewIssue issue)
+    private static void Validate(Issue issue)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.IssueType);
-        RuleReviewSeverity.Normalize(issue.Severity);
+        Severity.Normalize(issue.Severity);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.FileOrFunction);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.RelevantCodePatternOrExpression);
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.WhyThisIsAProblem);

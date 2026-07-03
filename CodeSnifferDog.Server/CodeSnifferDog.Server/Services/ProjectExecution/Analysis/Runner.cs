@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
@@ -14,7 +15,7 @@ internal sealed class Runner(
     IReviewAnalysisExecutor analysisExecutor,
     ICompletionService completionService,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
-    IOptions<ProjectExecutionOptions> options,
+    IOptions<Settings> options,
     ILogger<Runner> logger) : IProjectAnalysisRunner
 {
     private readonly IProjectChatClientProvider _chatClientProvider = chatClientProvider;
@@ -44,14 +45,14 @@ internal sealed class Runner(
 
         await ClearAgentStatusDataAsync(context.ProjectId, cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules = await _ruleMarkdownProvider
+        IReadOnlyList<RuleDefinition> rules = await _ruleMarkdownProvider
             .LoadRulesAsync(cancellationToken)
             .ConfigureAwait(false);
 
         if (rules.Count == 0)
             throw new InvalidOperationException("No review rule markdown files were found.");
 
-        ReviewAgentTeamAnalysisResult analysisResult = await _analysisExecutor
+        AnalysisResult analysisResult = await _analysisExecutor
             .AnalyzeAsync(context, rules, cancellationToken)
             .ConfigureAwait(false);
 

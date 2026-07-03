@@ -1,5 +1,4 @@
 using CodeSnifferDog.Agents.Common;
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
@@ -8,11 +7,13 @@ using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Agents.Report;
 
 public sealed class ReportAggregatorAgentFactory(
-    OperationalContextAgentCompactionOptions compactionOptions,
+    AgentCompactionOptions compactionOptions,
     PromptAssetReader? promptAssetReader = null,
     PromptTemplateRenderer? promptTemplateRenderer = null,
     ILoggerFactory? loggerFactory = null,
@@ -27,13 +28,13 @@ public sealed class ReportAggregatorAgentFactory(
         string repositoryRootPath,
         string ruleKey,
         string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
-        IRuleReportIssueStore reportIssueStore,
+        StoredTaskItem taskItem,
+        IIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer,
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptRenderer.ReadRequiredPrompt(ReportPromptAssetPaths.ReportAggregatorAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(PromptAssetPaths.ReportAggregatorAgentPrompt),
             repositoryRootPath,
             ruleKey,
             ruleMarkdown,
@@ -48,8 +49,8 @@ public sealed class ReportAggregatorAgentFactory(
         string repositoryRootPath,
         string ruleKey,
         string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
-        IRuleReportIssueStore reportIssueStore,
+        StoredTaskItem taskItem,
+        IIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer,
         IAgentEventScope? eventScope)
     {
@@ -72,7 +73,7 @@ public sealed class ReportAggregatorAgentFactory(
             });
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
-        ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
         return _agentBuilderService.Create(new AgentBuildRequest(
             chatClient,
             systemPrompt,

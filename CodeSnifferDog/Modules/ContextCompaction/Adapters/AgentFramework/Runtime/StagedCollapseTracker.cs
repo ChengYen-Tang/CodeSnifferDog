@@ -1,12 +1,12 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 
 internal sealed class StagedCollapseTracker(
     AgentSession? session,
-    OperationalContextAgentCompactionOptions options)
+    AgentCompactionOptions options)
 {
     private readonly HashSet<string> _initialStagedCollapseIds = CaptureStagedCollapseIds(session, options);
 
@@ -47,7 +47,7 @@ internal sealed class StagedCollapseTracker(
 
     private static HashSet<string> CaptureStagedCollapseIds(
         AgentSession? session,
-        OperationalContextAgentCompactionOptions options) =>
+        AgentCompactionOptions options) =>
         options.CollapseController is null
             ? []
             : options.CollapseController.CaptureStagedCollapseIds(session);

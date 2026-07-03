@@ -9,6 +9,6 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 internal sealed record WorkflowRuntimeContext(
     IChatClient ChatClient,
     ExecutionOptions ExecutionOptions,
-    OperationalContextAgentCompactionOptionsFactory CompactionOptionsFactory,
+    AgentOptionsFactory CompactionOptionsFactory,
     PromptAssetReader PromptAssetReader,
     IAgentEventBus AgentEventBus);

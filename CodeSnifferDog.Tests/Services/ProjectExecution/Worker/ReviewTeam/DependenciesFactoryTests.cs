@@ -1,6 +1,8 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Tools.Report;
@@ -12,6 +14,14 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using FluentResults;
 using Microsoft.Extensions.AI;
 using System.Runtime.CompilerServices;
+using Dependencies = CodeSnifferDog.Models.ReviewAgentTeam.Runtime.Dependencies;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.IIssueStore;
+using ReportInMemoryIssueStore = CodeSnifferDog.Modules.Tools.Report.InMemoryIssueStore;
+using ReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.IIssueStore;
+using ReviewInMemoryIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.InMemoryIssueStore;
+using ProjectPlanWorkflowResult = CodeSnifferDog.Models.ProjectPlan.WorkflowResult;
+using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution.Worker.ReviewTeam;
 
@@ -27,11 +37,11 @@ public sealed class DependenciesFactoryTests
         ExecutionOptions executionOptions = new()
         {
             ModelContextWindowTokens = 32_000,
-            ContextCompactionMode = OperationalContextCompactionMode.ReactiveOnly,
+            ContextCompactionMode = CompactionMode.ReactiveOnly,
         };
         FakeAgentEventBus agentEventBus = new();
 
-        ReviewAgentTeamDependencies dependencies = factory.CreateDependencies(
+        Dependencies dependencies = factory.CreateDependencies(
             NoOpChatClient.Instance,
             executionOptions,
             agentEventBus);
@@ -39,15 +49,15 @@ public sealed class DependenciesFactoryTests
         Assert.AreSame(NoOpChatClient.Instance, workflowRunnerFactory.ChatClient);
         Assert.AreSame(executionOptions, workflowRunnerFactory.ExecutionOptions);
         Assert.AreSame(agentEventBus, workflowRunnerFactory.AgentEventBus);
-        Assert.IsInstanceOfType<InMemoryRuleReviewIssueStore>(workflowRunnerFactory.RuleReviewIssueStore);
-        Assert.IsInstanceOfType<InMemoryRuleReportIssueStore>(workflowRunnerFactory.RuleReportIssueStore);
+        Assert.IsInstanceOfType<ReviewInMemoryIssueStore>(workflowRunnerFactory.RuleReviewIssueStore);
+        Assert.IsInstanceOfType<ReportInMemoryIssueStore>(workflowRunnerFactory.RuleReportIssueStore);
         Assert.AreSame(workflowRunnerFactory.RuleReportIssueStore, dependencies.RuleReportIssueStore);
         Assert.AreSame(agentEventBus, dependencies.AgentEventBus);
         Assert.IsNotNull(dependencies.ScanWorkflowRunner);
         Assert.IsNotNull(dependencies.ProjectPlanWorkflowRunner);
         Assert.IsNotNull(dependencies.RuleFlowWorkflowRunner);
         Assert.AreEqual(32_000L, workflowRunnerFactory.CompactionSettings!.Scan.ModelContextWindowTokens);
-        Assert.AreEqual(OperationalContextCompactionMode.ReactiveOnly, workflowRunnerFactory.CompactionSettings.Report.Mode);
+        Assert.AreEqual(CompactionMode.ReactiveOnly, workflowRunnerFactory.CompactionSettings.Report.Mode);
     }
 
     private sealed class CapturingWorkflowRunnerFactory : IReviewRunnerFactory
@@ -58,9 +68,9 @@ public sealed class DependenciesFactoryTests
 
         public Settings? CompactionSettings { get; private set; }
 
-        public IRuleReviewIssueStore? RuleReviewIssueStore { get; private set; }
+        public ReviewIssueStore? RuleReviewIssueStore { get; private set; }
 
-        public IRuleReportIssueStore? RuleReportIssueStore { get; private set; }
+        public ReportIssueStore? RuleReportIssueStore { get; private set; }
 
         public IAgentEventBus? AgentEventBus { get; private set; }
 
@@ -68,8 +78,8 @@ public sealed class DependenciesFactoryTests
             IChatClient chatClient,
             ExecutionOptions executionOptions,
             Settings compactionSettings,
-            IRuleReviewIssueStore ruleReviewIssueStore,
-            IRuleReportIssueStore ruleReportIssueStore,
+            ReviewIssueStore ruleReviewIssueStore,
+            ReportIssueStore ruleReportIssueStore,
             IAgentEventBus agentEventBus)
         {
             ChatClient = chatClient;

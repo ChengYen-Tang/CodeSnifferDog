@@ -34,7 +34,7 @@
             }
             else
             {
-                @foreach (ProjectReportListItemDto report in ReportList.Reports)
+                @foreach (ListItemDto report in ReportList.Reports)
                 {
                     <ReportFileItemView @key="report.ReportId"
                                         ProjectId="@ProjectId"
@@ -52,7 +52,7 @@
     public Guid ProjectId { get; set; }
 
     [Parameter]
-    public ProjectReportListDto? ReportList { get; set; }
+    public ListDto? ReportList { get; set; }
 
     [Parameter]
     public Guid? SelectedReportId { get; set; }
@@ -64,5 +64,5 @@
     public string? ListErrorMessage { get; set; }
 
     [Parameter]
-    public EventCallback<ProjectReportListItemDto> OnSelectReport { get; set; }
+    public EventCallback<ListItemDto> OnSelectReport { get; set; }
 }

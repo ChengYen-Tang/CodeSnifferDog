@@ -1,16 +1,17 @@
 using CodeSnifferDog.Agents.Common;
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Agents.Scan;
 
 public sealed class ScanAgentFactory(
-    OperationalContextAgentCompactionOptions compactionOptions,
+    AgentCompactionOptions compactionOptions,
     PromptAssetReader? promptAssetReader = null,
     ILoggerFactory? loggerFactory = null,
     IServiceProvider? serviceProvider = null)
@@ -27,7 +28,7 @@ public sealed class ScanAgentFactory(
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptRenderer.ReadRequiredPrompt(ScanPromptAssetPaths.ScanAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(PromptAssetPaths.ScanAgentPrompt),
             repositoryRootPath,
             scanProjectStore,
             verdictBuffer,

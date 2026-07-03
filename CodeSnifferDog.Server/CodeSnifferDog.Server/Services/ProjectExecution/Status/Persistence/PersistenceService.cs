@@ -216,6 +216,6 @@ internal sealed class PersistenceService(
             _ => throw new InvalidOperationException($"Unsupported agent status '{status}'."),
         };
 
-    private Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken) =>
+    private Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken) =>
         _liveUpdateNotifier.NotifyAsync(update, cancellationToken);
 }

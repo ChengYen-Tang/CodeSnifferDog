@@ -1,11 +1,14 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Collapse;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Tests.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 
@@ -17,7 +20,7 @@ public sealed class StagedCollapseTrackerTests
     [TestMethod]
     public async Task CommitNew_CommitsOnlyCollapsesStagedAfterTrackerCreation()
     {
-        (OperationalContextAgentCompactionOptions options, OperationalContextCollapseSessionState sessionState) = CreateOptions();
+        (AgentCompactionOptions options, CollapseSessionState sessionState) = CreateOptions();
         TestSession session = new();
         ChatMessage[] messages = CreateMessages("initial");
         await StageCollapseAsync(options, sessionState, session, messages);
@@ -26,7 +29,7 @@ public sealed class StagedCollapseTrackerTests
         await StageCollapseAsync(options, sessionState, session, CreateMessages("new"));
         tracker.CommitNew();
 
-        OperationalContextCollapseState state = sessionState.Get(session);
+        CollapseState state = sessionState.Get(session);
         Assert.HasCount(1, state.Commits);
         Assert.HasCount(1, state.StagedSpans);
         Assert.AreEqual("0000000000000002", state.Commits[0].CollapseId);
@@ -36,7 +39,7 @@ public sealed class StagedCollapseTrackerTests
     [TestMethod]
     public async Task DiscardNew_DiscardsOnlyCollapsesStagedAfterTrackerCreation()
     {
-        (OperationalContextAgentCompactionOptions options, OperationalContextCollapseSessionState sessionState) = CreateOptions();
+        (AgentCompactionOptions options, CollapseSessionState sessionState) = CreateOptions();
         TestSession session = new();
         await StageCollapseAsync(options, sessionState, session, CreateMessages("initial"));
         StagedCollapseTracker tracker = new(session, options);
@@ -44,7 +47,7 @@ public sealed class StagedCollapseTrackerTests
         await StageCollapseAsync(options, sessionState, session, CreateMessages("new"));
         tracker.DiscardNew();
 
-        OperationalContextCollapseState state = sessionState.Get(session);
+        CollapseState state = sessionState.Get(session);
         Assert.IsEmpty(state.Commits);
         Assert.HasCount(1, state.StagedSpans);
         Assert.AreEqual("0000000000000001", state.StagedSpans[0].CollapseId);
@@ -53,7 +56,7 @@ public sealed class StagedCollapseTrackerTests
     [TestMethod]
     public async Task CommitAndPrepareRetryMessages_ReturnsCommittedProjection()
     {
-        (OperationalContextAgentCompactionOptions options, OperationalContextCollapseSessionState sessionState) = CreateOptions();
+        (AgentCompactionOptions options, CollapseSessionState sessionState) = CreateOptions();
         TestSession session = new();
         ChatMessage[] messages = CreateMessages("retry");
         StagedCollapseTracker tracker = new(session, options);
@@ -62,24 +65,24 @@ public sealed class StagedCollapseTrackerTests
         ChatMessage[] retryMessages = [.. tracker.CommitAndPrepareRetryMessages(messages, tracker.CaptureNewIds())];
 
         Assert.IsTrue(retryMessages.Any(message =>
-            message.AdditionalProperties?.GetValueOrDefault(OperationalContextCompactionArtifactMetadata.ArtifactKindKey)?.ToString() ==
-            OperationalContextCompactionArtifactMetadata.CollapseProjectionArtifactKind));
+            message.AdditionalProperties?.GetValueOrDefault(CompactionArtifactMetadata.ArtifactKindKey)?.ToString() ==
+            CompactionArtifactMetadata.CollapseProjectionArtifactKind));
         Assert.IsFalse(retryMessages.SequenceEqual(messages));
-        OperationalContextCollapseState state = sessionState.Get(session);
+        CollapseState state = sessionState.Get(session);
         Assert.HasCount(1, state.Commits);
         Assert.IsEmpty(state.StagedSpans);
     }
 
     private async Task StageCollapseAsync(
-        OperationalContextAgentCompactionOptions options,
-        OperationalContextCollapseSessionState sessionState,
+        AgentCompactionOptions options,
+        CollapseSessionState sessionState,
         AgentSession session,
         IReadOnlyList<ChatMessage> messages)
     {
-        OperationalContextCompactionResult result = await options.Reducer
+        CompactionResult result = await options.Reducer
             .CompactReactiveAsync(messages, TestContext.CancellationToken)
             .ConfigureAwait(false);
-        sessionState.StageCollapseSpan(session, result, OperationalContextCompactionReason.ContextCollapseProactive);
+        sessionState.StageCollapseSpan(session, result, CompactionReason.ContextCollapseProactive);
     }
 
     private static ChatMessage[] CreateMessages(string suffix) =>
@@ -89,11 +92,11 @@ public sealed class StagedCollapseTrackerTests
         new(ChatRole.User, new string('x', 1_000)),
     ];
 
-    private static (OperationalContextAgentCompactionOptions Options, OperationalContextCollapseSessionState SessionState) CreateOptions()
+    private static (AgentCompactionOptions Options, CollapseSessionState SessionState) CreateOptions()
     {
-        OperationalContextCollapseSessionState sessionState = new();
-        OperationalContextChatReducer reducer = new(
-            new OperationalContextCompactionOptions
+        CollapseSessionState sessionState = new();
+        ChatReducer reducer = new(
+            new CompactionOptions
             {
                 ModelContextWindowTokens = 100_000,
                 SummaryReservedOutputTokens = 1,
@@ -102,24 +105,24 @@ public sealed class StagedCollapseTrackerTests
                 PreservedTailMinMessages = 1,
                 CollapseProactiveThresholdPercentage = 1,
                 CollapseBlockingThresholdPercentage = 100,
-                Mode = OperationalContextCompactionMode.ContextCollapse,
+                Mode = CompactionMode.ContextCollapse,
             },
-            new StaticOperationalContextSummaryPromptProvider("summarize"),
+            new StaticSummaryPromptProvider("summarize"),
             new RecordingSummarizer());
 
-        return (new OperationalContextAgentCompactionOptions
+        return (new AgentCompactionOptions
         {
             Reducer = reducer,
-            CollapseController = new OperationalContextCollapseController(reducer, sessionState: sessionState),
+            CollapseController = new CollapseController(reducer, sessionState: sessionState),
         }, sessionState);
     }
 
-    private sealed class RecordingSummarizer : IOperationalContextCompactionSummarizer
+    private sealed class RecordingSummarizer : ISummarizer
     {
         public ValueTask<string> SummarizeAsync(
             IReadOnlyList<ChatMessage> messages,
             string summaryPrompt,
-            OperationalContextCompactionOptions options,
+            CompactionOptions options,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult("<summary>Current objective\nCompleted work\nNext steps</summary>");
     }

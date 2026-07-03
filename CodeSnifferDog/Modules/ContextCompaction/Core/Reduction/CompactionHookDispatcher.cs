@@ -1,42 +1,42 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 
 internal sealed class CompactionHookDispatcher(
-    IEnumerable<IOperationalContextCompactionHook>? hooks,
-    IEnumerable<IOperationalContextCompactionCleanupHandler>? cleanupHandlers)
+    IEnumerable<IHook>? hooks,
+    IEnumerable<ICleanupHandler>? cleanupHandlers)
 {
-    private readonly IReadOnlyList<IOperationalContextCompactionCleanupHandler> _cleanupHandlers =
+    private readonly IReadOnlyList<ICleanupHandler> _cleanupHandlers =
         cleanupHandlers?.ToArray() ?? [];
-    private readonly IReadOnlyList<IOperationalContextCompactionHook> _hooks = hooks?.ToArray() ?? [];
+    private readonly IReadOnlyList<IHook> _hooks = hooks?.ToArray() ?? [];
 
     public async ValueTask RunBeforeCompactionAsync(
         IReadOnlyList<ChatMessage> originalMessages,
-        OperationalContextCompactionReason reason,
+        CompactionReason reason,
         CancellationToken cancellationToken)
     {
-        foreach (IOperationalContextCompactionHook hook in _hooks)
+        foreach (IHook hook in _hooks)
             await hook.OnBeforeCompactionAsync(originalMessages, reason, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask RunAfterCompactionAsync(
         IReadOnlyList<ChatMessage> originalMessages,
         IReadOnlyList<ChatMessage> compactedMessages,
-        OperationalContextCompactionReason reason,
+        CompactionReason reason,
         CancellationToken cancellationToken)
     {
-        foreach (IOperationalContextCompactionHook hook in _hooks)
+        foreach (IHook hook in _hooks)
             await hook.OnAfterCompactionAsync(originalMessages, compactedMessages, reason, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask RunCleanupAsync(
         IReadOnlyList<ChatMessage> originalMessages,
         IReadOnlyList<ChatMessage> compactedMessages,
-        OperationalContextCompactionReason reason,
+        CompactionReason reason,
         CancellationToken cancellationToken)
     {
-        foreach (IOperationalContextCompactionCleanupHandler cleanupHandler in _cleanupHandlers)
+        foreach (ICleanupHandler cleanupHandler in _cleanupHandlers)
             await cleanupHandler.CleanupAsync(originalMessages, compactedMessages, reason, cancellationToken).ConfigureAwait(false);
     }
 }

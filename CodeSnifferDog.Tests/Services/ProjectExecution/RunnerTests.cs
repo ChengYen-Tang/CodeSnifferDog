@@ -1,7 +1,11 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
+using AnalysisRuleDefinition = CodeSnifferDog.Server.Services.ProjectExecution.Analysis.RuleDefinition;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using Microsoft.EntityFrameworkCore;
@@ -27,7 +31,7 @@ public sealed class RunnerTests
         ProjectAnalysisContext context = new()
         {
             ProjectId = projectId,
-            RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
+            RepositoryRootPath = TestRepositoryPaths.RootPath,
         };
 
         await runner.RunAsync(context, TestContext.CancellationToken);
@@ -52,7 +56,7 @@ public sealed class RunnerTests
         await runner.RunAsync(new ProjectAnalysisContext
         {
             ProjectId = projectId,
-            RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
+            RepositoryRootPath = TestRepositoryPaths.RootPath,
         }, TestContext.CancellationToken);
 
         await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
@@ -64,7 +68,7 @@ public sealed class RunnerTests
     [TestMethod]
     public async Task RunAsync_ExecutorResultFailsCompletion_StillDelegatesToCompletionService()
     {
-        ReviewAgentTeamAnalysisResult degradedResult = new()
+        AnalysisResult degradedResult = new()
         {
             PreparationSucceeded = true,
             ReviewStageSucceeded = true,
@@ -84,7 +88,7 @@ public sealed class RunnerTests
             runner.RunAsync(new ProjectAnalysisContext
             {
                 ProjectId = Guid.NewGuid(),
-                RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
+                RepositoryRootPath = TestRepositoryPaths.RootPath,
             }, TestContext.CancellationToken));
 
         StringAssert.Contains(exception.Message, "did not finish successfully");
@@ -111,7 +115,7 @@ public sealed class RunnerTests
             analysisExecutor,
             completionService,
             dbContextFactory,
-            Options.Create(new ProjectExecutionOptions
+            Options.Create(new Settings
             {
                 ExecutionOptions = new ExecutionOptions
                 {
@@ -124,7 +128,7 @@ public sealed class RunnerTests
             NullLogger<Runner>.Instance);
     }
 
-    private static ReviewAgentTeamAnalysisResult CreateAnalysisResult() =>
+    private static AnalysisResult CreateAnalysisResult() =>
         new()
         {
             PreparationSucceeded = true,
@@ -149,19 +153,19 @@ public sealed class RunnerTests
         await dbContext.SaveChangesAsync();
     }
 
-    private sealed class TestReviewAnalysisExecutor(ReviewAgentTeamAnalysisResult result) : IReviewAnalysisExecutor
+    private sealed class TestReviewAnalysisExecutor(AnalysisResult result) : IReviewAnalysisExecutor
     {
-        public ReviewAgentTeamAnalysisResult Result { get; } = result;
+        public AnalysisResult Result { get; } = result;
 
         public bool WasCalled { get; private set; }
 
         public ProjectAnalysisContext? Context { get; private set; }
 
-        public IReadOnlyList<ProjectExecutionRuleDefinition>? Rules { get; private set; }
+        public IReadOnlyList<AnalysisRuleDefinition>? Rules { get; private set; }
 
-        public Task<ReviewAgentTeamAnalysisResult> AnalyzeAsync(
+        public Task<AnalysisResult> AnalyzeAsync(
             ProjectAnalysisContext context,
-            IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+            IReadOnlyList<AnalysisRuleDefinition> rules,
             CancellationToken cancellationToken = default)
         {
             WasCalled = true;
@@ -175,16 +179,16 @@ public sealed class RunnerTests
     {
         public Guid ProjectId { get; private set; }
 
-        public IReadOnlyList<ProjectExecutionRuleDefinition>? Rules { get; private set; }
+        public IReadOnlyList<AnalysisRuleDefinition>? Rules { get; private set; }
 
-        public ReviewAgentTeamAnalysisResult? AnalysisResult { get; private set; }
+        public AnalysisResult? AnalysisResult { get; private set; }
 
         public Exception? Exception { get; init; }
 
         public Task CompleteAnalysisAsync(
             Guid projectId,
-            IReadOnlyList<ProjectExecutionRuleDefinition> rules,
-            ReviewAgentTeamAnalysisResult analysisResult,
+            IReadOnlyList<AnalysisRuleDefinition> rules,
+            AnalysisResult analysisResult,
             CancellationToken cancellationToken = default)
         {
             ProjectId = projectId;
@@ -212,7 +216,7 @@ public sealed class RunnerTests
 
         public bool HasRules => true;
 
-        public IReadOnlyList<ProjectExecutionRuleDefinition> Rules { get; } =
+        public IReadOnlyList<AnalysisRuleDefinition> Rules { get; } =
         [
             new()
             {
@@ -228,7 +232,7 @@ public sealed class RunnerTests
             },
         ];
 
-        public Task<IReadOnlyList<ProjectExecutionRuleDefinition>> LoadRulesAsync(CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<AnalysisRuleDefinition>> LoadRulesAsync(CancellationToken cancellationToken = default)
         {
             LoadRulesCallCount++;
             return Task.FromResult(Rules);

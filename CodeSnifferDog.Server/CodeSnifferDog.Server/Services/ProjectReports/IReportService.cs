@@ -6,16 +6,16 @@ public interface IReportService
 {
     Task ReplaceProjectReportsAsync(
         Guid projectId,
-        IReadOnlyList<RuleReportDraft> reports,
+        IReadOnlyList<RuleDraft> reports,
         CancellationToken cancellationToken = default);
 
-    Task<ProjectReportListDto?> GetProjectReportListAsync(
+    Task<ListDto?> GetProjectReportListAsync(
         Guid projectId,
         CancellationToken cancellationToken = default);
 
-    Task<ProjectReportBundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default);
+    Task<BundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default);
 
-    Task<ProjectReportContentDto?> GetProjectReportAsync(
+    Task<ContentDto?> GetProjectReportAsync(
         Guid projectId,
         Guid reportId,
         CancellationToken cancellationToken = default);

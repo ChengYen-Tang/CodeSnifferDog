@@ -1,15 +1,16 @@
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
+using RuleReviewWorkflowResult = CodeSnifferDog.Models.RuleReview.WorkflowResult;
 
 namespace CodeSnifferDog.Workflows.RuleReview;
 
 internal static class ResultFactory
 {
     public static RuleReviewWorkflowResult Create(
-        StoredProjectPlanTaskItem taskItem,
+        StoredTaskItem taskItem,
         string ruleKey,
-        IReadOnlyList<StoredRuleReviewIssue> issues,
+        IReadOnlyList<StoredIssue> issues,
         NoIssueConclusion? noIssueConclusion,
         ReviewVerdict verdict,
         int reviewAttempts,

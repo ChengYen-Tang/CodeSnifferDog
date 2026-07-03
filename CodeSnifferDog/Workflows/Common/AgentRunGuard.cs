@@ -61,7 +61,7 @@ internal static class AgentRunGuard
                         timeoutTokenSource.Token)).ConfigureAwait(false);
 
                 bool transcriptEventsPublished =
-                    AgentTranscriptEventAgentBuilderExtensions.HasPublishedTranscriptEvents(response);
+                    AgentBuilderExtensions.HasPublishedTranscriptEvents(response);
 
                 foreach (ChatMessage message in response.Messages)
                 {

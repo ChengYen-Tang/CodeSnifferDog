@@ -1,5 +1,4 @@
 using CodeSnifferDog.Agents.Scan;
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
@@ -7,6 +6,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Workflows.Scan;
 using FluentResults;
 using System.Diagnostics;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
@@ -14,7 +14,7 @@ internal sealed class ScanRunnerFactory(
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider) : IScanRunnerFactory
 {
-    internal static string SummaryPromptAssetPath => ScanPromptAssetPaths.ScanSummaryPrompt;
+    internal static string SummaryPromptAssetPath => ScanAgentPromptAssets.ScanSummaryPrompt;
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
@@ -22,14 +22,14 @@ internal sealed class ScanRunnerFactory(
 
     public Func<string, CancellationToken, Task<Result<ScanWorkflowResult>>> CreateRunner(
         WorkflowRuntimeContext context,
-        OperationalContextCompactionOptions compactionOptions) =>
+        CompactionOptions compactionOptions) =>
         (repositoryRootPath, cancellationToken) =>
             RunAsync(context, repositoryRootPath, compactionOptions, cancellationToken);
 
     private async Task<Result<ScanWorkflowResult>> RunAsync(
         WorkflowRuntimeContext context,
         string repositoryRootPath,
-        OperationalContextCompactionOptions compactionOptions,
+        CompactionOptions compactionOptions,
         CancellationToken cancellationToken)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -37,7 +37,7 @@ internal sealed class ScanRunnerFactory(
 
         InMemoryScanProjectStore scanProjectStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
-        ScanWorkflow workflow = new(
+        Workflow workflow = new(
             (scanRepositoryRootPath, eventScope) => new ScanAgentFactory(
                 RunnerCompactionOptions.Create(
                     context.CompactionOptionsFactory,

@@ -1,7 +1,8 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
 
@@ -9,7 +10,7 @@ internal static class ReactiveRetryService
 {
     public static async Task InvokeAsync(
         IReadOnlyList<ChatMessage> messages,
-        OperationalContextAgentCompactionOptions options,
+        AgentCompactionOptions options,
         Func<IReadOnlyList<ChatMessage>, CancellationToken, Task> next,
         CancellationToken cancellationToken)
     {
@@ -21,7 +22,7 @@ internal static class ReactiveRetryService
         {
             await next(messages, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationalContextModelInvocationException ex) when (ShouldRetry(options, ex))
+        catch (ModelInvocationException ex) when (ShouldRetry(options, ex))
         {
             ReactiveRetryPreparation retryPreparation = await PrepareAsync(
                 messages,
@@ -38,18 +39,18 @@ internal static class ReactiveRetryService
     }
 
     public static bool ShouldRetry(
-        OperationalContextAgentCompactionOptions options,
-        OperationalContextModelInvocationException exception) =>
+        AgentCompactionOptions options,
+        ModelInvocationException exception) =>
         options.EnableReactiveCompactionRetry &&
         options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(exception);
 
     public static async Task<ReactiveRetryPreparation> PrepareAsync(
         IReadOnlyList<ChatMessage> originalMessages,
         AgentSession? session,
-        OperationalContextAgentCompactionOptions options,
+        AgentCompactionOptions options,
         CancellationToken cancellationToken)
     {
-        if (options.Reducer.Options.Mode == OperationalContextCompactionMode.ContextCollapse)
+        if (options.Reducer.Options.Mode == CompactionMode.ContextCollapse)
             return new ReactiveRetryPreparation
             {
                 Messages = await options.CollapseController!
@@ -57,10 +58,10 @@ internal static class ReactiveRetryService
                     .ConfigureAwait(false),
             };
 
-        IReadOnlyList<ChatMessage> retryMessages = OperationalContextMessageShrinker.ApplySnip(originalMessages, options.Reducer.Options).Messages;
-        OperationalContextCompactionResult result =
+        IReadOnlyList<ChatMessage> retryMessages = MessageShrinker.ApplySnip(originalMessages, options.Reducer.Options).Messages;
+        CompactionResult result =
             await options.Reducer.CompactReactiveAsync(retryMessages, cancellationToken).ConfigureAwait(false);
-        IReadOnlyList<ChatMessage> compactedMessages = OperationalContextChatReducer.BuildMessages(result);
+        IReadOnlyList<ChatMessage> compactedMessages = ChatReducer.BuildMessages(result);
 
         return new ReactiveRetryPreparation
         {

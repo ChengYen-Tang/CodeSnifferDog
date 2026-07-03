@@ -15,7 +15,7 @@ public sealed class ExportServiceTests
     {
         ExportService service = new();
 
-        ExportFile file = service.CreateMarkdown(new ProjectReportContentDto
+        ExportFile file = service.CreateMarkdown(new ContentDto
         {
             ReportId = Guid.NewGuid(),
             RuleName = "Rule A",
@@ -33,7 +33,7 @@ public sealed class ExportServiceTests
         ExportService service = new();
 
         ExportFile file = await service.CreateBundleZipAsync(
-            new ProjectReportBundleDto
+            new BundleDto
             {
                 OriginalFileName = "repo.zip",
                 Reports =

@@ -24,7 +24,7 @@ public sealed class AgentStatusTests
     {
         using Bunit.TestContext context = new();
         FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000001"),
             groups:
             [
@@ -40,7 +40,7 @@ public sealed class AgentStatusTests
                             groupId: Guid.Parse("71000000-0000-0000-0000-000000000001"),
                             runtimeKey: "agent-1",
                             displayName: "Rule Review Agent",
-                            status: ProjectAgentRunStatus.Running,
+                            status: RunStatus.Running,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             timeline:
                             [
@@ -48,13 +48,13 @@ public sealed class AgentStatusTests
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000001"),
                                     agentId: Guid.Parse("72000000-0000-0000-0000-000000000001"),
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Input,
+                                    entryKind: TimelineEntryKind.Input,
                                     message: "First agent input"),
                                 CreateTimelineEntry(
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000002"),
                                     agentId: Guid.Parse("72000000-0000-0000-0000-000000000001"),
                                     sequence: 2,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "First agent output")
                             ]),
                         CreateAgent(
@@ -62,7 +62,7 @@ public sealed class AgentStatusTests
                             groupId: Guid.Parse("71000000-0000-0000-0000-000000000001"),
                             runtimeKey: "agent-2",
                             displayName: "Review Verifier Agent",
-                            status: ProjectAgentRunStatus.Waiting,
+                            status: RunStatus.Waiting,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
                             timeline: [])
                     ])
@@ -100,7 +100,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000300");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000300");
         string systemPrompt = "You are the scan agent.\nInspect repository boundaries.";
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -114,14 +114,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Scan Agent",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000300"),
                                     agentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "Scanning")
                             ],
                             systemPrompt)
@@ -158,7 +158,7 @@ public sealed class AgentStatusTests
     {
         using Bunit.TestContext context = new();
         FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
-        ProjectAgentStatusSnapshotDto firstSnapshot = CreateSnapshot(
+        StatusSnapshotDto firstSnapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000010"),
             groups:
             [
@@ -174,7 +174,7 @@ public sealed class AgentStatusTests
                             groupId: Guid.Parse("71000000-0000-0000-0000-000000000010"),
                             runtimeKey: "agent-a",
                             displayName: "First Agent",
-                            status: ProjectAgentRunStatus.Running,
+                            status: RunStatus.Running,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             timeline:
                             [
@@ -182,13 +182,13 @@ public sealed class AgentStatusTests
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000010"),
                                     agentId: Guid.Parse("72000000-0000-0000-0000-000000000010"),
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "First snapshot history")
                             ])
                     ])
             ]);
 
-        ProjectAgentStatusSnapshotDto secondSnapshot = CreateSnapshot(
+        StatusSnapshotDto secondSnapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000011"),
             groups:
             [
@@ -204,7 +204,7 @@ public sealed class AgentStatusTests
                             groupId: Guid.Parse("71000000-0000-0000-0000-000000000011"),
                             runtimeKey: "agent-b",
                             displayName: "Replacement Agent",
-                            status: ProjectAgentRunStatus.Waiting,
+                            status: RunStatus.Waiting,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 6, 0, TimeSpan.Zero),
                             timeline:
                             [
@@ -212,7 +212,7 @@ public sealed class AgentStatusTests
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000011"),
                                     agentId: Guid.Parse("72000000-0000-0000-0000-000000000011"),
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "Second snapshot history")
                             ])
                     ])
@@ -294,7 +294,7 @@ public sealed class AgentStatusTests
     {
         using Bunit.TestContext context = new();
         FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000120"),
             groups:
             [
@@ -356,21 +356,21 @@ public sealed class AgentStatusTests
         Guid projectId = Guid.Parse("90000000-0000-0000-0000-000000000100");
         Guid selectedGroupId = Guid.Parse("90000000-0000-0000-0000-000000000200");
         Guid selectedAgentId = Guid.Parse("90000000-0000-0000-0000-000000000300");
-        List<ProjectAgentTimelineEntryDto> selectedTimeline = Enumerable.Range(1, 500)
+        List<TimelineEntryDto> selectedTimeline = Enumerable.Range(1, 500)
             .Select(index => CreateTimelineEntry(
                 Guid.Parse($"90000000-0000-0000-0001-{index:000000000000}"),
                 selectedAgentId,
                 index,
-                ProjectAgentTimelineEntryKind.Output,
+                TimelineEntryKind.Output,
                 message: $"Selected timeline entry {index}"))
             .ToList();
-        List<ProjectAgentGroupSnapshotDto> groups = Enumerable.Range(0, 20)
+        List<GroupSnapshotDto> groups = Enumerable.Range(0, 20)
             .Select(groupIndex =>
             {
                 Guid groupId = groupIndex == 0
                     ? selectedGroupId
                     : Guid.Parse($"90000000-0000-0000-0002-{groupIndex:000000000000}");
-                List<ProjectAgentSnapshotDto> agents = Enumerable.Range(0, 10)
+                List<SnapshotDto> agents = Enumerable.Range(0, 10)
                     .Select(agentIndex =>
                     {
                         Guid agentId = groupIndex == 0 && agentIndex == 0
@@ -381,7 +381,7 @@ public sealed class AgentStatusTests
                             groupId,
                             $"agent-{groupIndex}-{agentIndex}",
                             $"Agent {groupIndex}-{agentIndex}",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 10, groupIndex, agentIndex, TimeSpan.Zero),
                             groupIndex == 0 && agentIndex == 0 ? selectedTimeline : []);
                     })
@@ -396,7 +396,7 @@ public sealed class AgentStatusTests
             })
             .ToList();
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(projectId, groups);
+        StatusSnapshotDto snapshot = CreateSnapshot(projectId, groups);
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
         {
             BaseAddress = new Uri("http://localhost"),
@@ -425,7 +425,7 @@ public sealed class AgentStatusTests
         Guid projectId = Guid.Parse("90000000-0000-0000-0000-000000000110");
         Guid groupId = Guid.Parse("90000000-0000-0000-0000-000000000111");
         Guid agentId = Guid.Parse("90000000-0000-0000-0000-000000000112");
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -439,7 +439,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-1",
                             "Agent 1",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -457,16 +457,16 @@ public sealed class AgentStatusTests
 
         bool changed = InvokeApplyLiveUpdate(
             cut,
-            new ProjectAgentLiveUpdateDto
+            new LiveUpdateDto
             {
                 ProjectId = projectId,
-                Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
+                Kind = LiveUpdateKind.TimelineEntryUpserted,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
                 TimelineEntry = CreateTimelineEntry(
                     Guid.Parse("90000000-0000-0000-0000-000000000113"),
                     Guid.Parse("90000000-0000-0000-0000-000000000114"),
                     1,
-                    ProjectAgentTimelineEntryKind.Output,
+                    TimelineEntryKind.Output,
                     message: "This update belongs to another agent"),
             });
 
@@ -483,7 +483,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("90000000-0000-0000-0000-000000000121");
         Guid selectedAgentId = Guid.Parse("90000000-0000-0000-0000-000000000122");
         Guid otherAgentId = Guid.Parse("90000000-0000-0000-0000-000000000123");
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -497,14 +497,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "selected-agent",
                             "Selected Agent",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("90000000-0000-0000-0000-000000000124"),
                                     selectedAgentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "Selected timeline remains visible")
                             ]),
                         CreateAgent(
@@ -512,7 +512,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "other-agent",
                             "Other Agent",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -534,15 +534,15 @@ public sealed class AgentStatusTests
 
         bool changed = InvokeApplyLiveUpdate(
             cut,
-            new ProjectAgentLiveUpdateDto
+            new LiveUpdateDto
             {
                 ProjectId = projectId,
-                Kind = ProjectAgentLiveUpdateKind.AgentStatusChanged,
+                Kind = LiveUpdateKind.AgentStatusChanged,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 10, 3, 0, TimeSpan.Zero),
-                AgentStatus = new ProjectAgentStatusChangedDto
+                AgentStatus = new StatusChangedDto
                 {
                     AgentId = otherAgentId,
-                    Status = ProjectAgentRunStatus.Completed,
+                    Status = RunStatus.Completed,
                     OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 10, 3, 0, TimeSpan.Zero),
                 },
             });
@@ -565,7 +565,7 @@ public sealed class AgentStatusTests
         Guid otherAgentId = Guid.Parse("72000000-0000-0000-0000-000000000021");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000020");
 
-        ProjectAgentStatusSnapshotDto firstSnapshot = CreateSnapshot(
+        StatusSnapshotDto firstSnapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000020"),
             groups:
             [
@@ -581,7 +581,7 @@ public sealed class AgentStatusTests
                             groupId: groupId,
                             runtimeKey: "selected-agent",
                             displayName: "Selected Agent",
-                            status: ProjectAgentRunStatus.Running,
+                            status: RunStatus.Running,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             timeline:
                             [
@@ -589,7 +589,7 @@ public sealed class AgentStatusTests
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000020"),
                                     agentId: selectedAgentId,
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "Selected agent history")
                             ]),
                         CreateAgent(
@@ -597,7 +597,7 @@ public sealed class AgentStatusTests
                             groupId: groupId,
                             runtimeKey: "other-agent",
                             displayName: "Other Agent",
-                            status: ProjectAgentRunStatus.Waiting,
+                            status: RunStatus.Waiting,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
                             timeline:
                             [
@@ -605,13 +605,13 @@ public sealed class AgentStatusTests
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000021"),
                                     agentId: otherAgentId,
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "Other agent history")
                             ])
                     ])
             ]);
 
-        ProjectAgentStatusSnapshotDto secondSnapshot = CreateSnapshot(
+        StatusSnapshotDto secondSnapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000021"),
             groups:
             [
@@ -627,7 +627,7 @@ public sealed class AgentStatusTests
                             groupId: groupId,
                             runtimeKey: "selected-agent",
                             displayName: "Selected Agent",
-                            status: ProjectAgentRunStatus.Running,
+                            status: RunStatus.Running,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             timeline:
                             [
@@ -635,7 +635,7 @@ public sealed class AgentStatusTests
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000022"),
                                     agentId: selectedAgentId,
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "Selected agent refreshed history")
                             ]),
                         CreateAgent(
@@ -643,7 +643,7 @@ public sealed class AgentStatusTests
                             groupId: groupId,
                             runtimeKey: "other-agent",
                             displayName: "Other Agent",
-                            status: ProjectAgentRunStatus.Waiting,
+                            status: RunStatus.Waiting,
                             createdAtUtc: new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
                             timeline:
                             [
@@ -651,7 +651,7 @@ public sealed class AgentStatusTests
                                     timelineEntryId: Guid.Parse("73000000-0000-0000-0000-000000000023"),
                                     agentId: otherAgentId,
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "Other agent refreshed history")
                             ])
                     ])
@@ -698,7 +698,7 @@ public sealed class AgentStatusTests
         Guid selectedAgentId = Guid.Parse("72000000-0000-0000-0000-000000000301");
         Guid unloadedAgentId = Guid.Parse("72000000-0000-0000-0000-000000000302");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -712,14 +712,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Selected Agent",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000301"),
                                     selectedAgentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "Selected history")
                             ]),
                         CreateAgent(
@@ -727,7 +727,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-b",
                             "Lazy Agent",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -735,7 +735,7 @@ public sealed class AgentStatusTests
 
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
             [snapshot],
-            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            new Dictionary<Guid, HistorySnapshotDto>
             {
                 [unloadedAgentId] = new()
                 {
@@ -747,7 +747,7 @@ public sealed class AgentStatusTests
                             Guid.Parse("73000000-0000-0000-0000-000000000302"),
                             unloadedAgentId,
                             1,
-                            ProjectAgentTimelineEntryKind.Output,
+                            TimelineEntryKind.Output,
                             message: "Lazy history")
                     ],
                 }
@@ -778,7 +778,7 @@ public sealed class AgentStatusTests
     {
         using Bunit.TestContext context = new();
         FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId: Guid.Parse("70000000-0000-0000-0000-000000000200"),
             groups: []);
 
@@ -795,12 +795,12 @@ public sealed class AgentStatusTests
 
         InvokeApplyLiveUpdate(
             cut,
-            new ProjectAgentLiveUpdateDto
+            new LiveUpdateDto
             {
                 ProjectId = snapshot.ProjectId,
-                Kind = ProjectAgentLiveUpdateKind.AgentGroupUpserted,
+                Kind = LiveUpdateKind.AgentGroupUpserted,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 0, 0, TimeSpan.Zero),
-                Group = new ProjectAgentGroupLiveDto
+                Group = new GroupLiveDto
                 {
                     GroupId = Guid.Parse("71000000-0000-0000-0000-000000000200"),
                     RuntimeKey = "live-group",
@@ -811,18 +811,18 @@ public sealed class AgentStatusTests
 
         InvokeApplyLiveUpdate(
             cut,
-            new ProjectAgentLiveUpdateDto
+            new LiveUpdateDto
             {
                 ProjectId = snapshot.ProjectId,
-                Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
+                Kind = LiveUpdateKind.AgentUpserted,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
-                Agent = new ProjectAgentLiveDto
+                Agent = new LiveDto
                 {
                     AgentId = Guid.Parse("72000000-0000-0000-0000-000000000200"),
                     GroupId = Guid.Parse("71000000-0000-0000-0000-000000000200"),
                     RuntimeKey = "live-agent",
                     DisplayName = "Live Agent",
-                    Status = ProjectAgentRunStatus.Waiting,
+                    Status = RunStatus.Waiting,
                     CreatedAtUtc = new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
                 },
             });
@@ -845,7 +845,7 @@ public sealed class AgentStatusTests
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000201");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000201");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000201");
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -859,7 +859,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Status Agent",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -876,15 +876,15 @@ public sealed class AgentStatusTests
         IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Status Agent"));
 
-        ProjectAgentLiveUpdateDto statusUpdate = new()
+        LiveUpdateDto statusUpdate = new()
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.AgentStatusChanged,
+            Kind = LiveUpdateKind.AgentStatusChanged,
             OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
-            AgentStatus = new ProjectAgentStatusChangedDto
+            AgentStatus = new StatusChangedDto
             {
                 AgentId = agentId,
-                Status = ProjectAgentRunStatus.Running,
+                Status = RunStatus.Running,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
             },
         };
@@ -910,7 +910,7 @@ public sealed class AgentStatusTests
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000202");
         Guid timelineEntryId = Guid.Parse("73000000-0000-0000-0000-000000000202");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -924,7 +924,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Tool Agent",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -948,7 +948,7 @@ public sealed class AgentStatusTests
                 timelineEntryId,
                 agentId,
                 sequence: 1,
-                entryKind: ProjectAgentTimelineEntryKind.Tool,
+                entryKind: TimelineEntryKind.Tool,
                 occurredAtUtc: new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
                 toolCallId: "call-1",
                 toolResult: "Created issue"));
@@ -960,7 +960,7 @@ public sealed class AgentStatusTests
                 timelineEntryId,
                 agentId,
                 sequence: 1,
-                entryKind: ProjectAgentTimelineEntryKind.Tool,
+                entryKind: TimelineEntryKind.Tool,
                 occurredAtUtc: new DateTimeOffset(2026, 5, 10, 12, 2, 1, TimeSpan.Zero),
                 toolCallId: "call-1",
                 toolName: "CreateIssue",
@@ -995,7 +995,7 @@ public sealed class AgentStatusTests
         Guid outputEntryId = Guid.Parse("74000000-0000-0000-0000-000000000206");
         Guid toolEntryId = Guid.Parse("75000000-0000-0000-0000-000000000206");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1009,26 +1009,26 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Retry Agent",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     inputEntryId,
                                     agentId,
                                     sequence: 1,
-                                    entryKind: ProjectAgentTimelineEntryKind.Input,
+                                    entryKind: TimelineEntryKind.Input,
                                     message: "Inspect Program.cs"),
                                 CreateTimelineEntry(
                                     outputEntryId,
                                     agentId,
                                     sequence: 2,
-                                    entryKind: ProjectAgentTimelineEntryKind.Output,
+                                    entryKind: TimelineEntryKind.Output,
                                     message: "Failed attempt output"),
                                 CreateTimelineEntry(
                                     toolEntryId,
                                     agentId,
                                     sequence: 3,
-                                    entryKind: ProjectAgentTimelineEntryKind.Tool,
+                                    entryKind: TimelineEntryKind.Tool,
                                     toolCallId: "call-1",
                                     toolName: "RunShellCommand"),
                             ])
@@ -1053,12 +1053,12 @@ public sealed class AgentStatusTests
 
         InvokeApplyLiveUpdate(
             cut,
-            new ProjectAgentLiveUpdateDto
+            new LiveUpdateDto
             {
                 ProjectId = projectId,
-                Kind = ProjectAgentLiveUpdateKind.TimelineEntriesRemoved,
+                Kind = LiveUpdateKind.TimelineEntriesRemoved,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
-                RemovedTimelineEntries = new ProjectAgentTimelineEntriesRemovedDto
+                RemovedTimelineEntries = new TimelineEntriesRemovedDto
                 {
                     AgentId = agentId,
                     TimelineEntryIds = [outputEntryId, toolEntryId],
@@ -1081,7 +1081,7 @@ public sealed class AgentStatusTests
         Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000203");
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000203");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000203");
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1095,14 +1095,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Primary Agent",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000203"),
                                     agentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "Baseline history")
                             ])
                     ])
@@ -1125,33 +1125,33 @@ public sealed class AgentStatusTests
 
         InvokeApplyLiveUpdate(
             cut,
-            new ProjectAgentLiveUpdateDto
+            new LiveUpdateDto
             {
                 ProjectId = projectId,
-                Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
+                Kind = LiveUpdateKind.AgentUpserted,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
-                Agent = new ProjectAgentLiveDto
+                Agent = new LiveDto
                 {
                     AgentId = Guid.Parse("72000000-0000-0000-0000-000000000299"),
                     GroupId = Guid.Parse("71000000-0000-0000-0000-000000000299"),
                     RuntimeKey = "missing-group-agent",
                     DisplayName = "Should Be Ignored",
-                    Status = ProjectAgentRunStatus.Waiting,
+                    Status = RunStatus.Waiting,
                     CreatedAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
                 },
             });
 
         InvokeApplyLiveUpdate(
             cut,
-            new ProjectAgentLiveUpdateDto
+            new LiveUpdateDto
             {
                 ProjectId = projectId,
-                Kind = ProjectAgentLiveUpdateKind.AgentStatusChanged,
+                Kind = LiveUpdateKind.AgentStatusChanged,
                 OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 1, TimeSpan.Zero),
-                AgentStatus = new ProjectAgentStatusChangedDto
+                AgentStatus = new StatusChangedDto
                 {
                     AgentId = Guid.Parse("72000000-0000-0000-0000-000000000299"),
-                    Status = ProjectAgentRunStatus.Degraded,
+                    Status = RunStatus.Degraded,
                     OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 12, 2, 1, TimeSpan.Zero),
                 },
             });
@@ -1163,7 +1163,7 @@ public sealed class AgentStatusTests
                 Guid.Parse("73000000-0000-0000-0000-000000000299"),
                 Guid.Parse("72000000-0000-0000-0000-000000000299"),
                 sequence: 2,
-                entryKind: ProjectAgentTimelineEntryKind.Output,
+                entryKind: TimelineEntryKind.Output,
                 occurredAtUtc: new DateTimeOffset(2026, 5, 10, 12, 2, 2, TimeSpan.Zero),
                 message: "Should also be ignored"));
 
@@ -1189,7 +1189,7 @@ public sealed class AgentStatusTests
         Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000205");
         DateTimeOffset snapshotGeneratedAtUtc = new(2026, 5, 10, 13, 30, 0, TimeSpan.Zero);
 
-        ProjectAgentStatusSnapshotDto snapshot = new()
+        StatusSnapshotDto snapshot = new()
         {
             ProjectId = projectId,
             ProjectStatus = ProjectStatus.Reviewing,
@@ -1207,20 +1207,20 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000204"),
                                     agentAId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "A1"),
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000205"),
                                     agentAId,
                                     3,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "A3")
                             ]),
                         CreateAgent(
@@ -1228,7 +1228,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-b",
                             "Agent B",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1255,16 +1255,16 @@ public sealed class AgentStatusTests
             Assert.AreEqual(3L, liveSubscriptionClient.LastRequest.LatestSequence);
         });
 
-        liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
+        liveSubscriptionClient.Emit(new LiveUpdateDto
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
+            Kind = LiveUpdateKind.TimelineEntryUpserted,
             OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 13, 31, 0, TimeSpan.Zero),
             TimelineEntry = CreateTimelineEntry(
                 Guid.Parse("73000000-0000-0000-0000-000000000206"),
                 agentAId,
                 4,
-                ProjectAgentTimelineEntryKind.Output,
+                TimelineEntryKind.Output,
                 message: "Backfill A4")
         });
 
@@ -1281,7 +1281,7 @@ public sealed class AgentStatusTests
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000214");
         Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000215");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1295,14 +1295,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000214"),
                                     agentAId,
                                     2,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "A2")
                             ]),
                         CreateAgent(
@@ -1310,7 +1310,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-b",
                             "Agent B",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1318,7 +1318,7 @@ public sealed class AgentStatusTests
 
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
             [snapshot],
-            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            new Dictionary<Guid, HistorySnapshotDto>
             {
                 [agentBId] = new()
                 {
@@ -1330,7 +1330,7 @@ public sealed class AgentStatusTests
                             Guid.Parse("73000000-0000-0000-0000-000000000215"),
                             agentBId,
                             5,
-                            ProjectAgentTimelineEntryKind.Output,
+                            TimelineEntryKind.Output,
                             message: "B5")
                     ],
                 }
@@ -1371,7 +1371,7 @@ public sealed class AgentStatusTests
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000218");
         Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000219");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1385,14 +1385,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000218"),
                                     agentAId,
                                     2,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "A2")
                             ]),
                         CreateAgent(
@@ -1400,7 +1400,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-b",
                             "Agent B",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1445,27 +1445,27 @@ public sealed class AgentStatusTests
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000220");
         Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000221");
 
-        ProjectAgentTimelineEntryDto agentAToolEntry = CreateTimelineEntry(
+        TimelineEntryDto agentAToolEntry = CreateTimelineEntry(
             Guid.Parse("73000000-0000-0000-0000-000000000220"),
             agentAId,
             1,
-            ProjectAgentTimelineEntryKind.Tool,
+            TimelineEntryKind.Tool,
             toolCallId: "tool-a",
             toolName: "ToolA",
             toolArguments: "arg-a",
             toolResult: "result-a");
 
-        ProjectAgentTimelineEntryDto agentBToolEntry = CreateTimelineEntry(
+        TimelineEntryDto agentBToolEntry = CreateTimelineEntry(
             Guid.Parse("73000000-0000-0000-0000-000000000221"),
             agentBId,
             1,
-            ProjectAgentTimelineEntryKind.Tool,
+            TimelineEntryKind.Tool,
             toolCallId: "tool-b",
             toolName: "ToolB",
             toolArguments: "arg-b",
             toolResult: "result-b");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1479,7 +1479,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
                             [agentAToolEntry]),
                         CreateAgent(
@@ -1487,7 +1487,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-b",
                             "Agent B",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1495,7 +1495,7 @@ public sealed class AgentStatusTests
 
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
             [snapshot],
-            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            new Dictionary<Guid, HistorySnapshotDto>
             {
                 [agentAId] = new()
                 {
@@ -1553,7 +1553,7 @@ public sealed class AgentStatusTests
         Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000216");
         Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000217");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1567,14 +1567,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000216"),
                                     agentAId,
                                     2,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "A2")
                             ]),
                         CreateAgent(
@@ -1582,7 +1582,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-b",
                             "Agent B",
-                            ProjectAgentRunStatus.Waiting,
+                            RunStatus.Waiting,
                             new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1590,7 +1590,7 @@ public sealed class AgentStatusTests
 
         context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler(
             [snapshot, snapshot],
-            new Dictionary<Guid, ProjectAgentHistorySnapshotDto>
+            new Dictionary<Guid, HistorySnapshotDto>
             {
                 [agentBId] = new()
                 {
@@ -1602,7 +1602,7 @@ public sealed class AgentStatusTests
                             Guid.Parse("73000000-0000-0000-0000-000000000217"),
                             agentBId,
                             5,
-                            ProjectAgentTimelineEntryKind.Output,
+                            TimelineEntryKind.Output,
                             message: "B5")
                     ],
                 }
@@ -1657,7 +1657,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000205");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000206");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1671,14 +1671,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 14, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000207"),
                                     agentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "Existing history")
                             ])
                     ])
@@ -1713,7 +1713,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000208");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000209");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1727,7 +1727,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Completed,
+                            RunStatus.Completed,
                             new DateTimeOffset(2026, 5, 10, 17, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1760,7 +1760,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000209");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000210");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1774,7 +1774,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Degraded,
+                            RunStatus.Degraded,
                             new DateTimeOffset(2026, 5, 10, 18, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1807,7 +1807,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000210");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000211");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1821,7 +1821,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 19, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1839,12 +1839,12 @@ public sealed class AgentStatusTests
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
 
-        liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
+        liveSubscriptionClient.Emit(new LiveUpdateDto
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            Kind = LiveUpdateKind.ProjectStatusChanged,
             OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 19, 5, 0, TimeSpan.Zero),
-            ProjectStatus = new ProjectExecutionStatusChangedDto
+            ProjectStatus = new ExecutionStatusChangedDto
             {
                 Status = ProjectStatus.Completed,
             },
@@ -1866,7 +1866,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000211");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000212");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1880,7 +1880,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 20, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1898,12 +1898,12 @@ public sealed class AgentStatusTests
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
 
-        liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
+        liveSubscriptionClient.Emit(new LiveUpdateDto
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            Kind = LiveUpdateKind.ProjectStatusChanged,
             OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 20, 5, 0, TimeSpan.Zero),
-            ProjectStatus = new ProjectExecutionStatusChangedDto
+            ProjectStatus = new ExecutionStatusChangedDto
             {
                 Status = ProjectStatus.Failed,
             },
@@ -1925,7 +1925,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000212");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000213");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1939,7 +1939,7 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 21, 1, 0, TimeSpan.Zero),
                             [])
                     ])
@@ -1957,12 +1957,12 @@ public sealed class AgentStatusTests
 
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Analysis running"));
 
-        liveSubscriptionClient.Emit(new ProjectAgentLiveUpdateDto
+        liveSubscriptionClient.Emit(new LiveUpdateDto
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            Kind = LiveUpdateKind.ProjectStatusChanged,
             OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 21, 5, 0, TimeSpan.Zero),
-            ProjectStatus = new ProjectExecutionStatusChangedDto
+            ProjectStatus = new ExecutionStatusChangedDto
             {
                 Status = ProjectStatus.Canceled,
             },
@@ -1984,7 +1984,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000206");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000207");
 
-        ProjectAgentStatusSnapshotDto firstSnapshot = CreateSnapshot(
+        StatusSnapshotDto firstSnapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -1998,20 +1998,20 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 15, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000208"),
                                     agentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "History v1")
                             ])
                     ])
             ]);
 
-        ProjectAgentStatusSnapshotDto secondSnapshot = CreateSnapshot(
+        StatusSnapshotDto secondSnapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -2025,20 +2025,20 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Completed,
+                            RunStatus.Completed,
                             new DateTimeOffset(2026, 5, 10, 15, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000208"),
                                     agentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "History v1"),
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000209"),
                                     agentId,
                                     2,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "History v2")
                             ])
                     ])
@@ -2079,7 +2079,7 @@ public sealed class AgentStatusTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000207");
         Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000208");
 
-        ProjectAgentStatusSnapshotDto snapshot = CreateSnapshot(
+        StatusSnapshotDto snapshot = CreateSnapshot(
             projectId,
             [
                 CreateGroup(
@@ -2093,14 +2093,14 @@ public sealed class AgentStatusTests
                             groupId,
                             "agent-a",
                             "Agent A",
-                            ProjectAgentRunStatus.Running,
+                            RunStatus.Running,
                             new DateTimeOffset(2026, 5, 10, 16, 1, 0, TimeSpan.Zero),
                             [
                                 CreateTimelineEntry(
                                     Guid.Parse("73000000-0000-0000-0000-000000000210"),
                                     agentId,
                                     1,
-                                    ProjectAgentTimelineEntryKind.Output,
+                                    TimelineEntryKind.Output,
                                     message: "History v1")
                             ])
                     ])
@@ -2127,9 +2127,9 @@ public sealed class AgentStatusTests
         });
     }
 
-    private static ProjectAgentStatusSnapshotDto CreateSnapshot(
+    private static StatusSnapshotDto CreateSnapshot(
         Guid projectId,
-        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups,
+        IReadOnlyList<GroupSnapshotDto> groups,
         ProjectStatus projectStatus = ProjectStatus.Reviewing) => new()
         {
             ProjectId = projectId,
@@ -2138,12 +2138,12 @@ public sealed class AgentStatusTests
             AgentGroups = groups,
         };
 
-    private static ProjectAgentGroupSnapshotDto CreateGroup(
+    private static GroupSnapshotDto CreateGroup(
         Guid groupId,
         string runtimeKey,
         string displayName,
         DateTimeOffset createdAtUtc,
-        IReadOnlyList<ProjectAgentSnapshotDto> agents) => new()
+        IReadOnlyList<SnapshotDto> agents) => new()
         {
             GroupId = groupId,
             RuntimeKey = runtimeKey,
@@ -2152,14 +2152,14 @@ public sealed class AgentStatusTests
             Agents = agents,
         };
 
-    private static ProjectAgentSnapshotDto CreateAgent(
+    private static SnapshotDto CreateAgent(
         Guid agentId,
         Guid groupId,
         string runtimeKey,
         string displayName,
-        ProjectAgentRunStatus status,
+        RunStatus status,
         DateTimeOffset createdAtUtc,
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timeline,
+        IReadOnlyList<TimelineEntryDto> timeline,
         string systemPrompt = "") => new()
         {
             AgentId = agentId,
@@ -2173,11 +2173,11 @@ public sealed class AgentStatusTests
             TimelineEntries = timeline,
         };
 
-    private static ProjectAgentTimelineEntryDto CreateTimelineEntry(
+    private static TimelineEntryDto CreateTimelineEntry(
         Guid timelineEntryId,
         Guid agentId,
         long sequence,
-        ProjectAgentTimelineEntryKind entryKind,
+        TimelineEntryKind entryKind,
         string? message = null,
         string? toolCallId = null,
         string? toolName = null,
@@ -2197,12 +2197,12 @@ public sealed class AgentStatusTests
         };
 
     private sealed class SnapshotMessageHandler(
-        IReadOnlyList<ProjectAgentStatusSnapshotDto> snapshots,
-        IReadOnlyDictionary<Guid, ProjectAgentHistorySnapshotDto>? histories = null,
+        IReadOnlyList<StatusSnapshotDto> snapshots,
+        IReadOnlyDictionary<Guid, HistorySnapshotDto>? histories = null,
         HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
-        private readonly Queue<ProjectAgentStatusSnapshotDto> _snapshots = new(snapshots);
-        private readonly IReadOnlyDictionary<Guid, ProjectAgentHistorySnapshotDto> _histories = histories ?? new Dictionary<Guid, ProjectAgentHistorySnapshotDto>();
+        private readonly Queue<StatusSnapshotDto> _snapshots = new(snapshots);
+        private readonly IReadOnlyDictionary<Guid, HistorySnapshotDto> _histories = histories ?? new Dictionary<Guid, HistorySnapshotDto>();
         private readonly HttpStatusCode _statusCode = statusCode;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -2217,7 +2217,7 @@ public sealed class AgentStatusTests
             {
                 string[] segments = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
                 Guid agentId = Guid.Parse(segments[^2]);
-                if (!_histories.TryGetValue(agentId, out ProjectAgentHistorySnapshotDto? history))
+                if (!_histories.TryGetValue(agentId, out HistorySnapshotDto? history))
                     throw new InvalidOperationException($"No history response was configured for agent '{agentId}'.");
 
                 return Task.FromResult(new HttpResponseMessage(_statusCode)
@@ -2229,7 +2229,7 @@ public sealed class AgentStatusTests
             if (_snapshots.Count == 0)
                 throw new InvalidOperationException("No snapshot response was configured.");
 
-            ProjectAgentStatusSnapshotDto snapshot = _snapshots.Dequeue();
+            StatusSnapshotDto snapshot = _snapshots.Dequeue();
             string json = JsonSerializer.Serialize(snapshot);
 
             HttpResponseMessage response = new(_statusCode)
@@ -2241,7 +2241,7 @@ public sealed class AgentStatusTests
         }
     }
 
-    private static bool InvokeApplyLiveUpdate(IRenderedComponent<AgentStatusPage> cut, ProjectAgentLiveUpdateDto update)
+    private static bool InvokeApplyLiveUpdate(IRenderedComponent<AgentStatusPage> cut, LiveUpdateDto update)
     {
         MethodInfo? method = typeof(AgentStatusPage).GetMethod("ApplyLiveUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(method);
@@ -2256,12 +2256,12 @@ public sealed class AgentStatusTests
         return changed;
     }
 
-    private static ProjectAgentLiveUpdateDto CreateTimelineLiveUpdate(
+    private static LiveUpdateDto CreateTimelineLiveUpdate(
         Guid projectId,
         Guid timelineEntryId,
         Guid agentId,
         long sequence,
-        ProjectAgentTimelineEntryKind entryKind,
+        TimelineEntryKind entryKind,
         DateTimeOffset occurredAtUtc,
         string? message = null,
         string? toolCallId = null,
@@ -2270,7 +2270,7 @@ public sealed class AgentStatusTests
         string? toolResult = null) => new()
         {
             ProjectId = projectId,
-            Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
+            Kind = LiveUpdateKind.TimelineEntryUpserted,
             OccurredAtUtc = occurredAtUtc,
             TimelineEntry = CreateTimelineEntry(
                 timelineEntryId,
@@ -2299,21 +2299,21 @@ public sealed class AgentStatusTests
 
     private sealed class FakeLiveSubscriptionClient : ILiveSubscriptionClient
     {
-        private Func<ProjectAgentLiveUpdateDto, Task>? _onUpdate;
+        private Func<LiveUpdateDto, Task>? _onUpdate;
         private Func<Task>? _onReconnecting;
         private Func<Task>? _onReconnectRequired;
 
-        public List<ProjectAgentLiveSubscriptionRequestDto> SubscribeCalls { get; } = [];
+        public List<LiveSubscriptionRequestDto> SubscribeCalls { get; } = [];
 
-        public ProjectAgentLiveSubscriptionRequestDto? LastRequest => SubscribeCalls.LastOrDefault();
+        public LiveSubscriptionRequestDto? LastRequest => SubscribeCalls.LastOrDefault();
 
         public int UnsubscribeCallCount { get; private set; }
 
         public Exception? SubscribeException { get; set; }
 
         public Task SubscribeAsync(
-            ProjectAgentLiveSubscriptionRequestDto request,
-            Func<ProjectAgentLiveUpdateDto, Task> onUpdate,
+            LiveSubscriptionRequestDto request,
+            Func<LiveUpdateDto, Task> onUpdate,
             Func<Task> onReconnecting,
             Func<Task> onReconnectRequired,
             CancellationToken cancellationToken = default)
@@ -2334,7 +2334,7 @@ public sealed class AgentStatusTests
             return Task.CompletedTask;
         }
 
-        public void Emit(ProjectAgentLiveUpdateDto update)
+        public void Emit(LiveUpdateDto update)
         {
             Assert.IsNotNull(_onUpdate);
             _onUpdate(update).GetAwaiter().GetResult();

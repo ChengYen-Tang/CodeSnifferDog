@@ -10,12 +10,12 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Executi
 internal sealed class ClaimExecutor(
     IServiceScopeFactory serviceScopeFactory,
     IExecutionArtifactStore artifactStore,
-    IExecutionStateService executionStateService,
+    IStateService StateService,
     ILogger<ClaimExecutor> logger) : IClaimExecutor
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
     private readonly IExecutionArtifactStore _artifactStore = artifactStore;
-    private readonly IExecutionStateService _executionStateService = executionStateService;
+    private readonly IStateService _StateService = StateService;
     private readonly ILogger<ClaimExecutor> _logger = logger;
 
     public async Task ExecuteAsync(
@@ -23,7 +23,7 @@ internal sealed class ClaimExecutor(
         Claim claim,
         CancellationToken stoppingToken)
     {
-        using ProjectExecutionLease lease = claim.ExecutionLease;
+        using Lease lease = claim.ExecutionLease;
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         try
@@ -36,7 +36,7 @@ internal sealed class ClaimExecutor(
                 workerNumber,
                 claim.ProjectId);
 
-            if (!await _executionStateService.CanStartExecutionAsync(claim.ProjectId, lease.CancellationToken))
+            if (!await _StateService.CanStartExecutionAsync(claim.ProjectId, lease.CancellationToken))
             {
                 _logger.LogWarning(
                     "Project executor worker {WorkerNumber} skipped project {ProjectId} because execution state cannot start.",
@@ -66,7 +66,7 @@ internal sealed class ClaimExecutor(
                 return;
             }
 
-            await _executionStateService.CompleteAsync(
+            await _StateService.CompleteAsync(
                 claim.ProjectId,
                 ProjectProcessingStatus.Completed,
                 failureReason: null,
@@ -90,7 +90,7 @@ internal sealed class ClaimExecutor(
                 stopwatch.ElapsedMilliseconds);
             _artifactStore.TryDeleteUploadedZipFile(claim.StoredZipRelativePath, claim.ProjectId);
             _artifactStore.TryDeleteExtractedProjectDirectory(claim.ProjectId);
-            await _executionStateService.CompleteAsync(
+            await _StateService.CompleteAsync(
                 claim.ProjectId,
                 ProjectProcessingStatus.Failed,
                 exception.Message,
@@ -100,7 +100,7 @@ internal sealed class ClaimExecutor(
 
     private async Task ApplyCancellationOutcomeAsync(
         Claim claim,
-        ProjectExecutionLease lease,
+        Lease lease,
         long durationMs)
     {
         Outcome outcome = Policy.Resolve(lease);
@@ -114,7 +114,7 @@ internal sealed class ClaimExecutor(
             _artifactStore.TryDeleteUploadedZipFile(claim.StoredZipRelativePath, claim.ProjectId);
 
         if (outcome.ShouldUpdateDatabase)
-            await _executionStateService.CompleteAsync(
+            await _StateService.CompleteAsync(
                 claim.ProjectId,
                 ProjectProcessingStatus.Canceled,
                 failureReason: null,

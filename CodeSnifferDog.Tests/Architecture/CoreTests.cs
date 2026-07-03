@@ -1,0 +1,447 @@
+using CodeSnifferDog.Agents.Common;
+using CodeSnifferDog.Models.Preparation;
+using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.Report;
+using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
+using CodeSnifferDog.Models.ReviewAgentTeam.Events;
+using CodeSnifferDog.Models.ReviewGroup;
+using CodeSnifferDog.Models.ReviewStage;
+using CodeSnifferDog.Models.RuleFlow;
+using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
+using CodeSnifferDog.Modules.ContextCompaction.Core;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
+using CodeSnifferDog.Modules.Tools.Common;
+using CodeSnifferDog.Modules.Tools.ProjectPlan;
+using CodeSnifferDog.Modules.Tools.Report;
+using CodeSnifferDog.Modules.Tools.RuleReview;
+using CodeSnifferDog.Modules.Tools.Scan;
+using CodeSnifferDog.Workflows.ProjectPlan;
+using CodeSnifferDog.Workflows.Report;
+using CodeSnifferDog.Workflows.RuleFlow;
+using CodeSnifferDog.Workflows.RuleReview;
+using CodeSnifferDog.Workflows.Scan;
+using FluentResults;
+using Microsoft.Extensions.AI;
+using System.Reflection;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Scheduling;
+using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
+using ProjectPlanMessageBuilder = CodeSnifferDog.Workflows.ProjectPlan.MessageBuilder;
+using ProjectPlanResultFactory = CodeSnifferDog.Workflows.ProjectPlan.ResultFactory;
+using ReportDiffService = CodeSnifferDog.Workflows.Report.DiffService;
+using ReportMessageBuilder = CodeSnifferDog.Workflows.Report.MessageBuilder;
+using ReportResultFactory = CodeSnifferDog.Workflows.Report.ResultFactory;
+using RuleReviewMessageBuilder = CodeSnifferDog.Workflows.RuleReview.MessageBuilder;
+using RuleReviewResultFactory = CodeSnifferDog.Workflows.RuleReview.ResultFactory;
+using ScanMessageBuilder = CodeSnifferDog.Workflows.Scan.MessageBuilder;
+using ScanResultFactory = CodeSnifferDog.Workflows.Scan.ResultFactory;
+using ProjectPlanToolSet = CodeSnifferDog.Modules.Tools.ProjectPlan.ToolSet;
+using ReportToolSet = CodeSnifferDog.Modules.Tools.Report.ToolSet;
+using RuleReviewToolSet = CodeSnifferDog.Modules.Tools.RuleReview.ToolSet;
+using PreparationWorkflowResult = CodeSnifferDog.Models.Preparation.WorkflowResult;
+using ProjectPlanWorkflowResult = CodeSnifferDog.Models.ProjectPlan.WorkflowResult;
+using ReportWorkflowResult = CodeSnifferDog.Models.Report.WorkflowResult;
+using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
+using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
+using ReviewStageWorkflowResult = CodeSnifferDog.Models.ReviewStage.WorkflowResult;
+using RuleReviewModelWorkflowResult = CodeSnifferDog.Models.RuleReview.WorkflowResult;
+using ProjectPlanWorkflow = CodeSnifferDog.Workflows.ProjectPlan.Workflow;
+using ReportWorkflow = CodeSnifferDog.Workflows.Report.Workflow;
+using RuleFlowWorkflow = CodeSnifferDog.Workflows.RuleFlow.Workflow;
+using RuleReviewWorkflow = CodeSnifferDog.Workflows.RuleReview.Workflow;
+using ScanWorkflow = CodeSnifferDog.Workflows.Scan.Workflow;
+
+namespace CodeSnifferDog.Tests.Architecture;
+
+[TestClass]
+public sealed class CoreTests
+{
+    [TestMethod]
+    public void WorkflowRunAsyncSurfaces_StayStable()
+    {
+        foreach (WorkflowRunSignature signature in WorkflowRunSignatures())
+        {
+            MethodInfo runAsync = signature.WorkflowType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .Single(method => string.Equals(method.Name, "RunAsync", StringComparison.Ordinal));
+            ParameterInfo[] parameters = runAsync.GetParameters();
+
+            Assert.AreEqual(signature.ReturnType, runAsync.ReturnType, $"{signature.WorkflowType.Name} return type changed.");
+            CollectionAssert.AreEqual(
+                signature.ParameterTypes.Select(type => type.FullName).ToArray(),
+                parameters.Select(parameter => parameter.ParameterType.FullName).ToArray(),
+                $"{signature.WorkflowType.Name} parameter types changed.");
+            CollectionAssert.AreEqual(
+                signature.ParameterNames,
+                parameters.Select(parameter => parameter.Name).ToArray(),
+                $"{signature.WorkflowType.Name} parameter names changed.");
+        }
+    }
+
+    [TestMethod]
+    public void WorkflowMessageBuildersAndResultFactories_AreInternalAndDomainLocal()
+    {
+        Type[] collaboratorTypes =
+        [
+            typeof(ScanMessageBuilder),
+            typeof(ScanResultFactory),
+            typeof(ProjectPlanMessageBuilder),
+            typeof(ProjectPlanResultFactory),
+            typeof(RuleReviewMessageBuilder),
+            typeof(RuleReviewResultFactory),
+            typeof(ReportMessageBuilder),
+            typeof(ReportResultFactory),
+            typeof(ReportDiffService),
+        ];
+
+        foreach (Type collaboratorType in collaboratorTypes)
+        {
+            Assert.IsFalse(collaboratorType.IsPublic, $"{collaboratorType.Name} should remain internal.");
+            Assert.StartsWith(
+                "CodeSnifferDog.Workflows.",
+                collaboratorType.Namespace,
+                StringComparison.Ordinal,
+                $"{collaboratorType.Name} should stay under a workflow domain namespace.");
+        }
+    }
+
+    [TestMethod]
+    public void Workflows_DoNotExposeToolMetadataOrAgentCompositionDetails()
+    {
+        Type[] workflowTypes = typeof(ScanWorkflow).Assembly.GetTypes()
+            .Where(type => type.Namespace?.StartsWith("CodeSnifferDog.Workflows", StringComparison.Ordinal) == true)
+            .Where(type => string.Equals(type.Name, "Workflow", StringComparison.Ordinal))
+            .ToArray();
+
+        foreach (Type workflowType in workflowTypes)
+        {
+            foreach (MethodInfo method in workflowType.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                Assert.IsFalse(ContainsType(method.ReturnType, typeof(AITool)), $"{workflowType.Name}.{method.Name} should not expose AITool.");
+                Assert.IsFalse(
+                    method.GetParameters().Any(parameter => ContainsType(parameter.ParameterType, typeof(AITool))),
+                    $"{workflowType.Name}.{method.Name} should not take AITool dependencies.");
+            }
+
+            Type[] fieldTypes = workflowType
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Select(field => field.FieldType)
+                .ToArray();
+
+            CollectionAssert.DoesNotContain(fieldTypes, typeof(AgentPromptRenderer), $"{workflowType.Name} should not render agent prompts directly.");
+            CollectionAssert.DoesNotContain(fieldTypes, typeof(AgentToolComposer), $"{workflowType.Name} should not compose agent tools directly.");
+            CollectionAssert.DoesNotContain(fieldTypes, typeof(AgentBuilderService), $"{workflowType.Name} should not build agents directly.");
+        }
+    }
+
+    [TestMethod]
+    public void Agents_UseSharedCompositionServices()
+    {
+        foreach (Type factoryType in AgentFactoryTypes())
+        {
+            Type[] fieldTypes = factoryType
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Select(field => field.FieldType)
+                .ToArray();
+
+            CollectionAssert.Contains(fieldTypes, typeof(AgentPromptRenderer), $"{factoryType.Name} should use AgentPromptRenderer.");
+            CollectionAssert.Contains(fieldTypes, typeof(AgentToolComposer), $"{factoryType.Name} should use AgentToolComposer.");
+            CollectionAssert.Contains(fieldTypes, typeof(AgentBuilderService), $"{factoryType.Name} should use AgentBuilderService.");
+        }
+    }
+
+    [TestMethod]
+    public void ToolSets_RemainFacadesOverServicesAndFactories()
+    {
+        foreach (Type toolSetType in ToolSetTypes())
+        {
+            Type[] fieldTypes = toolSetType
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Select(field => field.FieldType)
+                .ToArray();
+
+            Assert.IsTrue(
+                fieldTypes.Any(type => type.Name.EndsWith("ToolService", StringComparison.Ordinal)),
+                $"{toolSetType.Name} should delegate orchestration to tool services.");
+            Assert.IsFalse(
+                fieldTypes.Any(type =>
+                    type.Namespace?.Contains(".State", StringComparison.Ordinal) == true ||
+                    type.Name.Contains("Store", StringComparison.Ordinal) ||
+                    type.Name.Contains("WriteGuard", StringComparison.Ordinal)),
+                $"{toolSetType.Name} should not own state store or attempt guard fields.");
+
+            Assert.IsTrue(
+                toolSetType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                    .Any(method => method.ReturnType.IsGenericType && method.ReturnType.GetGenericArguments().Any(type => type == typeof(AITool))),
+                $"{toolSetType.Name} should remain the public tool metadata facade.");
+        }
+    }
+
+    [TestMethod]
+    public void ContextCompaction_PublicCompatibilityAndInternalNamespaces_StaySeparated()
+    {
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Core", typeof(MessageShrinker).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Core", typeof(ChatReducer).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime", typeof(CompactionRuntime).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime", typeof(StagedCollapseTracker).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry", typeof(ReactiveRetryService).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions", typeof(AutomaticSessionState).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions", typeof(CollapseSessionState).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Core.Estimation", typeof(TokenEstimator).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ContextCompaction.Core.Reduction", typeof(ReductionPipeline).Namespace);
+    }
+
+    [TestMethod]
+    public void ReviewStageModels_DoNotRepeatNamespaceContextInTypeNames()
+    {
+        Type[] reviewStageModelTypes = typeof(ReviewStageWorkflowResult).Assembly.GetTypes()
+            .Where(type => type.Namespace == "CodeSnifferDog.Models.ReviewStage")
+            .ToArray();
+
+        Assert.IsNotEmpty(reviewStageModelTypes);
+        Assert.IsTrue(
+            reviewStageModelTypes.All(type => !type.Name.StartsWith("ReviewStage", StringComparison.Ordinal)),
+            "ReviewStage model type names should rely on their namespace for domain context.");
+    }
+
+    [TestMethod]
+    public void ReviewAgentTeamModule_UsesRoleBasedSubNamespaces()
+    {
+        Type[] runtimeTypes =
+        [
+            typeof(Worker),
+            typeof(Factory),
+        ];
+
+        foreach (Type runtimeType in runtimeTypes)
+        {
+            Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Runtime", runtimeType.Namespace);
+            Assert.IsFalse(
+                runtimeType.Name.StartsWith("ReviewAgentTeam", StringComparison.Ordinal),
+                $"{runtimeType.Name} should rely on its runtime namespace for review-agent-team context.");
+        }
+
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Scheduling", typeof(RuleLaneScheduler).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Events", typeof(AgentStatusEventStream).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Events", typeof(NoOpAgentEventBus).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Events", typeof(AgentCompactionEventHook).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Transcript", typeof(AgentBuilderExtensions).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Modules.ReviewAgentTeam.Transcript", typeof(AgentToolEventPublisher).Namespace);
+        Assert.IsFalse(
+            typeof(RuleLaneScheduler).Name.StartsWith("ReviewStage", StringComparison.Ordinal),
+            "Scheduling collaborators should rely on their namespace for review-stage context.");
+    }
+
+    [TestMethod]
+    public void ReviewAgentTeamEventModels_UseEventsSubNamespaceAndLocalNames()
+    {
+        Type[] eventTypes =
+        [
+            typeof(StatusEvent),
+            typeof(CreatedEvent),
+            typeof(GroupCreatedEvent),
+            typeof(StatusChangedEvent),
+            typeof(CompactionEvent),
+            typeof(TranscriptClearedEvent),
+            typeof(AssistantMessageAppendedEvent),
+            typeof(UserMessageAppendedEvent),
+            typeof(ToolCallStartedEvent),
+            typeof(ToolCallCompletedEvent),
+        ];
+
+        foreach (Type eventType in eventTypes)
+        {
+            Assert.AreEqual(
+                "CodeSnifferDog.Models.ReviewAgentTeam.Events",
+                eventType.Namespace,
+                $"{eventType.Name} should stay under the review-agent-team events namespace.");
+            Assert.IsFalse(eventType.IsPublic, $"{eventType.Name} should remain internal.");
+            Assert.IsFalse(
+                eventType.Name.StartsWith("Agent", StringComparison.Ordinal),
+                $"{eventType.Name} should rely on its namespace for agent/team context.");
+        }
+
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam", typeof(AgentCreationResult).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam", typeof(IAgentEventBus).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam", typeof(AgentStatusCatalog).Namespace);
+    }
+
+    [TestMethod]
+    public void ReviewAgentTeamModels_UseRoleBasedSubNamespacesAndLocalNames()
+    {
+        Type[] modelTypes =
+        [
+            typeof(RuleDefinition),
+            typeof(AnalysisResult),
+            typeof(CompletionDecision),
+            typeof(CompletionPolicy),
+            typeof(RuleReport),
+            typeof(Dependencies),
+            typeof(ExecutionOptions),
+        ];
+
+        foreach (Type modelType in modelTypes)
+        {
+            Assert.StartsWith(
+                "CodeSnifferDog.Models.ReviewAgentTeam.",
+                modelType.Namespace,
+                StringComparison.Ordinal,
+                $"{modelType.Name} should stay under a role-based review-agent-team model namespace.");
+            Assert.IsFalse(
+                modelType.Name.StartsWith("ReviewAgentTeam", StringComparison.Ordinal) ||
+                modelType.Name.StartsWith("ReviewAgent", StringComparison.Ordinal),
+                $"{modelType.Name} should rely on namespace context instead of a review-agent-team prefix.");
+        }
+
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam.Agents", typeof(RuleDefinition).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam.Analysis", typeof(AnalysisResult).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam.Analysis", typeof(CompletionPolicy).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam.Results", typeof(RuleReport).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam.Runtime", typeof(Dependencies).Namespace);
+        Assert.AreEqual("CodeSnifferDog.Models.ReviewAgentTeam.Runtime", typeof(ExecutionOptions).Namespace);
+    }
+
+    [TestMethod]
+    public void WorkflowMessageBuilders_KeepFocusedMessageConstructionSurface()
+    {
+        foreach (Type builderType in WorkflowMessageBuilderTypes())
+        {
+            Type[] fieldTypes = builderType
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Select(field => field.FieldType)
+                .ToArray();
+            MethodInfo[] publicMethods = builderType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
+
+            Assert.AreEqual(1, fieldTypes.Length, $"{builderType.Name} should only hold its workflow message templates.");
+            Assert.AreEqual("MessageTemplates", fieldTypes[0].Name, $"{builderType.Name} should only depend on workflow message templates.");
+            Assert.IsTrue(publicMethods.All(method => method.Name.Contains("Message", StringComparison.Ordinal)), $"{builderType.Name} should expose message construction methods only.");
+            Assert.IsTrue(publicMethods.All(method => ContainsType(method.ReturnType, typeof(ChatMessage))), $"{builderType.Name} public methods should return ChatMessage payloads.");
+            Assert.IsFalse(
+                publicMethods.SelectMany(method => method.GetParameters()).Any(parameter =>
+                    IsStoreDependency(parameter.ParameterType) ||
+                    parameter.ParameterType == typeof(AgentPromptRenderer) ||
+                    parameter.ParameterType == typeof(AgentBuilderService)),
+                $"{builderType.Name} should not take store, prompt renderer, or agent lifecycle dependencies.");
+        }
+    }
+
+    [TestMethod]
+    public void WorkflowResultFactories_KeepSingleCreateMappingSurface()
+    {
+        Type[] factoryTypes =
+        [
+            typeof(ScanResultFactory),
+            typeof(ProjectPlanResultFactory),
+            typeof(RuleReviewResultFactory),
+            typeof(ReportResultFactory),
+        ];
+
+        foreach (Type factoryType in factoryTypes)
+        {
+            MethodInfo[] publicMethods = factoryType.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly);
+
+            Assert.IsTrue(factoryType.IsAbstract && factoryType.IsSealed, $"{factoryType.Name} should stay a static factory.");
+            Assert.AreEqual(1, publicMethods.Length, $"{factoryType.Name} should expose only one public mapping method.");
+            Assert.AreEqual("Create", publicMethods[0].Name, $"{factoryType.Name} public method should stay Create.");
+            Assert.IsTrue(publicMethods[0].ReturnType.Name.EndsWith("WorkflowResult", StringComparison.Ordinal), $"{factoryType.Name}.Create should return a workflow result DTO.");
+        }
+    }
+
+    private static IReadOnlyList<WorkflowRunSignature> WorkflowRunSignatures() =>
+    [
+        new(
+            typeof(ScanWorkflow),
+            typeof(Task<Result<ScanWorkflowResult>>),
+            [typeof(string), typeof(CancellationToken)],
+            ["repositoryRootPath", "cancellationToken"]),
+        new(
+            typeof(ProjectPlanWorkflow),
+            typeof(Task<Result<ProjectPlanWorkflowResult>>),
+            [typeof(string), typeof(StoredScanProject), typeof(CancellationToken)],
+            ["repositoryRootPath", "scanProject", "cancellationToken"]),
+        new(
+            typeof(RuleReviewWorkflow),
+            typeof(Task<Result<RuleReviewModelWorkflowResult>>),
+            [typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(CancellationToken)],
+            ["repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "cancellationToken"]),
+        new(
+            typeof(ReportWorkflow),
+            typeof(Task<Result<ReportWorkflowResult>>),
+            [typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(IReadOnlyList<RuleReviewStoredIssue>), typeof(CancellationToken)],
+            ["repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "currentFlowIssues", "cancellationToken"]),
+        new(
+            typeof(RuleFlowWorkflow),
+            typeof(Task<Result<RuleFlowWorkflowResult>>),
+            [typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(CancellationToken)],
+            ["repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "cancellationToken"]),
+        new(
+            typeof(CodeSnifferDog.Workflows.Preparation.Workflow),
+            typeof(Task<Result<PreparationWorkflowResult>>),
+            [typeof(string), typeof(CancellationToken)],
+            ["repositoryRootPath", "cancellationToken"]),
+        new(
+            typeof(CodeSnifferDog.Workflows.ReviewStage.Workflow),
+            typeof(Task<Result<ReviewStageWorkflowResult>>),
+            [typeof(string), typeof(PreparationWorkflowResult), typeof(IReadOnlyList<RuleDefinition>), typeof(CancellationToken)],
+            ["repositoryRootPath", "preparationResult", "ruleDefinitions", "cancellationToken"]),
+    ];
+
+    private static Type[] AgentFactoryTypes() =>
+    [
+        typeof(CodeSnifferDog.Agents.Scan.ScanAgentFactory),
+        typeof(CodeSnifferDog.Agents.Scan.ScanVerifierAgentFactory),
+        typeof(CodeSnifferDog.Agents.ProjectPlan.AgentFactory),
+        typeof(CodeSnifferDog.Agents.ProjectPlan.VerifierFactory),
+        typeof(CodeSnifferDog.Agents.RuleReview.AgentFactory),
+        typeof(CodeSnifferDog.Agents.RuleReview.VerifierFactory),
+        typeof(CodeSnifferDog.Agents.Report.ReportAggregatorAgentFactory),
+        typeof(CodeSnifferDog.Agents.Report.ReportVerifierAgentFactory),
+    ];
+
+    private static Type[] ToolSetTypes() =>
+    [
+        typeof(CommonToolSet),
+        typeof(ScanToolSet),
+        typeof(ProjectPlanToolSet),
+        typeof(RuleReviewToolSet),
+        typeof(ReportToolSet),
+    ];
+
+    private static Type[] WorkflowMessageBuilderTypes() =>
+    [
+        typeof(ScanMessageBuilder),
+        typeof(ProjectPlanMessageBuilder),
+        typeof(RuleReviewMessageBuilder),
+        typeof(ReportMessageBuilder),
+    ];
+
+    private static bool ContainsType(Type candidate, Type expected)
+    {
+        if (candidate == expected)
+            return true;
+
+        if (candidate.IsGenericType)
+            return candidate.GetGenericArguments().Any(argument => ContainsType(argument, expected));
+
+        return false;
+    }
+
+    private static bool IsStoreDependency(Type type) =>
+        type.Name.EndsWith("Store", StringComparison.Ordinal) &&
+        type.Namespace?.StartsWith("CodeSnifferDog.Modules.Tools", StringComparison.Ordinal) == true;
+
+    private sealed record WorkflowRunSignature(
+        Type WorkflowType,
+        Type ReturnType,
+        Type[] ParameterTypes,
+        string[] ParameterNames);
+}

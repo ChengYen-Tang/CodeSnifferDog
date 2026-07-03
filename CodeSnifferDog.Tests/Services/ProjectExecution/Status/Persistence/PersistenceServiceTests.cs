@@ -1,4 +1,8 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
@@ -57,7 +61,7 @@ public sealed class PersistenceServiceTests
 
         Assert.AreEqual(ProjectAgentTimelineEntryType.Output, timelinePersistenceService.EntryTypes.Single());
         Assert.HasCount(1, notifier.Updates);
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.TimelineEntryUpserted, notifier.Updates[0].Kind);
+        Assert.AreEqual(LiveUpdateKind.TimelineEntryUpserted, notifier.Updates[0].Kind);
         await using CodeSnifferDogServerDbContext dbContext =
             await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
         Assert.AreEqual(1, await dbContext.ProjectAgentTimelineEntries.CountAsync(TestContext.CancellationToken));
@@ -134,9 +138,9 @@ public sealed class PersistenceServiceTests
 
     private sealed class CollectingLiveUpdateNotifier : ILiveUpdateNotifier
     {
-        public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
+        public List<LiveUpdateDto> Updates { get; } = [];
 
-        public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default)
+        public Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken = default)
         {
             Updates.Add(update);
             return Task.CompletedTask;

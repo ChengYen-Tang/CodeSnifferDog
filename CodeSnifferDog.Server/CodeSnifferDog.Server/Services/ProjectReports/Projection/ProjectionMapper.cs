@@ -4,11 +4,11 @@ namespace CodeSnifferDog.Server.Services.ProjectReports.Projection;
 
 internal sealed class ProjectionMapper : IProjectionMapper
 {
-    public ProjectReportBundleDto MapBundle(ProjectProjection project) => new()
+    public BundleDto MapBundle(ProjectProjection project) => new()
     {
         OriginalFileName = project.OriginalFileName,
         Reports = project.Reports
-            .Select(report => new ProjectRuleReportDto
+            .Select(report => new RuleDto
             {
                 ReportId = report.ReportId,
                 RuleName = report.RuleName,
@@ -17,11 +17,11 @@ internal sealed class ProjectionMapper : IProjectionMapper
             .ToList(),
     };
 
-    public ProjectReportListDto MapList(ProjectProjection project) => new()
+    public ListDto MapList(ProjectProjection project) => new()
     {
         OriginalFileName = project.OriginalFileName,
         Reports = project.Reports
-            .Select(report => new ProjectReportListItemDto
+            .Select(report => new ListItemDto
             {
                 ReportId = report.ReportId,
                 RuleName = report.RuleName,
@@ -29,7 +29,7 @@ internal sealed class ProjectionMapper : IProjectionMapper
             .ToList(),
     };
 
-    public ProjectReportContentDto MapContent(RuleReportProjection report) => new()
+    public ContentDto MapContent(RuleReportProjection report) => new()
     {
         ReportId = report.ReportId,
         RuleName = report.RuleName,

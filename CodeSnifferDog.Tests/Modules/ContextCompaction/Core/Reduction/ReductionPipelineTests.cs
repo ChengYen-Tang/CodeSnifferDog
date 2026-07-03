@@ -1,9 +1,9 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Tests.Modules.ContextCompaction.Core.Reduction;
 
@@ -20,7 +20,7 @@ public sealed class ReductionPipelineTests
 
         await pipeline.CompactAsync(
             [new ChatMessage(ChatRole.User, new string('x', 1_000))],
-            OperationalContextCompactionReason.AutomaticThreshold,
+            CompactionReason.AutomaticThreshold,
             TestContext.CancellationToken);
 
         Assert.IsNotNull(summarizer.LastSummaryPrompt);
@@ -40,7 +40,7 @@ public sealed class ReductionPipelineTests
 
         await pipeline.CompactAsync(
             [new ChatMessage(ChatRole.User, new string('x', 1_000))],
-            OperationalContextCompactionReason.AutomaticThreshold,
+            CompactionReason.AutomaticThreshold,
             TestContext.CancellationToken);
 
         Assert.AreEqual(1, hook.BeforeCallCount);
@@ -53,18 +53,18 @@ public sealed class ReductionPipelineTests
     {
         ReductionPipeline pipeline = CreatePipeline(new RecordingSummarizer("Current objective\nCompleted work\nNext steps"));
 
-        await Assert.ThrowsExactlyAsync<OperationalContextCompactionException>(
+        await Assert.ThrowsExactlyAsync<CompactionException>(
             () => pipeline.CompactAsync(
                 [new ChatMessage(ChatRole.User, new string('x', 1_000))],
-                OperationalContextCompactionReason.AutomaticThreshold,
+                CompactionReason.AutomaticThreshold,
                 TestContext.CancellationToken));
     }
 
     private static ReductionPipeline CreatePipeline(
-        IOperationalContextCompactionSummarizer summarizer,
-        IEnumerable<IOperationalContextCompactionHook>? hooks = null,
-        IEnumerable<IOperationalContextCompactionCleanupHandler>? cleanupHandlers = null) => new(
-            new OperationalContextCompactionOptions
+        ISummarizer summarizer,
+        IEnumerable<IHook>? hooks = null,
+        IEnumerable<ICleanupHandler>? cleanupHandlers = null) => new(
+            new CompactionOptions
             {
                 ModelContextWindowTokens = 3,
                 SummaryReservedOutputTokens = 1,
@@ -73,20 +73,20 @@ public sealed class ReductionPipelineTests
                 PreservedTailMinMessages = 1,
                 PreservedTailMaxTokens = 10_000,
             },
-            new StaticOperationalContextSummaryPromptProvider("summarize the current run"),
+            new StaticSummaryPromptProvider("summarize the current run"),
             summarizer,
             artifactsProvider: null,
             hooks,
             cleanupHandlers);
 
-    private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer
+    private sealed class RecordingSummarizer(string response) : ISummarizer
     {
         public string? LastSummaryPrompt { get; private set; }
 
         public ValueTask<string> SummarizeAsync(
             IReadOnlyList<ChatMessage> messages,
             string summaryPrompt,
-            OperationalContextCompactionOptions options,
+            CompactionOptions options,
             CancellationToken cancellationToken)
         {
             LastSummaryPrompt = summaryPrompt;
@@ -94,7 +94,7 @@ public sealed class ReductionPipelineTests
         }
     }
 
-    private sealed class RecordingHook : IOperationalContextCompactionHook
+    private sealed class RecordingHook : IHook
     {
         public int BeforeCallCount { get; private set; }
 
@@ -102,7 +102,7 @@ public sealed class ReductionPipelineTests
 
         public ValueTask OnBeforeCompactionAsync(
             IReadOnlyList<ChatMessage> originalMessages,
-            OperationalContextCompactionReason reason,
+            CompactionReason reason,
             CancellationToken cancellationToken)
         {
             BeforeCallCount++;
@@ -112,7 +112,7 @@ public sealed class ReductionPipelineTests
         public ValueTask OnAfterCompactionAsync(
             IReadOnlyList<ChatMessage> originalMessages,
             IReadOnlyList<ChatMessage> compactedMessages,
-            OperationalContextCompactionReason reason,
+            CompactionReason reason,
             CancellationToken cancellationToken)
         {
             AfterCallCount++;
@@ -120,14 +120,14 @@ public sealed class ReductionPipelineTests
         }
     }
 
-    private sealed class RecordingCleanupHandler : IOperationalContextCompactionCleanupHandler
+    private sealed class RecordingCleanupHandler : ICleanupHandler
     {
         public int CallCount { get; private set; }
 
         public ValueTask CleanupAsync(
             IReadOnlyList<ChatMessage> originalMessages,
             IReadOnlyList<ChatMessage> compactedMessages,
-            OperationalContextCompactionReason reason,
+            CompactionReason reason,
             CancellationToken cancellationToken)
         {
             CallCount++;

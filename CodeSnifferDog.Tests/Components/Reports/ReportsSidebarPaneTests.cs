@@ -23,7 +23,7 @@ public sealed class ReportsSidebarPaneTests
         StringAssert.Contains(error.Markup, "Failed to load reports: 500");
 
         IRenderedComponent<ReportsSidebarPane> empty = context.RenderComponent<ReportsSidebarPane>(
-            parameters => parameters.Add(component => component.ReportList, new ProjectReportListDto
+            parameters => parameters.Add(component => component.ReportList, new ListDto
             {
                 OriginalFileName = "empty.zip",
                 Reports = [],
@@ -37,17 +37,17 @@ public sealed class ReportsSidebarPaneTests
         using Bunit.TestContext context = new();
         Guid projectId = Guid.Parse("80000000-0000-0000-0000-000000000401");
         Guid selectedReportId = Guid.Parse("81000000-0000-0000-0000-000000000402");
-        ProjectReportListDto reportList = new()
+        ListDto reportList = new()
         {
             OriginalFileName = "demo.zip",
             Reports =
             [
-                new ProjectReportListItemDto
+                new ListItemDto
                 {
                     ReportId = Guid.Parse("81000000-0000-0000-0000-000000000401"),
                     RuleName = "rule-a",
                 },
-                new ProjectReportListItemDto
+                new ListItemDto
                 {
                     ReportId = selectedReportId,
                     RuleName = "rule-b",
@@ -73,11 +73,11 @@ public sealed class ReportsSidebarPaneTests
     {
         using Bunit.TestContext context = new();
         Guid projectId = Guid.Parse("80000000-0000-0000-0000-000000000403");
-        ProjectReportListDto reportList = new()
+        ListDto reportList = new()
         {
             OriginalFileName = "large-demo.zip",
             Reports = Enumerable.Range(1, 200)
-                .Select(index => new ProjectReportListItemDto
+                .Select(index => new ListItemDto
                 {
                     ReportId = Guid.Parse($"81000000-0000-0000-0002-{index:000000000000}"),
                     RuleName = $"rule-{index:000}",
@@ -90,7 +90,7 @@ public sealed class ReportsSidebarPaneTests
             parameters => parameters
                 .Add(component => component.ProjectId, projectId)
                 .Add(component => component.ReportList, reportList)
-                .Add(component => component.OnSelectReport, EventCallback.Factory.Create<ProjectReportListItemDto>(
+                .Add(component => component.OnSelectReport, EventCallback.Factory.Create<ListItemDto>(
                     this,
                     report => selectedReportId = report.ReportId)));
 

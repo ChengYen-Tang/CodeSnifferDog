@@ -51,17 +51,17 @@ public sealed class LiveUpdateFactoryTests
             OccurredAtUtc = now,
         };
 
-        ProjectAgentLiveUpdateDto groupUpdate = factory.CreateGroupUpdate(projectId, group);
-        ProjectAgentLiveUpdateDto agentUpdate = factory.CreateAgentUpsertUpdate(projectId, agent);
-        ProjectAgentLiveUpdateDto statusUpdate = factory.CreateAgentStatusChangedUpdate(projectId, agentId, agent.Status, now);
-        ProjectAgentLiveUpdateDto timelineUpdate = factory.CreateTimelineEntryUpsertUpdate(projectId, entry);
-        ProjectAgentLiveUpdateDto removedUpdate = factory.CreateTimelineEntriesRemovedUpdate(projectId, agentId, [entry.Id], now);
+        LiveUpdateDto groupUpdate = factory.CreateGroupUpdate(projectId, group);
+        LiveUpdateDto agentUpdate = factory.CreateAgentUpsertUpdate(projectId, agent);
+        LiveUpdateDto statusUpdate = factory.CreateAgentStatusChangedUpdate(projectId, agentId, agent.Status, now);
+        LiveUpdateDto timelineUpdate = factory.CreateTimelineEntryUpsertUpdate(projectId, entry);
+        LiveUpdateDto removedUpdate = factory.CreateTimelineEntriesRemovedUpdate(projectId, agentId, [entry.Id], now);
 
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentGroupUpserted, groupUpdate.Kind);
+        Assert.AreEqual(LiveUpdateKind.AgentGroupUpserted, groupUpdate.Kind);
         Assert.AreEqual(groupId, groupUpdate.Group!.GroupId);
-        Assert.AreEqual(ProjectAgentRunStatus.Running, agentUpdate.Agent!.Status);
-        Assert.AreEqual(ProjectAgentRunStatus.Running, statusUpdate.AgentStatus!.Status);
-        Assert.AreEqual(ProjectAgentTimelineEntryKind.Tool, timelineUpdate.TimelineEntry!.EntryKind);
+        Assert.AreEqual(RunStatus.Running, agentUpdate.Agent!.Status);
+        Assert.AreEqual(RunStatus.Running, statusUpdate.AgentStatus!.Status);
+        Assert.AreEqual(TimelineEntryKind.Tool, timelineUpdate.TimelineEntry!.EntryKind);
         Assert.AreEqual("result", timelineUpdate.TimelineEntry.ToolResult);
         Assert.AreEqual(agentId, removedUpdate.RemovedTimelineEntries!.AgentId);
         CollectionAssert.AreEqual(new[] { entry.Id }, removedUpdate.RemovedTimelineEntries.TimelineEntryIds.ToArray());

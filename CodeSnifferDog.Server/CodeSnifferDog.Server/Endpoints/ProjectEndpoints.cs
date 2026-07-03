@@ -115,7 +115,7 @@ public static class ProjectEndpoints
         IReportService projectReportService,
         CancellationToken cancellationToken)
     {
-        ProjectReportListDto? reports = await projectReportService.GetProjectReportListAsync(projectId, cancellationToken);
+        ListDto? reports = await projectReportService.GetProjectReportListAsync(projectId, cancellationToken);
         return reports is null ? Results.NotFound() : Results.Ok(reports);
     }
 
@@ -125,7 +125,7 @@ public static class ProjectEndpoints
         IReportService projectReportService,
         CancellationToken cancellationToken)
     {
-        ProjectReportContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
+        ContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
         return report is null ? Results.NotFound() : Results.Ok(report);
     }
 
@@ -135,7 +135,7 @@ public static class ProjectEndpoints
         ISnapshotService projectAgentStatusSnapshotService,
         CancellationToken cancellationToken)
     {
-        ProjectAgentStatusSnapshotDto? snapshot = await projectAgentStatusSnapshotService.GetSnapshotAsync(
+        StatusSnapshotDto? snapshot = await projectAgentStatusSnapshotService.GetSnapshotAsync(
             projectId,
             selectedAgentId,
             cancellationToken);
@@ -148,7 +148,7 @@ public static class ProjectEndpoints
         ISnapshotService projectAgentStatusSnapshotService,
         CancellationToken cancellationToken)
     {
-        ProjectAgentHistorySnapshotDto? history = await projectAgentStatusSnapshotService.GetAgentHistoryAsync(
+        HistorySnapshotDto? history = await projectAgentStatusSnapshotService.GetAgentHistoryAsync(
             projectId,
             agentId,
             cancellationToken);
@@ -162,7 +162,7 @@ public static class ProjectEndpoints
         IExportService projectReportExportService,
         CancellationToken cancellationToken)
     {
-        ProjectReportContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
+        ContentDto? report = await projectReportService.GetProjectReportAsync(projectId, reportId, cancellationToken);
         if (report is null)
             return Results.NotFound();
 
@@ -176,7 +176,7 @@ public static class ProjectEndpoints
         IExportService projectReportExportService,
         CancellationToken cancellationToken)
     {
-        ProjectReportBundleDto? bundle = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
+        BundleDto? bundle = await projectReportService.GetProjectReportBundleAsync(projectId, cancellationToken);
         if (bundle is null)
             return Results.NotFound();
 

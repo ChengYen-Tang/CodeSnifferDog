@@ -1,5 +1,4 @@
 using CodeSnifferDog.Agents.Common;
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
@@ -9,11 +8,13 @@ using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Agents.Report;
 
 public sealed class ReportVerifierAgentFactory(
-    OperationalContextAgentCompactionOptions compactionOptions,
+    AgentCompactionOptions compactionOptions,
     PromptAssetReader? promptAssetReader = null,
     PromptTemplateRenderer? promptTemplateRenderer = null,
     ILoggerFactory? loggerFactory = null,
@@ -28,14 +29,14 @@ public sealed class ReportVerifierAgentFactory(
         string repositoryRootPath,
         string ruleKey,
         string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
-        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
-        IRuleReportIssueStore reportIssueStore,
+        StoredTaskItem taskItem,
+        IReadOnlyList<StoredIssue> currentFlowIssues,
+        IIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer,
         IAgentEventScope? eventScope = null) =>
         CreateFromPromptTemplate(
             chatClient,
-            _promptRenderer.ReadRequiredPrompt(ReportPromptAssetPaths.ReportVerifierAgentPrompt),
+            _promptRenderer.ReadRequiredPrompt(PromptAssetPaths.ReportVerifierAgentPrompt),
             repositoryRootPath,
             ruleKey,
             ruleMarkdown,
@@ -51,9 +52,9 @@ public sealed class ReportVerifierAgentFactory(
         string repositoryRootPath,
         string ruleKey,
         string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
-        IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
-        IRuleReportIssueStore reportIssueStore,
+        StoredTaskItem taskItem,
+        IReadOnlyList<StoredIssue> currentFlowIssues,
+        IIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer,
         IAgentEventScope? eventScope)
     {
@@ -77,7 +78,7 @@ public sealed class ReportVerifierAgentFactory(
             });
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
-        ReportToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
         return _agentBuilderService.Create(new AgentBuildRequest(
             chatClient,
             systemPrompt,

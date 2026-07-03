@@ -13,14 +13,14 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
     public ProjectStatus MapProjectStatus(ProjectProcessingStatus status) =>
         _projectStatusMapper.Map(status, ProjectStatusMappingExceptionStyle.Persisted);
 
-    public ProjectAgentRunStatus MapAgentStatus(
+    public RunStatus MapAgentStatus(
         PersistedAgentStatus status,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => status switch
     {
-        PersistedAgentStatus.Waiting => ProjectAgentRunStatus.Waiting,
-        PersistedAgentStatus.Running => ProjectAgentRunStatus.Running,
-        PersistedAgentStatus.Completed => ProjectAgentRunStatus.Completed,
-        PersistedAgentStatus.Degraded => ProjectAgentRunStatus.Degraded,
+        PersistedAgentStatus.Waiting => RunStatus.Waiting,
+        PersistedAgentStatus.Running => RunStatus.Running,
+        PersistedAgentStatus.Completed => RunStatus.Completed,
+        PersistedAgentStatus.Degraded => RunStatus.Degraded,
         _ => throw new InvalidOperationException(exceptionStyle switch
         {
             ExceptionStyle.Snapshot => $"Unsupported agent status '{status}'.",
@@ -28,14 +28,14 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         }),
     };
 
-    public ProjectAgentTimelineEntryKind MapTimelineEntryKind(
+    public TimelineEntryKind MapTimelineEntryKind(
         ProjectAgentTimelineEntryType entryType,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => entryType switch
     {
-        ProjectAgentTimelineEntryType.Input => ProjectAgentTimelineEntryKind.Input,
-        ProjectAgentTimelineEntryType.Output => ProjectAgentTimelineEntryKind.Output,
-        ProjectAgentTimelineEntryType.Tool => ProjectAgentTimelineEntryKind.Tool,
-        ProjectAgentTimelineEntryType.Compaction => ProjectAgentTimelineEntryKind.Compaction,
+        ProjectAgentTimelineEntryType.Input => TimelineEntryKind.Input,
+        ProjectAgentTimelineEntryType.Output => TimelineEntryKind.Output,
+        ProjectAgentTimelineEntryType.Tool => TimelineEntryKind.Tool,
+        ProjectAgentTimelineEntryType.Compaction => TimelineEntryKind.Compaction,
         _ => throw new InvalidOperationException(exceptionStyle switch
         {
             ExceptionStyle.Snapshot => $"Unsupported timeline entry type '{entryType}'.",
@@ -43,7 +43,7 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         }),
     };
 
-    public ProjectAgentGroupLiveDto MapGroup(GroupProjection group) => new()
+    public GroupLiveDto MapGroup(GroupProjection group) => new()
     {
         GroupId = group.GroupId,
         RuntimeKey = group.RuntimeKey,
@@ -51,7 +51,7 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         CreatedAtUtc = group.CreatedAtUtc,
     };
 
-    public ProjectAgentLiveDto MapAgent(
+    public LiveDto MapAgent(
         AgentProjection agent,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => new()
     {
@@ -64,7 +64,7 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         CreatedAtUtc = agent.CreatedAtUtc,
     };
 
-    public ProjectAgentTimelineEntryDto MapTimelineEntry(
+    public TimelineEntryDto MapTimelineEntry(
         TimelineEntryProjection entry,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => new()
     {

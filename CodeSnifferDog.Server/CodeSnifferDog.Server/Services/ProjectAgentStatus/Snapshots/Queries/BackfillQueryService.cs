@@ -13,7 +13,7 @@ internal sealed class BackfillQueryService(
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
 
     public async Task<BackfillReadModel> GetBackfillAsync(
-        ProjectAgentLiveSubscriptionRequestDto request,
+        LiveSubscriptionRequestDto request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);

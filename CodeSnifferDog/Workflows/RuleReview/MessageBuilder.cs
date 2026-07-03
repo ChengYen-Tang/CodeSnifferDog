@@ -19,7 +19,7 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         new(ChatRole.User, _messageTemplates.MissingRuleReviewSubmissionMessage);
 
     public List<ChatMessage> CreateVerifierMessages(
-        IReadOnlyList<StoredRuleReviewIssue> issues,
+        IReadOnlyList<StoredIssue> issues,
         NoIssueConclusion? noIssueConclusion)
         =>
     [
@@ -27,7 +27,7 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
     ];
 
     private string BuildVerifierInput(
-        IReadOnlyList<StoredRuleReviewIssue> issues,
+        IReadOnlyList<StoredIssue> issues,
         NoIssueConclusion? noIssueConclusion)
     {
         string payload = issues.Count > 0

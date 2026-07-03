@@ -1,11 +1,12 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 
 internal interface IReviewAnalysisExecutor
 {
-    Task<ReviewAgentTeamAnalysisResult> AnalyzeAsync(
+    Task<AnalysisResult> AnalyzeAsync(
         ProjectAnalysisContext context,
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+        IReadOnlyList<RuleDefinition> rules,
         CancellationToken cancellationToken = default);
 }

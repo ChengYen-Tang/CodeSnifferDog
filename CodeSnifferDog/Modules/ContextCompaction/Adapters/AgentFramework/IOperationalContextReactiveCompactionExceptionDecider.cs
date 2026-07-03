@@ -1,6 +1,0 @@
-namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
-
-public interface IOperationalContextReactiveCompactionExceptionDecider
-{
-    bool ShouldRetryWithReactiveCompaction(OperationalContextModelInvocationException exception);
-}

@@ -38,31 +38,31 @@ public static class AgentStatusCatalog
 
     public static string CreateProjectVerifierAgentDisplayName() => "Project Verifier";
 
-    public static string CreateReviewTaskGroupKey(StoredProjectPlanTaskItem taskItem) =>
+    public static string CreateReviewTaskGroupKey(StoredTaskItem taskItem) =>
         $"review-task:{taskItem.ProjectPlanTaskItemId}";
 
     public static string CreateReviewTaskGroupDisplayName(int reviewNumber) =>
         $"Review: {reviewNumber}";
 
-    public static string CreateRuleReviewAgentKey(StoredProjectPlanTaskItem taskItem, string ruleKey) =>
+    public static string CreateRuleReviewAgentKey(StoredTaskItem taskItem, string ruleKey) =>
         $"{CreateReviewTaskGroupKey(taskItem)}:{ruleKey}:rule-review";
 
     public static string CreateRuleReviewAgentDisplayName(string ruleKey) =>
         $"Rule Review · {ruleKey}";
 
-    public static string CreateReviewVerifierAgentKey(StoredProjectPlanTaskItem taskItem, string ruleKey) =>
+    public static string CreateReviewVerifierAgentKey(StoredTaskItem taskItem, string ruleKey) =>
         $"{CreateReviewTaskGroupKey(taskItem)}:{ruleKey}:review-verifier";
 
     public static string CreateReviewVerifierAgentDisplayName(string ruleKey) =>
         $"Review Verifier · {ruleKey}";
 
-    public static string CreateReportAggregatorAgentKey(StoredProjectPlanTaskItem taskItem, string ruleKey) =>
+    public static string CreateReportAggregatorAgentKey(StoredTaskItem taskItem, string ruleKey) =>
         $"{CreateReviewTaskGroupKey(taskItem)}:{ruleKey}:report-aggregator";
 
     public static string CreateReportAggregatorAgentDisplayName(string ruleKey) =>
         $"Report Aggregator · {ruleKey}";
 
-    public static string CreateReportVerifierAgentKey(StoredProjectPlanTaskItem taskItem, string ruleKey) =>
+    public static string CreateReportVerifierAgentKey(StoredTaskItem taskItem, string ruleKey) =>
         $"{CreateReviewTaskGroupKey(taskItem)}:{ruleKey}:report-verifier";
 
     public static string CreateReportVerifierAgentDisplayName(string ruleKey) =>

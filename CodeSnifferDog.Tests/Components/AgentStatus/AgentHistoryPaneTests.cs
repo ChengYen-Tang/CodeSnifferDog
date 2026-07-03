@@ -33,8 +33,8 @@ public sealed class AgentHistoryPaneTests
     {
         using Bunit.TestContext context = new();
         Guid agentId = Guid.Parse("93000000-0000-0000-0000-000000000011");
-        ProjectAgentSnapshotDto agent = CreateAgent(agentId, "Selected Agent");
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timeline =
+        SnapshotDto agent = CreateAgent(agentId, "Selected Agent");
+        IReadOnlyList<TimelineEntryDto> timeline =
         [
             CreateEntry(agentId, "Selected history")
         ];
@@ -61,25 +61,25 @@ public sealed class AgentHistoryPaneTests
         Assert.IsTrue(cut.Find(".agent-system-prompt-button").HasAttribute("disabled"));
     }
 
-    private static ProjectAgentSnapshotDto CreateAgent(Guid agentId, string displayName) => new()
+    private static SnapshotDto CreateAgent(Guid agentId, string displayName) => new()
     {
         AgentId = agentId,
         GroupId = Guid.Parse("93000000-0000-0000-0000-000000000012"),
         RuntimeKey = displayName,
         DisplayName = displayName,
         SystemPrompt = "",
-        Status = ProjectAgentRunStatus.Running,
+        Status = RunStatus.Running,
         CreatedAtUtc = new DateTimeOffset(2026, 6, 1, 10, 0, 0, TimeSpan.Zero),
         HasLoadedHistory = true,
         TimelineEntries = [],
     };
 
-    private static ProjectAgentTimelineEntryDto CreateEntry(Guid agentId, string message) => new()
+    private static TimelineEntryDto CreateEntry(Guid agentId, string message) => new()
     {
         TimelineEntryId = Guid.Parse("93000000-0000-0000-0000-000000000013"),
         AgentId = agentId,
         Sequence = 1,
-        EntryKind = ProjectAgentTimelineEntryKind.Output,
+        EntryKind = TimelineEntryKind.Output,
         OccurredAtUtc = new DateTimeOffset(2026, 6, 1, 10, 1, 0, TimeSpan.Zero),
         Message = message,
     };

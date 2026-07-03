@@ -4,39 +4,39 @@ using CodeSnifferDog.Modules.Tools.Report;
 
 namespace CodeSnifferDog.Workflows.Report;
 
-internal sealed class DiffService(IRuleReportIssueStore reportIssueStore)
+internal sealed class DiffService(IIssueStore reportIssueStore)
 {
-    private readonly IRuleReportIssueStore _reportIssueStore = reportIssueStore;
+    private readonly IIssueStore _reportIssueStore = reportIssueStore;
 
-    public async Task<RuleReportDiff> ComputeAndStoreDiffAsync(
+    public async Task<Diff> ComputeAndStoreDiffAsync(
         RuleReportKey ruleReportKey,
         RuleFlowKey ruleFlowKey,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<StoredRuleReportIssue> previousSnapshot =
+        IReadOnlyList<StoredIssue> previousSnapshot =
             await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
-        IReadOnlyList<StoredRuleReportIssue> currentIssues =
+        IReadOnlyList<StoredIssue> currentIssues =
             await _reportIssueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
-        RuleReportDiff diff = BuildDiff(previousSnapshot, currentIssues);
+        Diff diff = BuildDiff(previousSnapshot, currentIssues);
         await _reportIssueStore.SetLatestDiffAsync(ruleFlowKey, diff, cancellationToken).ConfigureAwait(false);
         return diff;
     }
 
-    private static RuleReportDiff BuildDiff(
-        IReadOnlyList<StoredRuleReportIssue> previousSnapshot,
-        IReadOnlyList<StoredRuleReportIssue> currentIssues)
+    private static Diff BuildDiff(
+        IReadOnlyList<StoredIssue> previousSnapshot,
+        IReadOnlyList<StoredIssue> currentIssues)
     {
-        Dictionary<string, StoredRuleReportIssue> previousById = previousSnapshot.ToDictionary(issue => issue.RuleReportIssueId, StringComparer.Ordinal);
-        Dictionary<string, StoredRuleReportIssue> currentById = currentIssues.ToDictionary(issue => issue.RuleReportIssueId, StringComparer.Ordinal);
+        Dictionary<string, StoredIssue> previousById = previousSnapshot.ToDictionary(issue => issue.RuleReportIssueId, StringComparer.Ordinal);
+        Dictionary<string, StoredIssue> currentById = currentIssues.ToDictionary(issue => issue.RuleReportIssueId, StringComparer.Ordinal);
 
-        List<StoredRuleReportIssue> created = [];
-        List<StoredRuleReportIssue> updated = [];
-        List<StoredRuleReportIssue> deleted = [];
+        List<StoredIssue> created = [];
+        List<StoredIssue> updated = [];
+        List<StoredIssue> deleted = [];
 
-        foreach ((string id, StoredRuleReportIssue currentIssue) in currentById)
+        foreach ((string id, StoredIssue currentIssue) in currentById)
         {
-            if (!previousById.TryGetValue(id, out StoredRuleReportIssue? previousIssue))
+            if (!previousById.TryGetValue(id, out StoredIssue? previousIssue))
             {
                 created.Add(currentIssue);
                 continue;
@@ -46,11 +46,11 @@ internal sealed class DiffService(IRuleReportIssueStore reportIssueStore)
                 updated.Add(currentIssue);
         }
 
-        foreach ((string id, StoredRuleReportIssue previousIssue) in previousById)
+        foreach ((string id, StoredIssue previousIssue) in previousById)
             if (!currentById.ContainsKey(id))
                 deleted.Add(previousIssue);
 
-        return new RuleReportDiff
+        return new Diff
         {
             CreatedIssues = created,
             UpdatedIssues = updated,
@@ -58,7 +58,7 @@ internal sealed class DiffService(IRuleReportIssueStore reportIssueStore)
         };
     }
 
-    private static bool AreEquivalent(StoredRuleReportIssue left, StoredRuleReportIssue right)
+    private static bool AreEquivalent(StoredIssue left, StoredIssue right)
         =>
         left.RuleReportIssueId == right.RuleReportIssueId &&
         left.IssueType == right.IssueType &&

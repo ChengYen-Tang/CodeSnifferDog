@@ -19,7 +19,7 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         =>
         new(ChatRole.User, _messageTemplates.MissingProjectPlanSubmissionMessage);
 
-    public List<ChatMessage> CreateVerifierMessages(IReadOnlyList<StoredProjectPlanTaskItem> taskItems)
+    public List<ChatMessage> CreateVerifierMessages(IReadOnlyList<StoredTaskItem> taskItems)
         =>
     [
         new(ChatRole.User, BuildVerifierInput(taskItems)),
@@ -29,7 +29,7 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         =>
         $"{_messageTemplates.PlanInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(scanProject)}";
 
-    private string BuildVerifierInput(IReadOnlyList<StoredProjectPlanTaskItem> taskItems)
+    private string BuildVerifierInput(IReadOnlyList<StoredTaskItem> taskItems)
         =>
         $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItems)}";
 }

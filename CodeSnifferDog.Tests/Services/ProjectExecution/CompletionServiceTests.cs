@@ -1,7 +1,12 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
+using AnalysisRuleDefinition = CodeSnifferDog.Server.Services.ProjectExecution.Analysis.RuleDefinition;
 using CodeSnifferDog.Server.Services.ProjectReports;
 using CodeSnifferDog.Server.Services.ProjectReports.Projection;
 using CodeSnifferDog.Server.Services.ProjectReports.Queries;
@@ -28,7 +33,7 @@ public sealed class CompletionServiceTests
             service.CompleteAnalysisAsync(
                 projectId,
                 CreateRules(),
-                new ReviewAgentTeamAnalysisResult
+                new AnalysisResult
                 {
                     PreparationSucceeded = true,
                     ReviewStageSucceeded = true,
@@ -50,12 +55,12 @@ public sealed class CompletionServiceTests
         using ServiceProvider services = CreateServices();
         await SeedProjectAsync(services, projectId, seedExistingReport: false);
         CompletionService service = CreateService(services);
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules = CreateRules();
+        IReadOnlyList<AnalysisRuleDefinition> rules = CreateRules();
 
         await service.CompleteAnalysisAsync(
             projectId,
             rules,
-            new ReviewAgentTeamAnalysisResult
+            new AnalysisResult
             {
                 PreparationSucceeded = true,
                 ReviewStageSucceeded = false,
@@ -76,13 +81,13 @@ public sealed class CompletionServiceTests
         using ServiceProvider services = CreateServices();
         await SeedProjectAsync(services, projectId, seedExistingReport: true);
         CompletionService service = CreateService(services);
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules = CreateRules();
+        IReadOnlyList<AnalysisRuleDefinition> rules = CreateRules();
 
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             service.CompleteAnalysisAsync(
                 projectId,
                 rules,
-                new ReviewAgentTeamAnalysisResult
+                new AnalysisResult
                 {
                     PreparationSucceeded = true,
                     ReviewStageSucceeded = true,
@@ -108,7 +113,7 @@ public sealed class CompletionServiceTests
             service.CompleteAnalysisAsync(
                 projectId,
                 CreateRules(),
-                new ReviewAgentTeamAnalysisResult
+                new AnalysisResult
                 {
                     PreparationSucceeded = true,
                     ReviewStageSucceeded = true,
@@ -182,7 +187,7 @@ public sealed class CompletionServiceTests
         await dbContext.SaveChangesAsync();
     }
 
-    private static IReadOnlyList<ProjectExecutionRuleDefinition> CreateRules() =>
+    private static IReadOnlyList<AnalysisRuleDefinition> CreateRules() =>
     [
         new()
         {
@@ -198,10 +203,10 @@ public sealed class CompletionServiceTests
         },
     ];
 
-    private static IReadOnlyList<ReviewAgentTeamRuleReport> CreateRuleReports(
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+    private static IReadOnlyList<RuleReport> CreateRuleReports(
+        IReadOnlyList<AnalysisRuleDefinition> rules,
         bool withFindings) =>
-        [.. rules.Select(rule => new ReviewAgentTeamRuleReport
+        [.. rules.Select(rule => new RuleReport
         {
             RuleKey = rule.RuleKey,
             MarkdownContent = withFindings

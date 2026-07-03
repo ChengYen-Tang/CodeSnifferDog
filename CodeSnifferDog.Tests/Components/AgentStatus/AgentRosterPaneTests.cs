@@ -14,14 +14,14 @@ public sealed class AgentRosterPaneTests
         using Bunit.TestContext context = new();
         Guid groupId = Guid.Parse("91000000-0000-0000-0000-000000000001");
         Guid selectedAgentId = Guid.Parse("91000000-0000-0000-0000-000000000002");
-        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups =
+        IReadOnlyList<GroupSnapshotDto> groups =
         [
             CreateGroup(
                 groupId,
                 "Review Group",
                 [
-                    CreateAgent(selectedAgentId, groupId, "Selected Agent", ProjectAgentRunStatus.Running),
-                    CreateAgent(Guid.Parse("91000000-0000-0000-0000-000000000003"), groupId, "Waiting Agent", ProjectAgentRunStatus.Waiting),
+                    CreateAgent(selectedAgentId, groupId, "Selected Agent", RunStatus.Running),
+                    CreateAgent(Guid.Parse("91000000-0000-0000-0000-000000000003"), groupId, "Waiting Agent", RunStatus.Waiting),
                 ])
         ];
 
@@ -46,7 +46,7 @@ public sealed class AgentRosterPaneTests
 
         IRenderedComponent<AgentRosterPane> cut = context.RenderComponent<AgentRosterPane>(
             parameters => parameters
-                .Add(component => component.Groups, [CreateGroup(groupId, "Group", [CreateAgent(agentId, groupId, "Agent", ProjectAgentRunStatus.Waiting)])])
+                .Add(component => component.Groups, [CreateGroup(groupId, "Group", [CreateAgent(agentId, groupId, "Agent", RunStatus.Waiting)])])
                 .Add(component => component.OnSelectAgent, EventCallback.Factory.Create<Guid>(this, value => selectedAgentId = value)));
 
         cut.Find(".agent-roster-node").Click();
@@ -58,7 +58,7 @@ public sealed class AgentRosterPaneTests
     public void LargeRoster_RendersAllAgents()
     {
         using Bunit.TestContext context = new();
-        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups = Enumerable.Range(0, 20)
+        IReadOnlyList<GroupSnapshotDto> groups = Enumerable.Range(0, 20)
             .Select(groupIndex =>
             {
                 Guid groupId = Guid.Parse($"91000000-0000-0001-0000-{groupIndex:000000000000}");
@@ -70,7 +70,7 @@ public sealed class AgentRosterPaneTests
                             Guid.Parse($"91000000-0000-0002-{groupIndex:0000}-{agentIndex:000000000000}"),
                             groupId,
                             $"Agent {groupIndex}-{agentIndex}",
-                            ProjectAgentRunStatus.Waiting))
+                            RunStatus.Waiting))
                         .ToList());
             })
             .ToList();
@@ -82,10 +82,10 @@ public sealed class AgentRosterPaneTests
         Assert.AreEqual(200, cut.FindAll(".agent-roster-node").Count);
     }
 
-    private static ProjectAgentGroupSnapshotDto CreateGroup(
+    private static GroupSnapshotDto CreateGroup(
         Guid groupId,
         string displayName,
-        IReadOnlyList<ProjectAgentSnapshotDto> agents) => new()
+        IReadOnlyList<SnapshotDto> agents) => new()
         {
             GroupId = groupId,
             RuntimeKey = displayName,
@@ -94,11 +94,11 @@ public sealed class AgentRosterPaneTests
             Agents = agents,
         };
 
-    private static ProjectAgentSnapshotDto CreateAgent(
+    private static SnapshotDto CreateAgent(
         Guid agentId,
         Guid groupId,
         string displayName,
-        ProjectAgentRunStatus status) => new()
+        RunStatus status) => new()
         {
             AgentId = agentId,
             GroupId = groupId,

@@ -2,45 +2,45 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 
-internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
+internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
 {
     private SnapshotLookup _lookup = SnapshotLookup.From(snapshot?.AgentGroups);
 
-    public ProjectAgentStatusSnapshotDto? Snapshot { get; private set; } = snapshot;
+    public StatusSnapshotDto? Snapshot { get; private set; } = snapshot;
 
-    public IReadOnlyList<ProjectAgentGroupSnapshotDto> Groups => Snapshot?.AgentGroups ?? [];
+    public IReadOnlyList<GroupSnapshotDto> Groups => Snapshot?.AgentGroups ?? [];
 
-    public void Replace(ProjectAgentStatusSnapshotDto? snapshot)
+    public void Replace(StatusSnapshotDto? snapshot)
     {
         Snapshot = snapshot;
         RebuildLookup();
     }
 
-    public bool ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
+    public bool ApplyLiveUpdate(LiveUpdateDto update)
     {
         if (Snapshot is null)
             return false;
 
         return update.Kind switch
         {
-            ProjectAgentLiveUpdateKind.ProjectStatusChanged => UpdateProjectStatus(update.ProjectStatus),
-            ProjectAgentLiveUpdateKind.AgentGroupUpserted => UpsertGroup(update.Group),
-            ProjectAgentLiveUpdateKind.AgentUpserted => UpsertAgent(update.Agent),
-            ProjectAgentLiveUpdateKind.AgentStatusChanged => UpdateAgentStatus(update.AgentStatus),
+            LiveUpdateKind.ProjectStatusChanged => UpdateProjectStatus(update.ProjectStatus),
+            LiveUpdateKind.AgentGroupUpserted => UpsertGroup(update.Group),
+            LiveUpdateKind.AgentUpserted => UpsertAgent(update.Agent),
+            LiveUpdateKind.AgentStatusChanged => UpdateAgentStatus(update.AgentStatus),
             _ => false,
         };
     }
 
-    public ProjectAgentSnapshotDto? FindAgent(Guid agentId)
+    public SnapshotDto? FindAgent(Guid agentId)
     {
         if (!_lookup.TryGetAgentLocation(agentId, out AgentStatusSnapshotAgentLocation location))
             return null;
 
-        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups = Groups;
+        IReadOnlyList<GroupSnapshotDto> groups = Groups;
         if (location.GroupIndex >= groups.Count)
             return null;
 
-        IReadOnlyList<ProjectAgentSnapshotDto> agents = groups[location.GroupIndex].Agents;
+        IReadOnlyList<SnapshotDto> agents = groups[location.GroupIndex].Agents;
         return location.AgentIndex < agents.Count ? agents[location.AgentIndex] : null;
     }
 
@@ -48,7 +48,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
 
     public Guid? GetFirstAgentId() => _lookup.FirstAgentId;
 
-    public IReadOnlyList<ProjectAgentTimelineEntryDto> GetHistory(Guid agentId) =>
+    public IReadOnlyList<TimelineEntryDto> GetHistory(Guid agentId) =>
         FindAgent(agentId)?.TimelineEntries ?? [];
 
     public void ReleaseHistoryExcept(Guid? agentIdToKeep)
@@ -56,15 +56,15 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         if (Snapshot is null)
             return;
 
-        List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups
-            .Select(group => new ProjectAgentGroupSnapshotDto
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups
+            .Select(group => new GroupSnapshotDto
             {
                 GroupId = group.GroupId,
                 RuntimeKey = group.RuntimeKey,
                 DisplayName = group.DisplayName,
                 CreatedAtUtc = group.CreatedAtUtc,
                 Agents = group.Agents
-                    .Select(agent => new ProjectAgentSnapshotDto
+                    .Select(agent => new SnapshotDto
                     {
                         AgentId = agent.AgentId,
                         GroupId = agent.GroupId,
@@ -83,15 +83,15 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         ReplaceSnapshotGroups(groups);
     }
 
-    private bool UpsertGroup(ProjectAgentGroupLiveDto? group)
+    private bool UpsertGroup(GroupLiveDto? group)
     {
         if (group is null || Snapshot is null)
             return false;
 
-        List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
         bool hasExistingGroup = _lookup.TryGetGroupIndex(group.GroupId, out int existingIndex);
-        ProjectAgentGroupSnapshotDto nextGroup = hasExistingGroup
-            ? new ProjectAgentGroupSnapshotDto
+        GroupSnapshotDto nextGroup = hasExistingGroup
+            ? new GroupSnapshotDto
             {
                 GroupId = group.GroupId,
                 RuntimeKey = group.RuntimeKey,
@@ -99,7 +99,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
                 CreatedAtUtc = group.CreatedAtUtc,
                 Agents = groups[existingIndex].Agents,
             }
-            : new ProjectAgentGroupSnapshotDto
+            : new GroupSnapshotDto
             {
                 GroupId = group.GroupId,
                 RuntimeKey = group.RuntimeKey,
@@ -117,7 +117,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         return true;
     }
 
-    private bool UpsertAgent(ProjectAgentLiveDto? agent)
+    private bool UpsertAgent(LiveDto? agent)
     {
         if (agent is null || Snapshot is null)
             return false;
@@ -125,17 +125,17 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         if (!_lookup.TryGetGroupIndex(agent.GroupId, out int groupIndex))
             return false;
 
-        List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
-        ProjectAgentGroupSnapshotDto group = groups[groupIndex];
-        List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+        GroupSnapshotDto group = groups[groupIndex];
+        List<SnapshotDto> agents = group.Agents.ToList();
         bool hasExistingAgent =
             _lookup.TryGetAgentLocation(agent.AgentId, out AgentStatusSnapshotAgentLocation existingLocation) &&
             existingLocation.GroupIndex == groupIndex;
         int existingIndex = hasExistingAgent ? existingLocation.AgentIndex : -1;
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+        IReadOnlyList<TimelineEntryDto> timelineEntries =
             hasExistingAgent ? agents[existingIndex].TimelineEntries : [];
 
-        ProjectAgentSnapshotDto nextAgent = new()
+        SnapshotDto nextAgent = new()
         {
             AgentId = agent.AgentId,
             GroupId = agent.GroupId,
@@ -153,7 +153,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         else
             agents.Add(nextAgent);
 
-        groups[groupIndex] = new ProjectAgentGroupSnapshotDto
+        groups[groupIndex] = new GroupSnapshotDto
         {
             GroupId = group.GroupId,
             RuntimeKey = group.RuntimeKey,
@@ -169,7 +169,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         return true;
     }
 
-    private bool UpdateAgentStatus(ProjectAgentStatusChangedDto? agentStatus)
+    private bool UpdateAgentStatus(StatusChangedDto? agentStatus)
     {
         if (agentStatus is null || Snapshot is null)
             return false;
@@ -177,11 +177,11 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         if (!_lookup.TryGetAgentLocation(agentStatus.AgentId, out AgentStatusSnapshotAgentLocation location))
             return false;
 
-        List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
-        ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
-        List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
-        ProjectAgentSnapshotDto existingAgent = agents[location.AgentIndex];
-        agents[location.AgentIndex] = new ProjectAgentSnapshotDto
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+        GroupSnapshotDto group = groups[location.GroupIndex];
+        List<SnapshotDto> agents = group.Agents.ToList();
+        SnapshotDto existingAgent = agents[location.AgentIndex];
+        agents[location.AgentIndex] = new SnapshotDto
         {
             AgentId = existingAgent.AgentId,
             GroupId = existingAgent.GroupId,
@@ -194,7 +194,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
             TimelineEntries = existingAgent.TimelineEntries,
         };
 
-        groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto
+        groups[location.GroupIndex] = new GroupSnapshotDto
         {
             GroupId = group.GroupId,
             RuntimeKey = group.RuntimeKey,
@@ -208,7 +208,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
     }
 
     public TimelineMutationResult? UpsertTimelineEntry(
-        ProjectAgentTimelineEntryDto? timelineEntry,
+        TimelineEntryDto? timelineEntry,
         long latestSequence)
     {
         if (timelineEntry is null || Snapshot is null)
@@ -217,14 +217,14 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         if (!_lookup.TryGetAgentLocation(timelineEntry.AgentId, out AgentStatusSnapshotAgentLocation location))
             return null;
 
-        List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
-        ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
-        List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
-        ProjectAgentSnapshotDto agent = agents[location.AgentIndex];
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+        GroupSnapshotDto group = groups[location.GroupIndex];
+        List<SnapshotDto> agents = group.Agents.ToList();
+        SnapshotDto agent = agents[location.AgentIndex];
         TimelineMutationResult result =
             TimelineEntryList.UpsertWithLatestSequence(agent.TimelineEntries, timelineEntry, latestSequence);
 
-        agents[location.AgentIndex] = new ProjectAgentSnapshotDto
+        agents[location.AgentIndex] = new SnapshotDto
         {
             AgentId = agent.AgentId,
             GroupId = agent.GroupId,
@@ -237,7 +237,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
             TimelineEntries = result.TimelineEntries,
         };
 
-        groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto
+        groups[location.GroupIndex] = new GroupSnapshotDto
         {
             GroupId = group.GroupId,
             RuntimeKey = group.RuntimeKey,
@@ -259,16 +259,16 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
             return null;
 
         HashSet<Guid> timelineEntryIdSet = [.. timelineEntryIds];
-        List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
-        ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
-        List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
-        ProjectAgentSnapshotDto agent = agents[location.AgentIndex];
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+        GroupSnapshotDto group = groups[location.GroupIndex];
+        List<SnapshotDto> agents = group.Agents.ToList();
+        SnapshotDto agent = agents[location.AgentIndex];
         TimelineMutationResult? result =
             TimelineEntryList.RemoveWithLatestSequence(agent.TimelineEntries, timelineEntryIdSet);
         if (result is null)
             return null;
 
-        agents[location.AgentIndex] = new ProjectAgentSnapshotDto
+        agents[location.AgentIndex] = new SnapshotDto
         {
             AgentId = agent.AgentId,
             GroupId = agent.GroupId,
@@ -281,7 +281,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
             TimelineEntries = result.TimelineEntries,
         };
 
-        groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto
+        groups[location.GroupIndex] = new GroupSnapshotDto
         {
             GroupId = group.GroupId,
             RuntimeKey = group.RuntimeKey,
@@ -294,7 +294,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         return result;
     }
 
-    public void ReplaceAgentHistory(Guid agentId, IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
+    public void ReplaceAgentHistory(Guid agentId, IReadOnlyList<TimelineEntryDto> timelineEntries)
     {
         if (Snapshot is null)
             return;
@@ -302,11 +302,11 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         if (!_lookup.TryGetAgentLocation(agentId, out AgentStatusSnapshotAgentLocation location))
             return;
 
-        List<ProjectAgentGroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
-        ProjectAgentGroupSnapshotDto group = groups[location.GroupIndex];
-        List<ProjectAgentSnapshotDto> agents = group.Agents.ToList();
-        ProjectAgentSnapshotDto existingAgent = agents[location.AgentIndex];
-        agents[location.AgentIndex] = new ProjectAgentSnapshotDto
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+        GroupSnapshotDto group = groups[location.GroupIndex];
+        List<SnapshotDto> agents = group.Agents.ToList();
+        SnapshotDto existingAgent = agents[location.AgentIndex];
+        agents[location.AgentIndex] = new SnapshotDto
         {
             AgentId = existingAgent.AgentId,
             GroupId = existingAgent.GroupId,
@@ -319,7 +319,7 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
             TimelineEntries = TimelineEntryList.Normalize(timelineEntries),
         };
 
-        groups[location.GroupIndex] = new ProjectAgentGroupSnapshotDto
+        groups[location.GroupIndex] = new GroupSnapshotDto
         {
             GroupId = group.GroupId,
             RuntimeKey = group.RuntimeKey,
@@ -331,12 +331,12 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         ReplaceSnapshotGroups(groups);
     }
 
-    private bool UpdateProjectStatus(ProjectExecutionStatusChangedDto? projectStatus)
+    private bool UpdateProjectStatus(ExecutionStatusChangedDto? projectStatus)
     {
         if (projectStatus is null || Snapshot is null)
             return false;
 
-        Snapshot = new ProjectAgentStatusSnapshotDto
+        Snapshot = new StatusSnapshotDto
         {
             ProjectId = Snapshot.ProjectId,
             ProjectStatus = projectStatus.Status,
@@ -347,12 +347,12 @@ internal sealed class SnapshotState(ProjectAgentStatusSnapshotDto? snapshot)
         return true;
     }
 
-    private void ReplaceSnapshotGroups(IReadOnlyList<ProjectAgentGroupSnapshotDto> groups)
+    private void ReplaceSnapshotGroups(IReadOnlyList<GroupSnapshotDto> groups)
     {
         if (Snapshot is null)
             return;
 
-        Snapshot = new ProjectAgentStatusSnapshotDto
+        Snapshot = new StatusSnapshotDto
         {
             ProjectId = Snapshot.ProjectId,
             ProjectStatus = Snapshot.ProjectStatus,

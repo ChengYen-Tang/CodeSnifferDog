@@ -15,10 +15,10 @@ public sealed class AgentTimelineEntryViewTests
 
         IRenderedComponent<AgentTimelineEntryView> input = RenderEntry(
             context,
-            CreateEntry(ProjectAgentTimelineEntryKind.Input, "User request"));
+            CreateEntry(TimelineEntryKind.Input, "User request"));
         IRenderedComponent<AgentTimelineEntryView> output = RenderEntry(
             context,
-            CreateEntry(ProjectAgentTimelineEntryKind.Output, "Agent response"));
+            CreateEntry(TimelineEntryKind.Output, "Agent response"));
 
         StringAssert.Contains(input.Find(".agent-message").ClassName, "user-message");
         StringAssert.Contains(input.Markup, "User request");
@@ -30,8 +30,8 @@ public sealed class AgentTimelineEntryViewTests
     public void RendersToolSummaryAndExpandedDetails()
     {
         using Bunit.TestContext context = new();
-        ProjectAgentTimelineEntryDto entry = CreateEntry(
-            ProjectAgentTimelineEntryKind.Tool,
+        TimelineEntryDto entry = CreateEntry(
+            TimelineEntryKind.Tool,
             message: null,
             toolCallId: "tool-call-1",
             toolName: "Shell",
@@ -50,8 +50,8 @@ public sealed class AgentTimelineEntryViewTests
     {
         using Bunit.TestContext context = new();
         string? toggledKey = null;
-        ProjectAgentTimelineEntryDto entry = CreateEntry(
-            ProjectAgentTimelineEntryKind.Tool,
+        TimelineEntryDto entry = CreateEntry(
+            TimelineEntryKind.Tool,
             message: null,
             toolCallId: "tool-call-2",
             toolName: "Ripgrep");
@@ -73,7 +73,7 @@ public sealed class AgentTimelineEntryViewTests
 
         IRenderedComponent<AgentTimelineEntryView> cut = RenderEntry(
             context,
-            CreateEntry(ProjectAgentTimelineEntryKind.Compaction, "Transcript compacted"));
+            CreateEntry(TimelineEntryKind.Compaction, "Transcript compacted"));
 
         Assert.AreEqual(1, cut.FindAll(".agent-compaction-notice").Count);
         StringAssert.Contains(cut.Markup, "Transcript compacted");
@@ -82,15 +82,15 @@ public sealed class AgentTimelineEntryViewTests
 
     private static IRenderedComponent<AgentTimelineEntryView> RenderEntry(
         Bunit.TestContext context,
-        ProjectAgentTimelineEntryDto entry,
+        TimelineEntryDto entry,
         bool isExpanded = false) =>
         context.RenderComponent<AgentTimelineEntryView>(
             parameters => parameters
                 .Add(component => component.Entry, entry)
                 .Add(component => component.IsExpanded, isExpanded));
 
-    private static ProjectAgentTimelineEntryDto CreateEntry(
-        ProjectAgentTimelineEntryKind kind,
+    private static TimelineEntryDto CreateEntry(
+        TimelineEntryKind kind,
         string? message,
         string? toolCallId = null,
         string? toolName = null,

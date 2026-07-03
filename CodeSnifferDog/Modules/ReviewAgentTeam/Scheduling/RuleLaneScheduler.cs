@@ -1,23 +1,27 @@
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Models.ReviewStage;
 using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Modules.Concurrency;
 using FluentResults;
+using ProjectPlanWorkflowResult = CodeSnifferDog.Models.ProjectPlan.WorkflowResult;
+using ReviewStageWorkflowResult = CodeSnifferDog.Models.ReviewStage.WorkflowResult;
+using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
 
 namespace CodeSnifferDog.Modules.ReviewAgentTeam.Scheduling;
 
 internal sealed class RuleLaneScheduler(
-    Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
+    Func<string, string, string, StoredTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> ruleFlowWorkflowRunner,
     IReviewAgentConcurrencyGate concurrencyGate)
 {
-    private readonly Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> _ruleFlowWorkflowRunner = ruleFlowWorkflowRunner;
+    private readonly Func<string, string, string, StoredTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> _ruleFlowWorkflowRunner = ruleFlowWorkflowRunner;
     private readonly IReviewAgentConcurrencyGate _concurrencyGate = concurrencyGate;
 
     public async Task<Result<IReadOnlyList<ProjectFlowResult>>> RunAsync(
         string repositoryRootPath,
         IReadOnlyList<ProjectPlanWorkflowResult> projectPlanResults,
-        IReadOnlyList<ReviewAgentRuleDefinition> ruleDefinitions,
+        IReadOnlyList<RuleDefinition> ruleDefinitions,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(repositoryRootPath))
@@ -153,7 +157,7 @@ internal sealed class RuleLaneScheduler(
         string repositoryRootPath,
         string ruleKey,
         string ruleMarkdown,
-        StoredProjectPlanTaskItem taskItem,
+        StoredTaskItem taskItem,
         CancellationToken cancellationToken)
     {
         try
@@ -171,22 +175,22 @@ internal sealed class RuleLaneScheduler(
         }
     }
 
-    private sealed class PendingRuleWorkItem(int projectIndex, int taskItemIndex, StoredProjectPlanTaskItem taskItem)
+    private sealed class PendingRuleWorkItem(int projectIndex, int taskItemIndex, StoredTaskItem taskItem)
     {
         public int ProjectIndex { get; } = projectIndex;
 
         public int TaskItemIndex { get; } = taskItemIndex;
 
-        public StoredProjectPlanTaskItem TaskItem { get; } = taskItem;
+        public StoredTaskItem TaskItem { get; } = taskItem;
     }
 
-    private sealed class RuleLaneState(int ruleIndex, ReviewAgentRuleDefinition ruleDefinition)
+    private sealed class RuleLaneState(int ruleIndex, RuleDefinition ruleDefinition)
     {
         private readonly Queue<PendingRuleWorkItem> _queue = [];
 
         public int RuleIndex { get; } = ruleIndex;
 
-        public ReviewAgentRuleDefinition RuleDefinition { get; } = ruleDefinition;
+        public RuleDefinition RuleDefinition { get; } = ruleDefinition;
 
         public bool IsRunning { get; set; }
 

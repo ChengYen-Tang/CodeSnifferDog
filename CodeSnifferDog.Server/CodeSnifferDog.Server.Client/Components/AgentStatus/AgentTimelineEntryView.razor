@@ -1,6 +1,6 @@
 @using CodeSnifferDog.Server.Shared.AgentStatus
 
-@if (Entry.EntryKind == ProjectAgentTimelineEntryKind.Compaction)
+@if (Entry.EntryKind == TimelineEntryKind.Compaction)
 {
     <div class="agent-compaction-notice" @key="Entry.TimelineEntryId">
         <span class="agent-compaction-rule"></span>
@@ -17,8 +17,8 @@
 }
 else
 {
-    var isInput = Entry.EntryKind == ProjectAgentTimelineEntryKind.Input;
-    var isTool = Entry.EntryKind == ProjectAgentTimelineEntryKind.Tool;
+    var isInput = Entry.EntryKind == TimelineEntryKind.Input;
+    var isTool = Entry.EntryKind == TimelineEntryKind.Tool;
 
     <article class="agent-message @(isInput ? "user-message" : "agent-message-left") @(isTool ? "tool-message" : null)" @key="Entry.TimelineEntryId">
         <div class="agent-message-bubble">
@@ -50,7 +50,7 @@ else
 
 @code {
     [Parameter, EditorRequired]
-    public ProjectAgentTimelineEntryDto Entry { get; set; } = null!;
+    public TimelineEntryDto Entry { get; set; } = null!;
 
     [Parameter]
     public bool IsExpanded { get; set; }

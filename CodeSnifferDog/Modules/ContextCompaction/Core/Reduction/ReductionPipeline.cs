@@ -1,25 +1,25 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 
 internal sealed class ReductionPipeline(
-    OperationalContextCompactionOptions options,
-    IOperationalContextSummaryPromptProvider summaryPromptProvider,
-    IOperationalContextCompactionSummarizer summarizer,
-    IOperationalContextCompactionArtifactsProvider? artifactsProvider,
-    IEnumerable<IOperationalContextCompactionHook>? hooks,
-    IEnumerable<IOperationalContextCompactionCleanupHandler>? cleanupHandlers)
+    CompactionOptions options,
+    ISummaryPromptProvider summaryPromptProvider,
+    ISummarizer summarizer,
+    ICompactionArtifactsProvider? artifactsProvider,
+    IEnumerable<IHook>? hooks,
+    IEnumerable<ICleanupHandler>? cleanupHandlers)
 {
     private readonly CompactionHookDispatcher _hookDispatcher = new(hooks, cleanupHandlers);
     private readonly CompactionResultBuilder _resultBuilder = new(options, artifactsProvider);
 
-    public async Task<OperationalContextCompactionResult> CompactAsync(
+    public async Task<CompactionResult> CompactAsync(
         IEnumerable<ChatMessage> messages,
-        OperationalContextCompactionReason reason,
+        CompactionReason reason,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -35,7 +35,7 @@ internal sealed class ReductionPipeline(
             await summaryPromptProvider.GetPromptAsync(cancellationToken).ConfigureAwait(false));
 
         if (string.IsNullOrWhiteSpace(summaryPrompt))
-            throw new OperationalContextCompactionException("Operational context compaction summary prompt provider returned empty content.");
+            throw new CompactionException("Operational context compaction summary prompt provider returned empty content.");
 
         try
         {
@@ -43,7 +43,7 @@ internal sealed class ReductionPipeline(
             summary = SummaryContract.Normalize(summary);
             SummaryContract.Validate(summary, options);
 
-            OperationalContextCompactionResult result = await _resultBuilder
+            CompactionResult result = await _resultBuilder
                 .CreateResultAsync(materializedMessages, summary, reason, cancellationToken)
                 .ConfigureAwait(false);
             IReadOnlyList<ChatMessage> compactedMessages = CompactionMessageBuilder.Build(result);
@@ -51,21 +51,21 @@ internal sealed class ReductionPipeline(
             await _hookDispatcher.RunCleanupAsync(materializedMessages, compactedMessages, reason, cancellationToken).ConfigureAwait(false);
             return result;
         }
-        catch (OperationalContextCompactionException)
+        catch (CompactionException)
         {
             throw;
         }
         catch (Exception ex)
         {
-            throw new OperationalContextCompactionException("Operational context compaction summary generation failed.", ex);
+            throw new CompactionException("Operational context compaction summary generation failed.", ex);
         }
     }
 
     private bool ShouldCompact(
         IReadOnlyList<ChatMessage> messages,
-        OperationalContextCompactionReason reason)
+        CompactionReason reason)
     {
-        if (reason == OperationalContextCompactionReason.Reactive)
+        if (reason == CompactionReason.Reactive)
             return true;
 
         int estimatedTokens = TokenEstimator.Estimate(messages);

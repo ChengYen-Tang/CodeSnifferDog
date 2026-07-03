@@ -4,9 +4,9 @@ namespace CodeSnifferDog.Server.Services.ProjectReports.Projection;
 
 internal interface IProjectionMapper
 {
-    ProjectReportBundleDto MapBundle(ProjectProjection project);
+    BundleDto MapBundle(ProjectProjection project);
 
-    ProjectReportListDto MapList(ProjectProjection project);
+    ListDto MapList(ProjectProjection project);
 
-    ProjectReportContentDto MapContent(RuleReportProjection report);
+    ContentDto MapContent(RuleReportProjection report);
 }

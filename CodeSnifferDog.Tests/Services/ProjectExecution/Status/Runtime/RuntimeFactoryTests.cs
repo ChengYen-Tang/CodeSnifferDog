@@ -1,4 +1,8 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
@@ -67,8 +71,8 @@ public sealed class RuntimeFactoryTests
         Assert.AreEqual("Group 1", group.DisplayName);
         Assert.AreEqual("Agent 1", agent.DisplayName);
         Assert.HasCount(2, liveUpdateNotifier.Updates);
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentGroupUpserted, liveUpdateNotifier.Updates[0].Kind);
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentUpserted, liveUpdateNotifier.Updates[1].Kind);
+        Assert.AreEqual(LiveUpdateKind.AgentGroupUpserted, liveUpdateNotifier.Updates[0].Kind);
+        Assert.AreEqual(LiveUpdateKind.AgentUpserted, liveUpdateNotifier.Updates[1].Kind);
     }
 
     [TestMethod]
@@ -136,9 +140,9 @@ public sealed class RuntimeFactoryTests
 
     private sealed class CollectingLiveUpdateNotifier : ILiveUpdateNotifier
     {
-        public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
+        public List<LiveUpdateDto> Updates { get; } = [];
 
-        public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default)
+        public Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken = default)
         {
             Updates.Add(update);
             return Task.CompletedTask;
@@ -156,23 +160,23 @@ public sealed class RuntimeFactoryTests
         public ProjectStatus MapProjectStatus(ProjectProcessingStatus status) =>
             _inner.MapProjectStatus(status);
 
-        public ProjectAgentRunStatus MapAgentStatus(
+        public RunStatus MapAgentStatus(
             PersistedAgentStatus status,
             ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) =>
             _inner.MapAgentStatus(status, exceptionStyle);
 
-        public ProjectAgentTimelineEntryKind MapTimelineEntryKind(
+        public TimelineEntryKind MapTimelineEntryKind(
             ProjectAgentTimelineEntryType entryType,
             ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) =>
             _inner.MapTimelineEntryKind(entryType, exceptionStyle);
 
-        public ProjectAgentGroupLiveDto MapGroup(GroupProjection group)
+        public GroupLiveDto MapGroup(GroupProjection group)
         {
             MapGroupCallCount++;
             return _inner.MapGroup(group);
         }
 
-        public ProjectAgentLiveDto MapAgent(
+        public LiveDto MapAgent(
             AgentProjection agent,
             ExceptionStyle exceptionStyle = ExceptionStyle.Persisted)
         {
@@ -180,7 +184,7 @@ public sealed class RuntimeFactoryTests
             return _inner.MapAgent(agent, exceptionStyle);
         }
 
-        public ProjectAgentTimelineEntryDto MapTimelineEntry(
+        public TimelineEntryDto MapTimelineEntry(
             TimelineEntryProjection entry,
             ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) =>
             _inner.MapTimelineEntry(entry, exceptionStyle);

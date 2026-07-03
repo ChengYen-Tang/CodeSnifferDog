@@ -46,7 +46,7 @@
 
 @code {
     [Parameter]
-    public ProjectAgentSnapshotDto? SelectedAgent { get; set; }
+    public SnapshotDto? SelectedAgent { get; set; }
 
     [Parameter]
     public Guid? SelectedAgentId { get; set; }
@@ -61,7 +61,7 @@
     public string? HistoryErrorMessage { get; set; }
 
     [Parameter]
-    public IReadOnlyList<ProjectAgentTimelineEntryDto> TimelineEntries { get; set; } = [];
+    public IReadOnlyList<TimelineEntryDto> TimelineEntries { get; set; } = [];
 
     [Parameter]
     public IReadOnlySet<string> ExpandedToolDetails { get; set; } = new HashSet<string>();

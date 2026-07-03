@@ -6,9 +6,9 @@ namespace CodeSnifferDog.Workflows.ProjectPlan;
 
 internal static class ResultFactory
 {
-    public static ProjectPlanWorkflowResult Create(
+    public static WorkflowResult Create(
         StoredScanProject scanProject,
-        IReadOnlyList<StoredProjectPlanTaskItem> taskItems,
+        IReadOnlyList<StoredTaskItem> taskItems,
         ReviewVerdict verdict,
         int planAttempts,
         int verifierAttempts,

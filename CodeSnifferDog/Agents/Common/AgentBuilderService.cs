@@ -1,19 +1,20 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Agents.Common;
 
 internal sealed class AgentBuilderService(
-    OperationalContextAgentCompactionOptions compactionOptions,
+    AgentCompactionOptions compactionOptions,
     ILoggerFactory? loggerFactory = null,
     IServiceProvider? serviceProvider = null)
 {
-    private readonly OperationalContextAgentCompactionOptions _compactionOptions = compactionOptions;
+    private readonly AgentCompactionOptions _compactionOptions = compactionOptions;
     private readonly ILoggerFactory? _loggerFactory = loggerFactory;
     private readonly IServiceProvider? _serviceProvider = serviceProvider;
 

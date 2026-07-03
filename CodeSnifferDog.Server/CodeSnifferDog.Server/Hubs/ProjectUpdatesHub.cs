@@ -16,7 +16,7 @@ public sealed class ProjectUpdatesHub : Hub
         _backfillService = backfillService;
     }
 
-    public async Task SubscribeToProject(ProjectAgentLiveSubscriptionRequestDto request)
+    public async Task SubscribeToProject(LiveSubscriptionRequestDto request)
     {
         ArgumentNullException.ThrowIfNull(request);
         CancellationToken cancellationToken = Context.ConnectionAborted;
@@ -24,8 +24,8 @@ public sealed class ProjectUpdatesHub : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, ProjectUpdatesContract.GetProjectChannelName(request.ProjectId), cancellationToken);
         await SwapAgentTimelineGroupAsync(request.ProjectId, request.AgentId, cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<ProjectAgentLiveUpdateDto> backfill = await _backfillService.GetBackfillAsync(request, cancellationToken).ConfigureAwait(false);
-        foreach (ProjectAgentLiveUpdateDto update in backfill)
+        IReadOnlyList<LiveUpdateDto> backfill = await _backfillService.GetBackfillAsync(request, cancellationToken).ConfigureAwait(false);
+        foreach (LiveUpdateDto update in backfill)
         {
             await Clients.Caller.SendAsync(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update, cancellationToken).ConfigureAwait(false);
         }

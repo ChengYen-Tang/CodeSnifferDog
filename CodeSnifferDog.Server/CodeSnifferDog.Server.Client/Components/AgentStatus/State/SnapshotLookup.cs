@@ -24,7 +24,7 @@ internal sealed class SnapshotLookup
 
     public Guid? FirstAgentId { get; }
 
-    public static SnapshotLookup From(IReadOnlyList<ProjectAgentGroupSnapshotDto>? groups)
+    public static SnapshotLookup From(IReadOnlyList<GroupSnapshotDto>? groups)
     {
         if (groups is null || groups.Count == 0)
             return Empty;
@@ -35,12 +35,12 @@ internal sealed class SnapshotLookup
 
         for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
         {
-            ProjectAgentGroupSnapshotDto group = groups[groupIndex];
+            GroupSnapshotDto group = groups[groupIndex];
             groupIndexesById[group.GroupId] = groupIndex;
 
             for (int agentIndex = 0; agentIndex < group.Agents.Count; agentIndex++)
             {
-                ProjectAgentSnapshotDto agent = group.Agents[agentIndex];
+                SnapshotDto agent = group.Agents[agentIndex];
                 firstAgentId ??= agent.AgentId;
                 agentLocationsById[agent.AgentId] = new AgentStatusSnapshotAgentLocation(groupIndex, agentIndex);
             }

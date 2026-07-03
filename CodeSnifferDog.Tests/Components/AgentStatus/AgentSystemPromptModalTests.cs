@@ -11,7 +11,7 @@ public sealed class AgentSystemPromptModalTests
     public void RendersModalForSelectedAgent()
     {
         using Bunit.TestContext context = new();
-        ProjectAgentSnapshotDto agent = CreateAgent("Scan Agent", "Inspect repository boundaries.");
+        SnapshotDto agent = CreateAgent("Scan Agent", "Inspect repository boundaries.");
 
         IRenderedComponent<AgentSystemPromptModal> cut = context.RenderComponent<AgentSystemPromptModal>(
             parameters => parameters
@@ -28,7 +28,7 @@ public sealed class AgentSystemPromptModalTests
     public void RendersFallbackPromptTextWhenSystemPromptIsEmpty()
     {
         using Bunit.TestContext context = new();
-        ProjectAgentSnapshotDto agent = CreateAgent("Agent", "");
+        SnapshotDto agent = CreateAgent("Agent", "");
 
         IRenderedComponent<AgentSystemPromptModal> cut = context.RenderComponent<AgentSystemPromptModal>(
             parameters => parameters
@@ -48,14 +48,14 @@ public sealed class AgentSystemPromptModalTests
         Assert.IsEmpty(cut.FindAll("#agent-system-prompt-modal"));
     }
 
-    private static ProjectAgentSnapshotDto CreateAgent(string displayName, string systemPrompt) => new()
+    private static SnapshotDto CreateAgent(string displayName, string systemPrompt) => new()
     {
         AgentId = Guid.Parse("94000000-0000-0000-0000-000000000001"),
         GroupId = Guid.Parse("94000000-0000-0000-0000-000000000002"),
         RuntimeKey = displayName,
         DisplayName = displayName,
         SystemPrompt = systemPrompt,
-        Status = ProjectAgentRunStatus.Waiting,
+        Status = RunStatus.Waiting,
         CreatedAtUtc = new DateTimeOffset(2026, 6, 1, 10, 0, 0, TimeSpan.Zero),
         HasLoadedHistory = false,
         TimelineEntries = [],

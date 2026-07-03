@@ -8,22 +8,22 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 
 internal sealed class HostedService : BackgroundService
 {
-    private readonly IExecutionReadinessGate _readinessGate;
-    private readonly IExecutionQueueClaimer _queueClaimer;
+    private readonly IGate _readinessGate;
+    private readonly IClaimer _queueClaimer;
     private readonly IClaimExecutor _claimExecutor;
-    private readonly IInterruptedProjectRecoveryService _recoveryService;
-    private readonly IProjectExecutionQueueLock _queueLock;
-    private readonly ProjectExecutionOptions _options;
+    private readonly IService _recoveryService;
+    private readonly IQueueLock _queueLock;
+    private readonly Settings _options;
     private readonly ILogger<HostedService> _logger;
     private bool _loggedAnalysisRunnerNotReady;
 
     public HostedService(
-        IExecutionReadinessGate readinessGate,
-        IExecutionQueueClaimer queueClaimer,
+        IGate readinessGate,
+        IClaimer queueClaimer,
         IClaimExecutor claimExecutor,
-        IInterruptedProjectRecoveryService recoveryService,
-        IProjectExecutionQueueLock queueLock,
-        IOptions<ProjectExecutionOptions> options,
+        IService recoveryService,
+        IQueueLock queueLock,
+        IOptions<Settings> options,
         ILogger<HostedService> logger)
     {
         _readinessGate = readinessGate;
@@ -56,7 +56,7 @@ internal sealed class HostedService : BackgroundService
         {
             try
             {
-                ExecutionReadinessResult readiness = _readinessGate.Check();
+                Result readiness = _readinessGate.Check();
                 if (!readiness.IsReady)
                 {
                     if (!_loggedAnalysisRunnerNotReady)

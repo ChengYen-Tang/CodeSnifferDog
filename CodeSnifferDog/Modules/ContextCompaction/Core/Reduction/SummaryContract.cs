@@ -1,4 +1,4 @@
-using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 
@@ -22,27 +22,27 @@ internal static class SummaryContract
     public static string Normalize(string summary)
     {
         if (string.IsNullOrWhiteSpace(summary))
-            throw new OperationalContextCompactionException("Operational context compaction summary was empty.");
+            throw new CompactionException("Operational context compaction summary was empty.");
 
         int openTagIndex = summary.IndexOf(SummaryOpenTag, StringComparison.OrdinalIgnoreCase);
         int closeTagIndex = summary.IndexOf(SummaryCloseTag, StringComparison.OrdinalIgnoreCase);
 
         if (openTagIndex < 0 || closeTagIndex < 0 || closeTagIndex <= openTagIndex)
-            throw new OperationalContextCompactionException("Operational context compaction summary did not contain a valid <summary> block.");
+            throw new CompactionException("Operational context compaction summary did not contain a valid <summary> block.");
 
         int contentStartIndex = openTagIndex + SummaryOpenTag.Length;
         string normalizedSummary = summary[contentStartIndex..closeTagIndex].Trim();
 
         if (string.IsNullOrWhiteSpace(normalizedSummary))
-            throw new OperationalContextCompactionException("Operational context compaction summary <summary> block was empty.");
+            throw new CompactionException("Operational context compaction summary <summary> block was empty.");
 
         return normalizedSummary;
     }
 
-    public static void Validate(string summary, OperationalContextCompactionOptions options)
+    public static void Validate(string summary, CompactionOptions options)
     {
         if (string.IsNullOrWhiteSpace(summary))
-            throw new OperationalContextCompactionException("Operational context compaction summary was empty.");
+            throw new CompactionException("Operational context compaction summary was empty.");
 
         foreach (string requiredFragment in options.RequiredSummaryFragments)
         {
@@ -50,7 +50,7 @@ internal static class SummaryContract
                 continue;
 
             if (!summary.Contains(requiredFragment, StringComparison.OrdinalIgnoreCase))
-                throw new OperationalContextCompactionException(
+                throw new CompactionException(
                     $"Operational context compaction summary did not contain required fragment '{requiredFragment}'.");
         }
     }

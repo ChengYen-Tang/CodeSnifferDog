@@ -4,6 +4,8 @@ using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Workflows.Report;
 using Microsoft.Extensions.AI;
+using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using StoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Tests.Workflows.Report;
 
@@ -15,7 +17,7 @@ public sealed class MessageBuilderTests
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
-        StoredRuleReviewIssue[] issues = [CreateReviewIssue()];
+        StoredIssue[] issues = [CreateReviewIssue()];
 
         List<ChatMessage> messages = builder.CreateAggregatorMessages(issues);
 
@@ -31,7 +33,7 @@ public sealed class MessageBuilderTests
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
-        RuleReportDiff diff = new()
+        Diff diff = new()
         {
             CreatedIssues = [CreateReportIssue()],
             UpdatedIssues = [],
@@ -47,7 +49,7 @@ public sealed class MessageBuilderTests
             messages[0].Text);
     }
 
-    private static StoredRuleReviewIssue CreateReviewIssue() =>
+    private static StoredIssue CreateReviewIssue() =>
         new()
         {
             RuleReviewIssueId = "review-issue-1",
@@ -64,7 +66,7 @@ public sealed class MessageBuilderTests
             CrossScopeAnalysis = "No cross-scope inspection was required.",
         };
 
-    private static StoredRuleReportIssue CreateReportIssue() =>
+    private static ReportStoredIssue CreateReportIssue() =>
         new()
         {
             RuleReportIssueId = "report-issue-1",

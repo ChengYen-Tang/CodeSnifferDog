@@ -1,10 +1,13 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam.Compaction;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using Microsoft.Extensions.AI;
+using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.InMemoryIssueStore;
+using ReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.InMemoryIssueStore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 
@@ -15,13 +18,13 @@ internal sealed class DependenciesFactory(
     private readonly OptionsFactory _compactionOptionsFactory = compactionOptionsFactory;
     private readonly IReviewRunnerFactory _workflowRunnerFactory = workflowRunnerFactory;
 
-    public ReviewAgentTeamDependencies CreateDependencies(
+    public Dependencies CreateDependencies(
         IChatClient chatClient,
         ExecutionOptions executionOptions,
         IAgentEventBus agentEventBus)
     {
-        InMemoryRuleReviewIssueStore ruleReviewIssueStore = new();
-        InMemoryRuleReportIssueStore ruleReportIssueStore = new();
+        ReviewIssueStore ruleReviewIssueStore = new();
+        ReportIssueStore ruleReportIssueStore = new();
         Settings compactionSettings =
             _compactionOptionsFactory.Create(executionOptions);
         ReviewRunners workflowRunners = _workflowRunnerFactory.CreateRunners(
@@ -32,7 +35,7 @@ internal sealed class DependenciesFactory(
             ruleReportIssueStore,
             agentEventBus);
 
-        return new ReviewAgentTeamDependencies
+        return new Dependencies
         {
             ScanWorkflowRunner = workflowRunners.ScanWorkflowRunner,
             ProjectPlanWorkflowRunner = workflowRunners.ProjectPlanWorkflowRunner,

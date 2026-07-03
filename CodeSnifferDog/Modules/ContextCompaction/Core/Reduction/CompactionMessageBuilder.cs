@@ -1,11 +1,11 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using Microsoft.Extensions.AI;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 
 internal static class CompactionMessageBuilder
 {
-    public static IReadOnlyList<ChatMessage> Build(OperationalContextCompactionResult result)
+    public static IReadOnlyList<ChatMessage> Build(CompactionResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
 

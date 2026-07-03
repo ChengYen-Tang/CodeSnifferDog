@@ -4,9 +4,9 @@ namespace CodeSnifferDog.Server.Services.ProjectReports.Export;
 
 internal interface IExportService
 {
-    ExportFile CreateMarkdown(ProjectReportContentDto report);
+    ExportFile CreateMarkdown(ContentDto report);
 
     Task<ExportFile> CreateBundleZipAsync(
-        ProjectReportBundleDto bundle,
+        BundleDto bundle,
         CancellationToken cancellationToken = default);
 }

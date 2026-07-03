@@ -73,7 +73,7 @@ public sealed class QueueServiceTests
         int maxQueuedProjects = 100) =>
         new(
             dbContextFactory,
-            Options.Create(new ProjectExecutionOptions { MaxQueuedProjects = maxQueuedProjects }),
+            Options.Create(new Settings { MaxQueuedProjects = maxQueuedProjects }),
             new ProjectProjectionMapper(new ProjectStatusMapper()));
 
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()

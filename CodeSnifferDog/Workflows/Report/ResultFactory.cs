@@ -1,16 +1,18 @@
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
+using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using ReportWorkflowResult = CodeSnifferDog.Models.Report.WorkflowResult;
 
 namespace CodeSnifferDog.Workflows.Report;
 
 internal static class ResultFactory
 {
-    public static RuleReportWorkflowResult Create(
+    public static ReportWorkflowResult Create(
         string ruleKey,
-        StoredProjectPlanTaskItem taskItem,
-        RuleReportDiff diff,
-        IReadOnlyList<StoredRuleReportIssue> repositoryIssues,
+        StoredTaskItem taskItem,
+        Diff diff,
+        IReadOnlyList<ReportStoredIssue> repositoryIssues,
         ReviewVerdict verdict,
         bool continuedAfterVerifierRejectionLimit,
         int aggregatorAttempts,

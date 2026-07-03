@@ -37,12 +37,12 @@
 
     private CompletionState Completion => _pageState.Completion;
 
-    private ProjectAgentSnapshotDto? SelectedAgent =>
+    private SnapshotDto? SelectedAgent =>
         Selection.SelectedAgentId is null
             ? null
             : Snapshot.FindAgent(Selection.SelectedAgentId.Value);
 
-    private IReadOnlyList<ProjectAgentTimelineEntryDto> SelectedHistory =>
+    private IReadOnlyList<TimelineEntryDto> SelectedHistory =>
         Selection.SelectedAgentId is null || History.AgentId != Selection.SelectedAgentId
             ? []
             : History.TimelineEntries;
@@ -96,8 +96,8 @@
 
             response.EnsureSuccessStatusCode();
 
-            ProjectAgentStatusSnapshotDto? snapshot = await response.Content
-                .ReadFromJsonAsync<ProjectAgentStatusSnapshotDto>()
+            StatusSnapshotDto? snapshot = await response.Content
+                .ReadFromJsonAsync<StatusSnapshotDto>()
                 .ConfigureAwait(false);
 
             if (snapshot is null)
@@ -179,7 +179,7 @@
         Selection.ToggleToolDetails(key);
     }
 
-    internal bool ApplyLiveUpdate(ProjectAgentLiveUpdateDto update)
+    internal bool ApplyLiveUpdate(LiveUpdateDto update)
     {
         ArgumentNullException.ThrowIfNull(update);
 
@@ -189,10 +189,10 @@
         return _pageState.ApplyLiveUpdate(update);
     }
 
-    private async Task SubscribeToLiveUpdatesAsync(ProjectAgentStatusSnapshotDto snapshot)
+    private async Task SubscribeToLiveUpdatesAsync(StatusSnapshotDto snapshot)
     {
         Guid? selectedAgentId = Selection.SelectedAgentId;
-        ProjectAgentLiveSubscriptionRequestDto request = new()
+        LiveSubscriptionRequestDto request = new()
         {
             ProjectId = snapshot.ProjectId,
             SnapshotGeneratedAtUtc = snapshot.SnapshotGeneratedAtUtc,
@@ -267,7 +267,7 @@
 
     private Task EnsureSelectedAgentHistoryAsync(Guid agentId)
     {
-        ProjectAgentSnapshotDto? agent = Snapshot.FindAgent(agentId);
+        SnapshotDto? agent = Snapshot.FindAgent(agentId);
         if (agent is null)
             return Task.CompletedTask;
 
@@ -295,7 +295,7 @@
 
         try
         {
-            ProjectAgentHistorySnapshotDto? history = await HttpClient.GetFromJsonAsync<ProjectAgentHistorySnapshotDto>(
+            HistorySnapshotDto? history = await HttpClient.GetFromJsonAsync<HistorySnapshotDto>(
                 $"/api/projects/{ProjectId.Value}/agent-status/agents/{agentId}/history").ConfigureAwait(false);
 
             if (!IsCurrentHistoryRequest(requestVersion, agentId))

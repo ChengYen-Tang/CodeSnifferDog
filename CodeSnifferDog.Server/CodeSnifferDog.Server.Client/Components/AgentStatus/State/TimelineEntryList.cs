@@ -4,33 +4,33 @@ namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 
 internal static class TimelineEntryList
 {
-    public static IReadOnlyList<ProjectAgentTimelineEntryDto> Upsert(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
-        ProjectAgentTimelineEntryDto timelineEntry) =>
+    public static IReadOnlyList<TimelineEntryDto> Upsert(
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
+        TimelineEntryDto timelineEntry) =>
         UpsertWithLatestSequence(
             timelineEntries,
             timelineEntry,
             GetLatestSequence(timelineEntries)).TimelineEntries;
 
     public static TimelineMutationResult UpsertWithLatestSequence(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
-        ProjectAgentTimelineEntryDto timelineEntry) =>
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
+        TimelineEntryDto timelineEntry) =>
         UpsertWithLatestSequence(
             timelineEntries,
             timelineEntry,
             GetLatestSequence(timelineEntries));
 
     public static TimelineMutationResult UpsertWithLatestSequence(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
-        ProjectAgentTimelineEntryDto timelineEntry,
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
+        TimelineEntryDto timelineEntry,
         long latestSequence)
     {
-        List<ProjectAgentTimelineEntryDto> nextTimelineEntries = timelineEntries.ToList();
+        List<TimelineEntryDto> nextTimelineEntries = timelineEntries.ToList();
         bool isSorted = IsSorted(timelineEntries);
         int existingIndex = nextTimelineEntries.FindIndex(candidate => candidate.TimelineEntryId == timelineEntry.TimelineEntryId);
         if (existingIndex >= 0)
         {
-            ProjectAgentTimelineEntryDto existingEntry = nextTimelineEntries[existingIndex];
+            TimelineEntryDto existingEntry = nextTimelineEntries[existingIndex];
             if (isSorted && CompareOrder(existingEntry, timelineEntry) == 0)
             {
                 nextTimelineEntries[existingIndex] = timelineEntry;
@@ -47,7 +47,7 @@ internal static class TimelineEntryList
         if (!isSorted)
         {
             nextTimelineEntries.Add(timelineEntry);
-            IReadOnlyList<ProjectAgentTimelineEntryDto> normalizedTimelineEntries = Normalize(nextTimelineEntries);
+            IReadOnlyList<TimelineEntryDto> normalizedTimelineEntries = Normalize(nextTimelineEntries);
             return new TimelineMutationResult(
                 normalizedTimelineEntries,
                 GetLatestSequence(normalizedTimelineEntries));
@@ -59,21 +59,21 @@ internal static class TimelineEntryList
             Math.Max(latestSequence, timelineEntry.Sequence));
     }
 
-    public static IReadOnlyList<ProjectAgentTimelineEntryDto> Remove(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
+    public static IReadOnlyList<TimelineEntryDto> Remove(
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
         IReadOnlySet<Guid> timelineEntryIds) =>
         RemoveWithLatestSequence(timelineEntries, timelineEntryIds)?.TimelineEntries ?? timelineEntries;
 
     public static TimelineMutationResult? RemoveWithLatestSequence(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
         IReadOnlySet<Guid> timelineEntryIds)
     {
-        List<ProjectAgentTimelineEntryDto> nextTimelineEntries = new(timelineEntries.Count);
+        List<TimelineEntryDto> nextTimelineEntries = new(timelineEntries.Count);
         long latestSequence = 0;
         bool removedAny = false;
         for (int index = 0; index < timelineEntries.Count; index++)
         {
-            ProjectAgentTimelineEntryDto entry = timelineEntries[index];
+            TimelineEntryDto entry = timelineEntries[index];
             if (timelineEntryIds.Contains(entry.TimelineEntryId))
             {
                 removedAny = true;
@@ -90,14 +90,14 @@ internal static class TimelineEntryList
             : null;
     }
 
-    public static IReadOnlyList<ProjectAgentTimelineEntryDto> Normalize(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries) =>
+    public static IReadOnlyList<TimelineEntryDto> Normalize(
+        IReadOnlyList<TimelineEntryDto> timelineEntries) =>
         timelineEntries
             .OrderBy(candidate => candidate.Sequence)
             .ThenBy(candidate => candidate.OccurredAtUtc)
             .ToList();
 
-    public static long GetLatestSequence(IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
+    public static long GetLatestSequence(IReadOnlyList<TimelineEntryDto> timelineEntries)
     {
         long latestSequence = 0;
         for (int index = 0; index < timelineEntries.Count; index++)
@@ -110,8 +110,8 @@ internal static class TimelineEntryList
     }
 
     private static int GetInsertIndex(
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries,
-        ProjectAgentTimelineEntryDto timelineEntry)
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
+        TimelineEntryDto timelineEntry)
     {
         int low = 0;
         int high = timelineEntries.Count;
@@ -127,7 +127,7 @@ internal static class TimelineEntryList
         return low;
     }
 
-    private static bool IsSorted(IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries)
+    private static bool IsSorted(IReadOnlyList<TimelineEntryDto> timelineEntries)
     {
         for (int index = 1; index < timelineEntries.Count; index++)
         {
@@ -138,7 +138,7 @@ internal static class TimelineEntryList
         return true;
     }
 
-    private static int CompareOrder(ProjectAgentTimelineEntryDto left, ProjectAgentTimelineEntryDto right)
+    private static int CompareOrder(TimelineEntryDto left, TimelineEntryDto right)
     {
         int sequenceComparison = left.Sequence.CompareTo(right.Sequence);
         return sequenceComparison != 0

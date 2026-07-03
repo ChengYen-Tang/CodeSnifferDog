@@ -1,4 +1,4 @@
-using CodeSnifferDog.Models.ContextCompaction;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam.Compaction;
 
@@ -6,7 +6,7 @@ internal sealed class OptionsFactory
 {
     public Settings Create(ExecutionOptions executionOptions)
     {
-        OperationalContextCompactionOptions options = new()
+        CompactionOptions options = new()
         {
             ModelContextWindowTokens = executionOptions.ModelContextWindowTokens,
             Mode = executionOptions.ContextCompactionMode,

@@ -2,6 +2,7 @@ using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.RuleReview;
 using Microsoft.Extensions.AI;
+using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Workflows.Report;
 
@@ -9,23 +10,23 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
 {
     private readonly MessageTemplates _messageTemplates = messageTemplates;
 
-    public List<ChatMessage> CreateAggregatorMessages(IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
+    public List<ChatMessage> CreateAggregatorMessages(IReadOnlyList<RuleReviewStoredIssue> currentFlowIssues)
         =>
     [
         new(ChatRole.User, BuildAggregatorInput(currentFlowIssues)),
     ];
 
-    public List<ChatMessage> CreateVerifierMessages(RuleReportDiff diff)
+    public List<ChatMessage> CreateVerifierMessages(Diff diff)
         =>
     [
         new(ChatRole.User, BuildVerifierInput(diff)),
     ];
 
-    private string BuildAggregatorInput(IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues)
+    private string BuildAggregatorInput(IReadOnlyList<RuleReviewStoredIssue> currentFlowIssues)
         =>
         $"{_messageTemplates.AggregatorInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(currentFlowIssues)}";
 
-    private string BuildVerifierInput(RuleReportDiff diff)
+    private string BuildVerifierInput(Diff diff)
         =>
         $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(diff)}";
 }

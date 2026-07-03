@@ -97,27 +97,27 @@ public sealed class PageStateTests
         PageState state = PageState.CreateEmpty();
         state.SetSnapshot(CreateSnapshot([]));
 
-        bool noOpChanged = state.ApplyLiveUpdate(new ProjectAgentLiveUpdateDto
+        bool noOpChanged = state.ApplyLiveUpdate(new LiveUpdateDto
         {
             ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
-            Kind = ProjectAgentLiveUpdateKind.AgentStatusChanged,
+            Kind = LiveUpdateKind.AgentStatusChanged,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            AgentStatus = new ProjectAgentStatusChangedDto
+            AgentStatus = new StatusChangedDto
             {
                 AgentId = Guid.Parse("72000000-0000-0000-0000-000000000099"),
-                Status = ProjectAgentRunStatus.Completed,
+                Status = RunStatus.Completed,
                 OccurredAtUtc = DateTimeOffset.UtcNow,
             },
         });
 
         Assert.IsFalse(noOpChanged);
 
-        bool projectChanged = state.ApplyLiveUpdate(new ProjectAgentLiveUpdateDto
+        bool projectChanged = state.ApplyLiveUpdate(new LiveUpdateDto
         {
             ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
-            Kind = ProjectAgentLiveUpdateKind.ProjectStatusChanged,
+            Kind = LiveUpdateKind.ProjectStatusChanged,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            ProjectStatus = new ProjectExecutionStatusChangedDto
+            ProjectStatus = new ExecutionStatusChangedDto
             {
                 Status = ProjectStatus.Failed,
             },
@@ -140,12 +140,12 @@ public sealed class PageStateTests
                 CreateGroup(lateGroupId, "Late Group", 2, []),
             ]));
 
-        state.ApplyLiveUpdate(new ProjectAgentLiveUpdateDto
+        state.ApplyLiveUpdate(new LiveUpdateDto
         {
             ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
-            Kind = ProjectAgentLiveUpdateKind.AgentGroupUpserted,
+            Kind = LiveUpdateKind.AgentGroupUpserted,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            Group = new ProjectAgentGroupLiveDto
+            Group = new GroupLiveDto
             {
                 GroupId = earlyGroupId,
                 RuntimeKey = "early-group",
@@ -177,7 +177,7 @@ public sealed class PageStateTests
         Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000030");
         Guid selectedAgentId = Guid.Parse("72000000-0000-0000-0000-000000000030");
         Guid otherAgentId = Guid.Parse("72000000-0000-0000-0000-000000000031");
-        ProjectAgentTimelineEntryDto existingEntry = CreateTimelineEntry(selectedAgentId, 1, "existing");
+        TimelineEntryDto existingEntry = CreateTimelineEntry(selectedAgentId, 1, "existing");
         state.SetSnapshot(CreateSnapshot(
             [
                 CreateGroup(
@@ -198,12 +198,12 @@ public sealed class PageStateTests
         Assert.HasCount(2, state.History.TimelineEntries);
         Assert.AreEqual(2, state.History.GetLatestSequence());
 
-        bool removeChanged = state.ApplyLiveUpdate(new ProjectAgentLiveUpdateDto
+        bool removeChanged = state.ApplyLiveUpdate(new LiveUpdateDto
         {
             ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
-            Kind = ProjectAgentLiveUpdateKind.TimelineEntriesRemoved,
+            Kind = LiveUpdateKind.TimelineEntriesRemoved,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            RemovedTimelineEntries = new ProjectAgentTimelineEntriesRemovedDto
+            RemovedTimelineEntries = new TimelineEntriesRemovedDto
             {
                 AgentId = selectedAgentId,
                 TimelineEntryIds = [existingEntry.TimelineEntryId],
@@ -215,12 +215,12 @@ public sealed class PageStateTests
         Assert.AreEqual("new selected", state.History.TimelineEntries[0].Message);
         Assert.AreEqual(2, state.History.GetLatestSequence());
 
-        bool removeRemainingChanged = state.ApplyLiveUpdate(new ProjectAgentLiveUpdateDto
+        bool removeRemainingChanged = state.ApplyLiveUpdate(new LiveUpdateDto
         {
             ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
-            Kind = ProjectAgentLiveUpdateKind.TimelineEntriesRemoved,
+            Kind = LiveUpdateKind.TimelineEntriesRemoved,
             OccurredAtUtc = DateTimeOffset.UtcNow,
-            RemovedTimelineEntries = new ProjectAgentTimelineEntriesRemovedDto
+            RemovedTimelineEntries = new TimelineEntriesRemovedDto
             {
                 AgentId = selectedAgentId,
                 TimelineEntryIds = [Guid.Parse("73000000-0000-0000-0000-000000000002")],
@@ -268,19 +268,19 @@ public sealed class PageStateTests
         PageState state = PageState.CreateEmpty();
         Guid selectedGroupId = Guid.Parse("71000000-0000-0000-0000-000000000015");
         Guid selectedAgentId = Guid.Parse("72000000-0000-0000-0015-000000000007");
-        IReadOnlyList<ProjectAgentGroupSnapshotDto> groups = Enumerable.Range(0, 20)
+        IReadOnlyList<GroupSnapshotDto> groups = Enumerable.Range(0, 20)
             .Select(groupIndex =>
             {
                 Guid groupId = groupIndex == 15
                     ? selectedGroupId
                     : Guid.Parse($"71000000-0000-0000-0000-{groupIndex:000000000000}");
-                IReadOnlyList<ProjectAgentSnapshotDto> agents = Enumerable.Range(0, 10)
+                IReadOnlyList<SnapshotDto> agents = Enumerable.Range(0, 10)
                     .Select(agentIndex =>
                     {
                         Guid agentId = groupIndex == 15 && agentIndex == 7
                             ? selectedAgentId
                             : Guid.Parse($"72000000-0000-{groupIndex:0000}-{agentIndex:0000}-000000000000");
-                        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries =
+                        IReadOnlyList<TimelineEntryDto> timelineEntries =
                             agentId == selectedAgentId
                                 ? [CreateTimelineEntry(selectedAgentId, 11, "selected")]
                                 : [];
@@ -322,32 +322,32 @@ public sealed class PageStateTests
         Assert.AreEqual(0, state.History.GetLatestSequence());
     }
 
-    private static ProjectAgentLiveUpdateDto CreateAgentUpdate(Guid groupId, Guid agentId, string displayName, int createdMinute) => new()
+    private static LiveUpdateDto CreateAgentUpdate(Guid groupId, Guid agentId, string displayName, int createdMinute) => new()
     {
         ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
-        Kind = ProjectAgentLiveUpdateKind.AgentUpserted,
+        Kind = LiveUpdateKind.AgentUpserted,
         OccurredAtUtc = DateTimeOffset.UtcNow,
-        Agent = new ProjectAgentLiveDto
+        Agent = new LiveDto
         {
             AgentId = agentId,
             GroupId = groupId,
             RuntimeKey = displayName.ToLowerInvariant().Replace(' ', '-'),
             DisplayName = displayName,
-            Status = ProjectAgentRunStatus.Waiting,
+            Status = RunStatus.Waiting,
             CreatedAtUtc = CreatedAt(createdMinute),
             SystemPrompt = "",
         },
     };
 
-    private static ProjectAgentLiveUpdateDto CreateTimelineUpdate(Guid agentId, long sequence, string message) => new()
+    private static LiveUpdateDto CreateTimelineUpdate(Guid agentId, long sequence, string message) => new()
     {
         ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
-        Kind = ProjectAgentLiveUpdateKind.TimelineEntryUpserted,
+        Kind = LiveUpdateKind.TimelineEntryUpserted,
         OccurredAtUtc = DateTimeOffset.UtcNow,
         TimelineEntry = CreateTimelineEntry(agentId, sequence, message),
     };
 
-    private static ProjectAgentStatusSnapshotDto CreateSnapshot(IReadOnlyList<ProjectAgentGroupSnapshotDto> groups) => new()
+    private static StatusSnapshotDto CreateSnapshot(IReadOnlyList<GroupSnapshotDto> groups) => new()
     {
         ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
         ProjectStatus = ProjectStatus.Reviewing,
@@ -355,11 +355,11 @@ public sealed class PageStateTests
         AgentGroups = groups,
     };
 
-    private static ProjectAgentGroupSnapshotDto CreateGroup(
+    private static GroupSnapshotDto CreateGroup(
         Guid groupId,
         string displayName,
         int createdMinute,
-        IReadOnlyList<ProjectAgentSnapshotDto> agents) => new()
+        IReadOnlyList<SnapshotDto> agents) => new()
         {
             GroupId = groupId,
             RuntimeKey = displayName.ToLowerInvariant().Replace(' ', '-'),
@@ -368,30 +368,30 @@ public sealed class PageStateTests
             Agents = agents,
         };
 
-    private static ProjectAgentSnapshotDto CreateAgent(
+    private static SnapshotDto CreateAgent(
         Guid agentId,
         Guid groupId,
         string displayName,
         int createdMinute,
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries) => new()
+        IReadOnlyList<TimelineEntryDto> timelineEntries) => new()
         {
             AgentId = agentId,
             GroupId = groupId,
             RuntimeKey = displayName.ToLowerInvariant().Replace(' ', '-'),
             DisplayName = displayName,
             SystemPrompt = "",
-            Status = ProjectAgentRunStatus.Waiting,
+            Status = RunStatus.Waiting,
             CreatedAtUtc = CreatedAt(createdMinute),
             HasLoadedHistory = timelineEntries.Count > 0,
             TimelineEntries = timelineEntries,
         };
 
-    private static ProjectAgentTimelineEntryDto CreateTimelineEntry(Guid agentId, long sequence, string message) => new()
+    private static TimelineEntryDto CreateTimelineEntry(Guid agentId, long sequence, string message) => new()
     {
         TimelineEntryId = Guid.Parse($"73000000-0000-0000-0000-{sequence:000000000000}"),
         AgentId = agentId,
         Sequence = sequence,
-        EntryKind = ProjectAgentTimelineEntryKind.Output,
+        EntryKind = TimelineEntryKind.Output,
         OccurredAtUtc = CreatedAt((int)sequence),
         Message = message,
     };

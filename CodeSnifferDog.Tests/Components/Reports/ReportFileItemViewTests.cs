@@ -15,7 +15,7 @@ public sealed class ReportFileItemViewTests
     {
         using Bunit.TestContext context = new();
         Guid projectId = Guid.Parse("80000000-0000-0000-0000-000000000201");
-        ProjectReportListItemDto report = new()
+        ListItemDto report = new()
         {
             ReportId = Guid.Parse("81000000-0000-0000-0000-000000000201"),
             RuleName = "rule-file",
@@ -41,7 +41,7 @@ public sealed class ReportFileItemViewTests
     public void SelectButtonInvokesCallbackWithReport()
     {
         using Bunit.TestContext context = new();
-        ProjectReportListItemDto report = new()
+        ListItemDto report = new()
         {
             ReportId = Guid.Parse("81000000-0000-0000-0000-000000000202"),
             RuleName = "rule-callback",
@@ -52,7 +52,7 @@ public sealed class ReportFileItemViewTests
             parameters => parameters
                 .Add(component => component.ProjectId, Guid.Parse("80000000-0000-0000-0000-000000000202"))
                 .Add(component => component.Report, report)
-                .Add(component => component.OnSelectReport, EventCallback.Factory.Create<ProjectReportListItemDto>(
+                .Add(component => component.OnSelectReport, EventCallback.Factory.Create<ListItemDto>(
                     this,
                     selectedReport => selectedReportId = selectedReport.ReportId)));
 

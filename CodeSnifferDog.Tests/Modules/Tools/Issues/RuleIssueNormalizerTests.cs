@@ -9,7 +9,7 @@ public sealed class RuleIssueNormalizerTests
     [TestMethod]
     public void Normalize_TrimsFieldsAndNormalizesSeverity()
     {
-        RuleReviewIssue issue = RuleIssueNormalizer.Normalize(new RuleReviewIssue
+        Issue issue = RuleIssueNormalizer.Normalize(new Issue
         {
             IssueType = " Performance ",
             Severity = " high ",
@@ -25,7 +25,7 @@ public sealed class RuleIssueNormalizerTests
         });
 
         Assert.AreEqual("Performance", issue.IssueType);
-        Assert.AreEqual(RuleReviewSeverity.High, issue.Severity);
+        Assert.AreEqual(Severity.High, issue.Severity);
         Assert.AreEqual("Program.cs", issue.FileOrFunction);
         Assert.AreEqual("call", issue.RelevantCodePatternOrExpression);
         Assert.AreEqual("problem", issue.WhyThisIsAProblem);
@@ -43,7 +43,7 @@ public sealed class RuleIssueNormalizerTests
         NormalizedRuleIssue contract = RuleIssueNormalizer.NormalizeToContract(CreateIssue(" high "));
 
         Assert.AreEqual("Performance", contract.Issue.IssueType);
-        Assert.AreEqual(RuleReviewSeverity.High, contract.Issue.Severity);
+        Assert.AreEqual(Severity.High, contract.Issue.Severity);
         Assert.AreEqual("Program.cs", contract.Issue.FileOrFunction);
     }
 
@@ -80,7 +80,7 @@ public sealed class RuleIssueNormalizerTests
     [TestMethod]
     public void Normalize_ThrowsArgumentException_WhenRequiredFieldIsEmpty()
     {
-        RuleReviewIssue issue = CreateIssue("High", fileOrFunction: " ");
+        Issue issue = CreateIssue("High", fileOrFunction: " ");
 
         Assert.ThrowsExactly<ArgumentException>(() => RuleIssueNormalizer.Normalize(issue));
     }
@@ -88,12 +88,12 @@ public sealed class RuleIssueNormalizerTests
     [TestMethod]
     public void Normalize_ThrowsArgumentOutOfRangeException_WhenSeverityIsInvalid()
     {
-        RuleReviewIssue issue = CreateIssue("Critical");
+        Issue issue = CreateIssue("Critical");
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => RuleIssueNormalizer.Normalize(issue));
     }
 
-    private static RuleReviewIssue CreateIssue(string severity, string fileOrFunction = " Program.cs ") => new()
+    private static Issue CreateIssue(string severity, string fileOrFunction = " Program.cs ") => new()
     {
         IssueType = " Performance ",
         Severity = severity,

@@ -1,11 +1,11 @@
-using CodeSnifferDog.Models.Report;
-using CodeSnifferDog.Models.RuleReview;
+using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using ReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Modules.Tools.Issues;
 
 internal static class RuleIssueStoreMapper
 {
-    public static StoredRuleReviewIssue CreateReviewIssue(NormalizedRuleIssue normalizedIssue, string id) => new()
+    public static ReviewStoredIssue CreateReviewIssue(NormalizedRuleIssue normalizedIssue, string id) => new()
     {
         RuleReviewIssueId = id,
         IssueType = normalizedIssue.Issue.IssueType,
@@ -21,7 +21,7 @@ internal static class RuleIssueStoreMapper
         CrossScopeAnalysis = normalizedIssue.Issue.CrossScopeAnalysis,
     };
 
-    public static StoredRuleReportIssue CreateReportIssue(NormalizedRuleIssue normalizedIssue, string id) => new()
+    public static ReportStoredIssue CreateReportIssue(NormalizedRuleIssue normalizedIssue, string id) => new()
     {
         RuleReportIssueId = id,
         IssueType = normalizedIssue.Issue.IssueType,
@@ -37,7 +37,7 @@ internal static class RuleIssueStoreMapper
         CrossScopeAnalysis = normalizedIssue.Issue.CrossScopeAnalysis,
     };
 
-    public static StoredRuleReviewIssue Clone(StoredRuleReviewIssue issue) => new()
+    public static ReviewStoredIssue Clone(ReviewStoredIssue issue) => new()
     {
         RuleReviewIssueId = issue.RuleReviewIssueId,
         IssueType = issue.IssueType,
@@ -53,7 +53,7 @@ internal static class RuleIssueStoreMapper
         CrossScopeAnalysis = issue.CrossScopeAnalysis,
     };
 
-    public static StoredRuleReportIssue Clone(StoredRuleReportIssue issue) => new()
+    public static ReportStoredIssue Clone(ReportStoredIssue issue) => new()
     {
         RuleReportIssueId = issue.RuleReportIssueId,
         IssueType = issue.IssueType,
@@ -69,7 +69,7 @@ internal static class RuleIssueStoreMapper
         CrossScopeAnalysis = issue.CrossScopeAnalysis,
     };
 
-    public static bool IsEquivalentToNormalizedIssue(StoredRuleReviewIssue storedIssue, NormalizedRuleIssue normalizedIssue) =>
+    public static bool IsEquivalentToNormalizedIssue(ReviewStoredIssue storedIssue, NormalizedRuleIssue normalizedIssue) =>
         string.Equals(storedIssue.IssueType, normalizedIssue.Issue.IssueType, StringComparison.Ordinal) &&
         string.Equals(storedIssue.Severity, normalizedIssue.Issue.Severity, StringComparison.Ordinal) &&
         string.Equals(storedIssue.FileOrFunction, normalizedIssue.Issue.FileOrFunction, StringComparison.Ordinal) &&
@@ -82,7 +82,7 @@ internal static class RuleIssueStoreMapper
         string.Equals(storedIssue.ScopeCoverage, normalizedIssue.Issue.ScopeCoverage, StringComparison.Ordinal) &&
         string.Equals(storedIssue.CrossScopeAnalysis, normalizedIssue.Issue.CrossScopeAnalysis, StringComparison.Ordinal);
 
-    public static bool IsEquivalentToNormalizedIssue(StoredRuleReportIssue storedIssue, NormalizedRuleIssue normalizedIssue) =>
+    public static bool IsEquivalentToNormalizedIssue(ReportStoredIssue storedIssue, NormalizedRuleIssue normalizedIssue) =>
         string.Equals(storedIssue.IssueType, normalizedIssue.Issue.IssueType, StringComparison.Ordinal) &&
         string.Equals(storedIssue.Severity, normalizedIssue.Issue.Severity, StringComparison.Ordinal) &&
         string.Equals(storedIssue.FileOrFunction, normalizedIssue.Issue.FileOrFunction, StringComparison.Ordinal) &&

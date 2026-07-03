@@ -10,7 +10,7 @@ internal interface IWorkerFactory
     IWorker CreateWorker(
         IChatClient chatClient,
         string repositoryRootPath,
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+        IReadOnlyList<RuleDefinition> rules,
         ExecutionOptions executionOptions,
         IAgentEventBus agentEventBus);
 }

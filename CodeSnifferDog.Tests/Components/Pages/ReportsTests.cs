@@ -21,24 +21,24 @@ public sealed class ReportsTests
         using Bunit.TestContext context = new();
         ConfigureServices(context);
         ReportApiMessageHandler handler = new(
-            new ProjectReportListDto
+            new ListDto
             {
                 OriginalFileName = "demo.zip",
                 Reports =
                 [
-                    new ProjectReportListItemDto
+                    new ListItemDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000001"),
                         RuleName = "rule-a",
                     },
-                    new ProjectReportListItemDto
+                    new ListItemDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000002"),
                         RuleName = "rule-b",
                     }
                 ],
             },
-            new Dictionary<Guid, ProjectReportContentDto>
+            new Dictionary<Guid, ContentDto>
             {
                 [Guid.Parse("81000000-0000-0000-0000-000000000001")] = new()
                 {
@@ -106,17 +106,17 @@ public sealed class ReportsTests
         using Bunit.TestContext context = new();
         ConfigureServices(context);
         SequencedReportApiMessageHandler handler = new(
-            new ProjectReportListDto
+            new ListDto
             {
                 OriginalFileName = "demo.zip",
                 Reports =
                 [
-                    new ProjectReportListItemDto
+                    new ListItemDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000011"),
                         RuleName = "rule-a",
                     },
-                    new ProjectReportListItemDto
+                    new ListItemDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000012"),
                         RuleName = "rule-b",
@@ -126,7 +126,7 @@ public sealed class ReportsTests
             [
                 SequencedResponse.ForContent(
                     Guid.Parse("81000000-0000-0000-0000-000000000011"),
-                    new ProjectReportContentDto
+                    new ContentDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000011"),
                         RuleName = "rule-a",
@@ -134,7 +134,7 @@ public sealed class ReportsTests
                     }),
                 SequencedResponse.ForDelayedContent(
                     Guid.Parse("81000000-0000-0000-0000-000000000012"),
-                    new ProjectReportContentDto
+                    new ContentDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000012"),
                         RuleName = "rule-b",
@@ -142,7 +142,7 @@ public sealed class ReportsTests
                     }),
                 SequencedResponse.ForContent(
                     Guid.Parse("81000000-0000-0000-0000-000000000011"),
-                    new ProjectReportContentDto
+                    new ContentDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000011"),
                         RuleName = "rule-a",
@@ -188,12 +188,12 @@ public sealed class ReportsTests
         using Bunit.TestContext context = new();
         ConfigureServices(context);
         SequencedReportApiMessageHandler handler = new(
-            new ProjectReportListDto
+            new ListDto
             {
                 OriginalFileName = "demo.zip",
                 Reports =
                 [
-                    new ProjectReportListItemDto
+                    new ListItemDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000021"),
                         RuleName = "rule-a",
@@ -204,7 +204,7 @@ public sealed class ReportsTests
                 SequencedResponse.ForFailure(Guid.Parse("81000000-0000-0000-0000-000000000021"), HttpStatusCode.InternalServerError),
                 SequencedResponse.ForContent(
                     Guid.Parse("81000000-0000-0000-0000-000000000021"),
-                    new ProjectReportContentDto
+                    new ContentDto
                     {
                         ReportId = Guid.Parse("81000000-0000-0000-0000-000000000021"),
                         RuleName = "rule-a",
@@ -252,11 +252,11 @@ public sealed class ReportsTests
         ConfigureServices(context);
         Guid projectId = Guid.Parse("80000000-0000-0000-0000-000000000100");
         Guid firstReportId = Guid.Parse("81000000-0000-0000-0000-000000000100");
-        ProjectReportListDto reportList = new()
+        ListDto reportList = new()
         {
             OriginalFileName = "large-demo.zip",
             Reports = Enumerable.Range(1, 200)
-                .Select(index => new ProjectReportListItemDto
+                .Select(index => new ListItemDto
                 {
                     ReportId = index == 1
                         ? firstReportId
@@ -270,7 +270,7 @@ public sealed class ReportsTests
             [
                 SequencedResponse.ForContent(
                     firstReportId,
-                    new ProjectReportContentDto
+                    new ContentDto
                     {
                         ReportId = firstReportId,
                         RuleName = "rule-001",
@@ -302,12 +302,12 @@ public sealed class ReportsTests
         Guid projectId = Guid.Parse("80000000-0000-0000-0000-000000000101");
         Guid reportId = Guid.Parse("81000000-0000-0000-0000-000000000101");
         SequencedReportApiMessageHandler handler = new(
-            new ProjectReportListDto
+            new ListDto
             {
                 OriginalFileName = "demo.zip",
                 Reports =
                 [
-                    new ProjectReportListItemDto
+                    new ListItemDto
                     {
                         ReportId = reportId,
                         RuleName = "rule-cache",
@@ -317,7 +317,7 @@ public sealed class ReportsTests
             [
                 SequencedResponse.ForContent(
                     reportId,
-                    new ProjectReportContentDto
+                    new ContentDto
                     {
                         ReportId = reportId,
                         RuleName = "rule-cache",
@@ -378,11 +378,11 @@ public sealed class ReportsTests
     }
 
     private sealed class ReportApiMessageHandler(
-        ProjectReportListDto list,
-        IReadOnlyDictionary<Guid, ProjectReportContentDto> contents) : HttpMessageHandler
+        ListDto list,
+        IReadOnlyDictionary<Guid, ContentDto> contents) : HttpMessageHandler
     {
-        private readonly ProjectReportListDto _list = list;
-        private readonly IReadOnlyDictionary<Guid, ProjectReportContentDto> _contents = contents;
+        private readonly ListDto _list = list;
+        private readonly IReadOnlyDictionary<Guid, ContentDto> _contents = contents;
 
         public List<string> Requests { get; } = [];
 
@@ -408,10 +408,10 @@ public sealed class ReportsTests
     }
 
     private sealed class SequencedReportApiMessageHandler(
-        ProjectReportListDto list,
+        ListDto list,
         IReadOnlyList<SequencedResponse> responses) : HttpMessageHandler
     {
-        private readonly ProjectReportListDto _list = list;
+        private readonly ListDto _list = list;
         private readonly Queue<SequencedResponse> _responses = new(responses);
         private readonly Queue<(TaskCompletionSource<HttpResponseMessage> Tcs, SequencedResponse Response)> _delayedResponses = [];
 
@@ -466,13 +466,13 @@ public sealed class ReportsTests
     private sealed record SequencedResponse(
         Guid ReportId,
         HttpStatusCode StatusCode,
-        ProjectReportContentDto? Content,
+        ContentDto? Content,
         bool DelayCompletion)
     {
-        public static SequencedResponse ForContent(Guid reportId, ProjectReportContentDto content) =>
+        public static SequencedResponse ForContent(Guid reportId, ContentDto content) =>
             new(reportId, HttpStatusCode.OK, content, false);
 
-        public static SequencedResponse ForDelayedContent(Guid reportId, ProjectReportContentDto content) =>
+        public static SequencedResponse ForDelayedContent(Guid reportId, ContentDto content) =>
             new(reportId, HttpStatusCode.OK, content, true);
 
         public static SequencedResponse ForFailure(Guid reportId, HttpStatusCode statusCode) =>

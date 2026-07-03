@@ -9,14 +9,14 @@ public sealed class SignalRLiveUpdateNotifier(IHubContext<ProjectUpdatesHub> hub
 {
     private readonly IHubContext<ProjectUpdatesHub> _hubContext = hubContext;
 
-    public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default)
+    public Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
 
         Guid? agentId = update.Kind switch
         {
-            ProjectAgentLiveUpdateKind.TimelineEntryUpserted => update.TimelineEntry?.AgentId,
-            ProjectAgentLiveUpdateKind.TimelineEntriesRemoved => update.RemovedTimelineEntries?.AgentId,
+            LiveUpdateKind.TimelineEntryUpserted => update.TimelineEntry?.AgentId,
+            LiveUpdateKind.TimelineEntriesRemoved => update.RemovedTimelineEntries?.AgentId,
             _ => null,
         };
 

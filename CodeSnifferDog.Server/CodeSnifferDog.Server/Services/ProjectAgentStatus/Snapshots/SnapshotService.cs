@@ -12,7 +12,7 @@ internal sealed class SnapshotService(
     private readonly ISnapshotQueryService _queryService = queryService;
     private readonly IProjectionMapper _projectionMapper = projectionMapper;
 
-    public async Task<ProjectAgentStatusSnapshotDto?> GetSnapshotAsync(
+    public async Task<StatusSnapshotDto?> GetSnapshotAsync(
         Guid projectId,
         Guid? selectedAgentId = null,
         CancellationToken cancellationToken = default)
@@ -24,7 +24,7 @@ internal sealed class SnapshotService(
         if (snapshot is null)
             return null;
 
-        return new ProjectAgentStatusSnapshotDto
+        return new StatusSnapshotDto
         {
             ProjectId = snapshot.ProjectId,
             ProjectStatus = _projectionMapper.MapProjectStatus(snapshot.ProjectStatus),
@@ -35,7 +35,7 @@ internal sealed class SnapshotService(
         };
     }
 
-    public async Task<ProjectAgentHistorySnapshotDto?> GetAgentHistoryAsync(
+    public async Task<HistorySnapshotDto?> GetAgentHistoryAsync(
         Guid projectId,
         Guid agentId,
         CancellationToken cancellationToken = default)
@@ -47,11 +47,11 @@ internal sealed class SnapshotService(
         if (history is null)
             return null;
 
-        IReadOnlyList<ProjectAgentTimelineEntryDto> timelineEntries = history.TimelineEntries
+        IReadOnlyList<TimelineEntryDto> timelineEntries = history.TimelineEntries
             .Select(entry => _projectionMapper.MapTimelineEntry(entry, ExceptionStyle.Snapshot))
             .ToList();
 
-        return new ProjectAgentHistorySnapshotDto
+        return new HistorySnapshotDto
         {
             ProjectId = history.ProjectId,
             AgentId = history.AgentId,
@@ -59,7 +59,7 @@ internal sealed class SnapshotService(
         };
     }
 
-    private ProjectAgentGroupSnapshotDto MapGroup(SnapshotGroupRow group) => new()
+    private GroupSnapshotDto MapGroup(SnapshotGroupRow group) => new()
     {
         GroupId = group.Group.GroupId,
         RuntimeKey = group.Group.RuntimeKey,
@@ -68,7 +68,7 @@ internal sealed class SnapshotService(
         Agents = group.Agents.Select(MapAgent).ToList(),
     };
 
-    private ProjectAgentSnapshotDto MapAgent(SnapshotAgentRow agent) => new()
+    private SnapshotDto MapAgent(SnapshotAgentRow agent) => new()
     {
         AgentId = agent.Agent.AgentId,
         GroupId = agent.Agent.GroupId,

@@ -1,13 +1,14 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
-using CodeSnifferDog.Modules.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using TeamWorker = CodeSnifferDog.Modules.ReviewAgentTeam.Runtime.Worker;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 
-internal sealed class Worker(ReviewAgentTeamWorker innerWorker) : IWorker
+internal sealed class Worker(TeamWorker innerWorker) : IWorker
 {
-    private readonly ReviewAgentTeamWorker _innerWorker = innerWorker;
+    private readonly TeamWorker _innerWorker = innerWorker;
 
-    public Task<ReviewAgentTeamAnalysisResult> AnalyzeDetailedAsync(CancellationToken cancellationToken = default) =>
+    public Task<AnalysisResult> AnalyzeDetailedAsync(CancellationToken cancellationToken = default) =>
         _innerWorker.AnalyzeDetailedAsync(cancellationToken);
 
     public ValueTask DisposeAsync() => _innerWorker.DisposeAsync();

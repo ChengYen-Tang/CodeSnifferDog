@@ -1,6 +1,9 @@
 using CodeSnifferDog.Agents.ProjectPlan;
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
@@ -20,6 +23,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 using CodeSnifferDog.Models.ReviewAgentTeam.Events;
+using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution.Status.Runtime;
 
@@ -157,8 +162,8 @@ public sealed class EventSubscriberTests
 
         string groupKey = "group-1";
         string agentKey = "agent-1";
-        string repositoryRootPath = @"Z:\GitHub\CodeSnifferDog";
-        string promptTemplate = new PromptAssetReader().ReadRequiredPrompt(ProjectPlanPromptAssetPaths.ProjectPlanAgentPrompt);
+        string repositoryRootPath = TestRepositoryPaths.RootPath;
+        string promptTemplate = new PromptAssetReader().ReadRequiredPrompt(ProjectPlanAgentPromptAssets.ProjectPlanAgentPrompt);
         string expectedSystemPrompt = new PromptTemplateRenderer().Render(
             promptTemplate,
             new Dictionary<string, string>
@@ -166,11 +171,11 @@ public sealed class EventSubscriberTests
                 ["RepositoryRootPath"] = repositoryRootPath,
             });
         IAgentEventScope agentScope = eventStream.CreateScope(groupKey, agentKey);
-        AgentCreationResult createdAgent = new ProjectPlanAgentFactory(CreateCompactionOptions())
+        AgentCreationResult createdAgent = new AgentFactory(CreateCompactionOptions())
             .Create(
                 NoOpChatClient.Instance,
                 repositoryRootPath,
-                new InMemoryProjectPlanTaskItemStore(),
+                new InMemoryTaskItemStore(),
                 new CodeSnifferDog.Modules.Tools.Review.ReviewVerdictBuffer());
 
         await eventStream.PublishGroupCreatedAsync(groupKey, "Review Task 1", TestContext.CancellationToken);
@@ -373,8 +378,8 @@ public sealed class EventSubscriberTests
         Assert.AreEqual(ProjectAgentTimelineEntryType.Input, entries[0].EntryType);
         Assert.AreEqual("Inspect Program.cs", entries[0].Message);
 
-        ProjectAgentLiveUpdateDto removeUpdate = liveUpdateNotifier.Updates
-            .Single(update => update.Kind == ProjectAgentLiveUpdateKind.TimelineEntriesRemoved);
+        LiveUpdateDto removeUpdate = liveUpdateNotifier.Updates
+            .Single(update => update.Kind == LiveUpdateKind.TimelineEntriesRemoved);
         Assert.IsNotNull(removeUpdate.RemovedTimelineEntries);
         Assert.AreEqual(agent.Id, removeUpdate.RemovedTimelineEntries.AgentId);
         Assert.HasCount(3, removeUpdate.RemovedTimelineEntries.TimelineEntryIds);
@@ -452,31 +457,31 @@ public sealed class EventSubscriberTests
         Assert.HasCount(4, liveUpdateNotifier.Updates);
         Assert.IsTrue(liveUpdateNotifier.Updates.All(update => update.ProjectId == projectId));
 
-        ProjectAgentLiveUpdateDto groupUpdate = liveUpdateNotifier.Updates[0];
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentGroupUpserted, groupUpdate.Kind);
+        LiveUpdateDto groupUpdate = liveUpdateNotifier.Updates[0];
+        Assert.AreEqual(LiveUpdateKind.AgentGroupUpserted, groupUpdate.Kind);
         Assert.IsNotNull(groupUpdate.Group);
-        ProjectAgentGroupLiveDto group = groupUpdate.Group;
+        GroupLiveDto group = groupUpdate.Group;
         Assert.AreEqual("Review Task 1", group.DisplayName);
 
-        ProjectAgentLiveUpdateDto agentUpdate = liveUpdateNotifier.Updates[1];
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentUpserted, agentUpdate.Kind);
+        LiveUpdateDto agentUpdate = liveUpdateNotifier.Updates[1];
+        Assert.AreEqual(LiveUpdateKind.AgentUpserted, agentUpdate.Kind);
         Assert.IsNotNull(agentUpdate.Agent);
-        ProjectAgentLiveDto agent = agentUpdate.Agent;
+        LiveDto agent = agentUpdate.Agent;
         Assert.AreEqual("Rule Review", agent.DisplayName);
-        Assert.AreEqual(ProjectAgentRunStatus.Waiting, agent.Status);
+        Assert.AreEqual(RunStatus.Waiting, agent.Status);
 
-        ProjectAgentLiveUpdateDto statusUpdate = liveUpdateNotifier.Updates[2];
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.AgentStatusChanged, statusUpdate.Kind);
+        LiveUpdateDto statusUpdate = liveUpdateNotifier.Updates[2];
+        Assert.AreEqual(LiveUpdateKind.AgentStatusChanged, statusUpdate.Kind);
         Assert.IsNotNull(statusUpdate.AgentStatus);
-        ProjectAgentStatusChangedDto agentStatus = statusUpdate.AgentStatus;
-        Assert.AreEqual(ProjectAgentRunStatus.Running, agentStatus.Status);
+        StatusChangedDto agentStatus = statusUpdate.AgentStatus;
+        Assert.AreEqual(RunStatus.Running, agentStatus.Status);
         Assert.AreEqual(agent.AgentId, agentStatus.AgentId);
 
-        ProjectAgentLiveUpdateDto timelineUpdate = liveUpdateNotifier.Updates[3];
-        Assert.AreEqual(ProjectAgentLiveUpdateKind.TimelineEntryUpserted, timelineUpdate.Kind);
+        LiveUpdateDto timelineUpdate = liveUpdateNotifier.Updates[3];
+        Assert.AreEqual(LiveUpdateKind.TimelineEntryUpserted, timelineUpdate.Kind);
         Assert.IsNotNull(timelineUpdate.TimelineEntry);
-        ProjectAgentTimelineEntryDto timelineEntry = timelineUpdate.TimelineEntry;
-        Assert.AreEqual(ProjectAgentTimelineEntryKind.Input, timelineEntry.EntryKind);
+        TimelineEntryDto timelineEntry = timelineUpdate.TimelineEntry;
+        Assert.AreEqual(TimelineEntryKind.Input, timelineEntry.EntryKind);
         Assert.AreEqual("Inspect Program.cs", timelineEntry.Message);
         Assert.AreEqual(agent.AgentId, timelineEntry.AgentId);
     }
@@ -504,15 +509,15 @@ public sealed class EventSubscriberTests
         eventStream.Complete();
         await subscriber.DisposeAsync();
 
-        List<ProjectAgentLiveUpdateDto> timelineUpdates = liveUpdateNotifier.Updates
-            .Where(update => update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
+        List<LiveUpdateDto> timelineUpdates = liveUpdateNotifier.Updates
+            .Where(update => update.Kind == LiveUpdateKind.TimelineEntryUpserted)
             .ToList();
 
         Assert.HasCount(2, timelineUpdates);
         Assert.IsNotNull(timelineUpdates[0].TimelineEntry);
         Assert.IsNotNull(timelineUpdates[1].TimelineEntry);
-        ProjectAgentTimelineEntryDto firstTimelineEntry = timelineUpdates[0].TimelineEntry!;
-        ProjectAgentTimelineEntryDto secondTimelineEntry = timelineUpdates[1].TimelineEntry!;
+        TimelineEntryDto firstTimelineEntry = timelineUpdates[0].TimelineEntry!;
+        TimelineEntryDto secondTimelineEntry = timelineUpdates[1].TimelineEntry!;
         Assert.AreEqual(firstTimelineEntry.TimelineEntryId, secondTimelineEntry.TimelineEntryId);
         Assert.AreEqual("call-1", firstTimelineEntry.ToolCallId);
         Assert.AreEqual("Created issue RRI-1", firstTimelineEntry.ToolResult);
@@ -546,22 +551,22 @@ public sealed class EventSubscriberTests
                     new TimelinePersistenceService())))
             .Create(projectId, events);
 
-    private static OperationalContextAgentCompactionOptions CreateCompactionOptions() =>
-        new OperationalContextAgentCompactionOptionsFactory(
+    private static AgentCompactionOptions CreateCompactionOptions() =>
+        new AgentOptionsFactory(
             new PromptAssetReader(),
             new RecordingSummarizer("<summary>Current objective\nCompleted work\nNext steps</summary>"))
             .CreateFromPromptAsset(
-                ProjectPlanPromptAssetPaths.ProjectPlanSummaryPrompt,
-                new OperationalContextCompactionOptions
+                ProjectPlanAgentPromptAssets.ProjectPlanSummaryPrompt,
+                new CompactionOptions
                 {
                     ModelContextWindowTokens = 100,
                 });
 
     private sealed class CollectingLiveUpdateNotifier : ILiveUpdateNotifier
     {
-        public List<ProjectAgentLiveUpdateDto> Updates { get; } = [];
+        public List<LiveUpdateDto> Updates { get; } = [];
 
-        public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default)
+        public Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken = default)
         {
             Updates.Add(update);
             return Task.CompletedTask;
@@ -619,14 +624,14 @@ public sealed class EventSubscriberTests
         }
     }
 
-    private sealed class RecordingSummarizer(string response) : IOperationalContextCompactionSummarizer
+    private sealed class RecordingSummarizer(string response) : ISummarizer
     {
         private readonly string _response = response;
 
         public ValueTask<string> SummarizeAsync(
             IReadOnlyList<ChatMessage> messages,
             string summaryPrompt,
-            OperationalContextCompactionOptions options,
+            CompactionOptions options,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(_response);
     }

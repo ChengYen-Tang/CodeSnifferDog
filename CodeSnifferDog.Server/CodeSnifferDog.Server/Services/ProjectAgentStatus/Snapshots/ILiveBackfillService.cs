@@ -4,7 +4,7 @@ namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 
 public interface ILiveBackfillService
 {
-    Task<IReadOnlyList<ProjectAgentLiveUpdateDto>> GetBackfillAsync(
-        ProjectAgentLiveSubscriptionRequestDto request,
+    Task<IReadOnlyList<LiveUpdateDto>> GetBackfillAsync(
+        LiveSubscriptionRequestDto request,
         CancellationToken cancellationToken = default);
 }

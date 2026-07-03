@@ -39,7 +39,7 @@ public sealed class MessageBuilderTests
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
-        StoredRuleReviewIssue[] issues = [CreateIssue()];
+        StoredIssue[] issues = [CreateIssue()];
 
         List<ChatMessage> messages = builder.CreateVerifierMessages(issues, CreateNoIssueConclusion());
 
@@ -72,7 +72,7 @@ public sealed class MessageBuilderTests
         Assert.ThrowsExactly<InvalidOperationException>(() => builder.CreateVerifierMessages([], null));
     }
 
-    private static StoredRuleReviewIssue CreateIssue() =>
+    private static StoredIssue CreateIssue() =>
         new()
         {
             RuleReviewIssueId = "issue-1",

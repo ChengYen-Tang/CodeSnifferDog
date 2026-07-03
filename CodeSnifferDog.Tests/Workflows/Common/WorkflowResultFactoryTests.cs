@@ -7,6 +7,11 @@ using ProjectPlanResultFactory = CodeSnifferDog.Workflows.ProjectPlan.ResultFact
 using ReportResultFactory = CodeSnifferDog.Workflows.Report.ResultFactory;
 using RuleReviewResultFactory = CodeSnifferDog.Workflows.RuleReview.ResultFactory;
 using ScanResultFactory = CodeSnifferDog.Workflows.Scan.ResultFactory;
+using ProjectPlanWorkflowResult = CodeSnifferDog.Models.ProjectPlan.WorkflowResult;
+using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using ReportWorkflowResult = CodeSnifferDog.Models.Report.WorkflowResult;
+using ReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
+using RuleReviewWorkflowResult = CodeSnifferDog.Models.RuleReview.WorkflowResult;
 
 namespace CodeSnifferDog.Tests.Workflows.Common;
 
@@ -32,7 +37,7 @@ public sealed class WorkflowResultFactoryTests
     public void ProjectPlanFactory_PopulatesAllResultFields()
     {
         StoredScanProject scanProject = CreateScanProject();
-        StoredProjectPlanTaskItem[] taskItems = [CreateTaskItem()];
+        StoredTaskItem[] taskItems = [CreateTaskItem()];
         ReviewVerdict verdict = CreateVerdict(approved: false);
 
         ProjectPlanWorkflowResult result = ProjectPlanResultFactory.Create(
@@ -56,8 +61,8 @@ public sealed class WorkflowResultFactoryTests
     [TestMethod]
     public void RuleReviewFactory_PopulatesAllResultFields()
     {
-        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
-        StoredRuleReviewIssue[] issues = [CreateReviewIssue()];
+        StoredTaskItem taskItem = CreateTaskItem();
+        ReviewStoredIssue[] issues = [CreateReviewIssue()];
         NoIssueConclusion noIssueConclusion = CreateNoIssueConclusion();
         ReviewVerdict verdict = CreateVerdict(approved: false);
 
@@ -88,9 +93,9 @@ public sealed class WorkflowResultFactoryTests
     [TestMethod]
     public void RuleReportFactory_PopulatesAllResultFields()
     {
-        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
-        StoredRuleReportIssue[] repositoryIssues = [CreateReportIssue()];
-        RuleReportDiff diff = new()
+        StoredTaskItem taskItem = CreateTaskItem();
+        ReportStoredIssue[] repositoryIssues = [CreateReportIssue()];
+        Diff diff = new()
         {
             CreatedIssues = repositoryIssues,
             UpdatedIssues = [],
@@ -98,7 +103,7 @@ public sealed class WorkflowResultFactoryTests
         };
         ReviewVerdict verdict = CreateVerdict(approved: true);
 
-        RuleReportWorkflowResult result = ReportResultFactory.Create(
+        ReportWorkflowResult result = ReportResultFactory.Create(
             "performance",
             taskItem,
             diff,
@@ -135,13 +140,13 @@ public sealed class WorkflowResultFactoryTests
             Reason = "Contains workflow logic.",
         };
 
-    private static StoredProjectPlanTaskItem CreateTaskItem() =>
+    private static StoredTaskItem CreateTaskItem() =>
         new()
         {
             ProjectPlanTaskItemId = "task-1",
             Files =
             [
-                new ProjectPlanFile
+                new PlanFile
                 {
                     FilePath = "Program.cs",
                     TotalLines = 120,
@@ -149,7 +154,7 @@ public sealed class WorkflowResultFactoryTests
             ],
         };
 
-    private static StoredRuleReviewIssue CreateReviewIssue() =>
+    private static ReviewStoredIssue CreateReviewIssue() =>
         new()
         {
             RuleReviewIssueId = "review-issue-1",
@@ -166,7 +171,7 @@ public sealed class WorkflowResultFactoryTests
             CrossScopeAnalysis = "No cross-scope inspection was required.",
         };
 
-    private static StoredRuleReportIssue CreateReportIssue() =>
+    private static ReportStoredIssue CreateReportIssue() =>
         new()
         {
             RuleReportIssueId = "report-issue-1",

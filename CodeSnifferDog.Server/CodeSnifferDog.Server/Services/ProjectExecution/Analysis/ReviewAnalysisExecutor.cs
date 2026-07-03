@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
@@ -14,7 +15,7 @@ internal sealed class ReviewAnalysisExecutor(
     IProjectChatClientProvider chatClientProvider,
     IWorkerFactory workerFactory,
     IEventSubscriberFactory agentStatusEventSubscriberFactory,
-    IOptions<ProjectExecutionOptions> options,
+    IOptions<Settings> options,
     ILogger<ReviewAnalysisExecutor>? logger = null) : IReviewAnalysisExecutor
 {
     private readonly IProjectChatClientProvider _chatClientProvider = chatClientProvider;
@@ -23,9 +24,9 @@ internal sealed class ReviewAnalysisExecutor(
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
     private readonly ILogger<ReviewAnalysisExecutor> _logger = logger ?? NullLogger<ReviewAnalysisExecutor>.Instance;
 
-    public async Task<ReviewAgentTeamAnalysisResult> AnalyzeAsync(
+    public async Task<AnalysisResult> AnalyzeAsync(
         ProjectAnalysisContext context,
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+        IReadOnlyList<RuleDefinition> rules,
         CancellationToken cancellationToken = default)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -49,7 +50,7 @@ internal sealed class ReviewAnalysisExecutor(
                 _options,
                 eventStream);
 
-            ReviewAgentTeamAnalysisResult result = await worker.AnalyzeDetailedAsync(cancellationToken).ConfigureAwait(false);
+            AnalysisResult result = await worker.AnalyzeDetailedAsync(cancellationToken).ConfigureAwait(false);
             _logger.LogDebug(
                 "Project {ProjectId} agent team analysis completed in {DurationMs} ms. Reports: {ReportCount}; errors: {ErrorCount}.",
                 context.ProjectId,

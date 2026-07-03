@@ -1,11 +1,14 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
+using AnalysisRuleDefinition = CodeSnifferDog.Server.Services.ProjectExecution.Analysis.RuleDefinition;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 using CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
@@ -19,6 +22,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Runtime.CompilerServices;
 using CodeSnifferDog.Models.ReviewAgentTeam.Events;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
@@ -30,7 +34,7 @@ public sealed class ReviewAnalysisExecutorTests
     [TestMethod]
     public async Task AnalyzeAsync_PassesRulesAndExecutionOptionsToWorkerFactory_AndReturnsWorkerResult()
     {
-        ReviewAgentTeamAnalysisResult expectedResult = CreateAnalysisResult();
+        AnalysisResult expectedResult = CreateAnalysisResult();
         TestWorker worker = new(expectedResult);
         TestWorkerFactory workerFactory = new(worker)
         {
@@ -40,16 +44,16 @@ public sealed class ReviewAnalysisExecutorTests
         using ServiceProvider services = CreateServices(workerFactory, CreateOptions(), subscriberFactory);
         ReviewAnalysisExecutor executor = CreateExecutor(services);
         ProjectAnalysisContext context = CreateContext();
-        IReadOnlyList<ProjectExecutionRuleDefinition> rules = CreateRules();
+        IReadOnlyList<AnalysisRuleDefinition> rules = CreateRules();
 
-        ReviewAgentTeamAnalysisResult result = await executor.AnalyzeAsync(context, rules, TestContext.CancellationToken);
+        AnalysisResult result = await executor.AnalyzeAsync(context, rules, TestContext.CancellationToken);
 
         Assert.AreSame(expectedResult, result);
         Assert.AreSame(rules, workerFactory.Rules);
         Assert.AreEqual(context.RepositoryRootPath, workerFactory.RepositoryRootPath);
         Assert.AreEqual(3, workerFactory.ExecutionOptions!.MaxParallelAgents);
         Assert.AreEqual(64_000L, workerFactory.ExecutionOptions.ModelContextWindowTokens);
-        Assert.AreEqual(OperationalContextCompactionMode.ContextCollapse, workerFactory.ExecutionOptions.ContextCompactionMode);
+        Assert.AreEqual(CompactionMode.ContextCollapse, workerFactory.ExecutionOptions.ContextCompactionMode);
         Assert.AreSame(NoOpChatClient.Instance, workerFactory.ChatClient);
         Assert.IsTrue(worker.WasDisposed);
         Assert.AreEqual(context.ProjectId, subscriberFactory.ProjectIds.Single());
@@ -76,7 +80,7 @@ public sealed class ReviewAnalysisExecutorTests
                 new ProjectAnalysisContext
                 {
                     ProjectId = projectId,
-                    RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
+                    RepositoryRootPath = TestRepositoryPaths.RootPath,
                 },
                 CreateRules(),
                 TestContext.CancellationToken));
@@ -104,7 +108,7 @@ public sealed class ReviewAnalysisExecutorTests
                 new ProjectAnalysisContext
                 {
                     ProjectId = projectId,
-                    RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
+                    RepositoryRootPath = TestRepositoryPaths.RootPath,
                 },
                 CreateRules(),
                 TestContext.CancellationToken));
@@ -119,7 +123,7 @@ public sealed class ReviewAnalysisExecutorTests
             services.GetRequiredService<IProjectChatClientProvider>(),
             services.GetRequiredService<IWorkerFactory>(),
             services.GetRequiredService<IEventSubscriberFactory>(),
-            services.GetRequiredService<IOptions<ProjectExecutionOptions>>());
+            services.GetRequiredService<IOptions<Settings>>());
 
     private static ServiceProvider CreateServices(
         IWorkerFactory workerFactory,
@@ -145,7 +149,7 @@ public sealed class ReviewAnalysisExecutorTests
                         serviceProvider.GetRequiredService<ILiveUpdateNotifier>(),
                         serviceProvider.GetRequiredService<IProjectionMapper>(),
                         new TimelinePersistenceService()))));
-        services.AddSingleton(Options.Create(new ProjectExecutionOptions
+        services.AddSingleton(Options.Create(new Settings
         {
             ExecutionOptions = executionOptions,
         }));
@@ -157,7 +161,7 @@ public sealed class ReviewAnalysisExecutorTests
         {
             MaxParallelAgents = 3,
             ModelContextWindowTokens = 64_000,
-            ContextCompactionMode = OperationalContextCompactionMode.ContextCollapse,
+            ContextCompactionMode = CompactionMode.ContextCollapse,
             AgentRunTimeoutSeconds = 42,
             MaxConsecutiveAgentRunFailures = 7,
         };
@@ -166,10 +170,10 @@ public sealed class ReviewAnalysisExecutorTests
         new()
         {
             ProjectId = Guid.NewGuid(),
-            RepositoryRootPath = @"Z:\GitHub\CodeSnifferDog",
+            RepositoryRootPath = TestRepositoryPaths.RootPath,
         };
 
-    private static IReadOnlyList<ProjectExecutionRuleDefinition> CreateRules() =>
+    private static IReadOnlyList<AnalysisRuleDefinition> CreateRules() =>
     [
         new()
         {
@@ -185,7 +189,7 @@ public sealed class ReviewAnalysisExecutorTests
         },
     ];
 
-    private static ReviewAgentTeamAnalysisResult CreateAnalysisResult() =>
+    private static AnalysisResult CreateAnalysisResult() =>
         new()
         {
             PreparationSucceeded = true,
@@ -224,14 +228,14 @@ public sealed class ReviewAnalysisExecutorTests
 
         public string? RepositoryRootPath { get; private set; }
 
-        public IReadOnlyList<ProjectExecutionRuleDefinition>? Rules { get; private set; }
+        public IReadOnlyList<AnalysisRuleDefinition>? Rules { get; private set; }
 
         public ExecutionOptions? ExecutionOptions { get; private set; }
 
         public IWorker CreateWorker(
             IChatClient chatClient,
             string repositoryRootPath,
-            IReadOnlyList<ProjectExecutionRuleDefinition> rules,
+            IReadOnlyList<AnalysisRuleDefinition> rules,
             ExecutionOptions executionOptions,
             IAgentEventBus agentEventBus)
         {
@@ -259,9 +263,9 @@ public sealed class ReviewAnalysisExecutorTests
         }
     }
 
-    private sealed class TestWorker(ReviewAgentTeamAnalysisResult result) : IWorker
+    private sealed class TestWorker(AnalysisResult result) : IWorker
     {
-        private readonly ReviewAgentTeamAnalysisResult _result = result;
+        private readonly AnalysisResult _result = result;
 
         public Func<CancellationToken, Task>? OnAnalyzeAsync { get; set; }
 
@@ -269,7 +273,7 @@ public sealed class ReviewAnalysisExecutorTests
 
         public bool WasDisposed { get; private set; }
 
-        public async Task<ReviewAgentTeamAnalysisResult> AnalyzeDetailedAsync(CancellationToken cancellationToken = default)
+        public async Task<AnalysisResult> AnalyzeDetailedAsync(CancellationToken cancellationToken = default)
         {
             if (OnAnalyzeAsync is not null)
                 await OnAnalyzeAsync(cancellationToken);
@@ -296,7 +300,7 @@ public sealed class ReviewAnalysisExecutorTests
 
     private sealed class NoOpLiveUpdateNotifier : ILiveUpdateNotifier
     {
-        public Task NotifyAsync(ProjectAgentLiveUpdateDto update, CancellationToken cancellationToken = default) =>
+        public Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
 

@@ -5,14 +5,14 @@ namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 internal sealed class LiveUpdateReducer
 {
     public bool Apply(
-        ProjectAgentLiveUpdateDto update,
+        LiveUpdateDto update,
         SnapshotState snapshot,
         SelectionState selection,
         HistoryState history)
     {
-        if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntriesRemoved)
+        if (update.Kind == LiveUpdateKind.TimelineEntriesRemoved)
         {
-            ProjectAgentTimelineEntriesRemovedDto? removedEntries = update.RemovedTimelineEntries;
+            TimelineEntriesRemovedDto? removedEntries = update.RemovedTimelineEntries;
             if (removedEntries is null)
                 return false;
 
@@ -32,9 +32,9 @@ internal sealed class LiveUpdateReducer
             return true;
         }
 
-        if (update.Kind == ProjectAgentLiveUpdateKind.TimelineEntryUpserted)
+        if (update.Kind == LiveUpdateKind.TimelineEntryUpserted)
         {
-            ProjectAgentTimelineEntryDto? timelineEntry = update.TimelineEntry;
+            TimelineEntryDto? timelineEntry = update.TimelineEntry;
             if (timelineEntry is not null && timelineEntry.AgentId == selection.SelectedAgentId)
             {
                 TimelineMutationResult? result =

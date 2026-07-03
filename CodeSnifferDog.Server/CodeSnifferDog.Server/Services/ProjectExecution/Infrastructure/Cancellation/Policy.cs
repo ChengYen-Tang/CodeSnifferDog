@@ -2,7 +2,7 @@ namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Cancell
 
 internal static class Policy
 {
-    public static Outcome Resolve(ProjectExecutionLease lease) =>
+    public static Outcome Resolve(Lease lease) =>
         lease.CancellationSource switch
         {
             Source.UserRequest => Outcome.UserCanceled,

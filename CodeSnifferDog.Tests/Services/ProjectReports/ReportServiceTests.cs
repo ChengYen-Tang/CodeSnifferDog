@@ -251,21 +251,21 @@ public sealed class ReportServiceTests
 
         public RuleReportProjection? ContentProjection { get; private set; }
 
-        public ProjectReportBundleDto MapBundle(ProjectProjection project)
+        public BundleDto MapBundle(ProjectProjection project)
         {
             MapBundleCallCount++;
             BundleProjection = project;
             return _inner.MapBundle(project);
         }
 
-        public ProjectReportListDto MapList(ProjectProjection project)
+        public ListDto MapList(ProjectProjection project)
         {
             MapListCallCount++;
             ListProjection = project;
             return _inner.MapList(project);
         }
 
-        public ProjectReportContentDto MapContent(RuleReportProjection report)
+        public ContentDto MapContent(RuleReportProjection report)
         {
             MapContentCallCount++;
             ContentProjection = report;

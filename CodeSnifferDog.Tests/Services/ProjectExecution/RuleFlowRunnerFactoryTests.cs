@@ -1,8 +1,10 @@
-using CodeSnifferDog.Models.ContextCompaction;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Report;
@@ -12,6 +14,17 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using FluentResults;
 using Microsoft.Extensions.AI;
 using System.Runtime.CompilerServices;
+using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using RuleFlowRunnerFactory = CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleFlow.RunnerFactory;
+using RuleReportRunnerFactoryInterface = CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleReport.IRunnerFactory;
+using RuleReviewRunnerFactoryInterface = CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleReview.IRunnerFactory;
+using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.IIssueStore;
+using ReportInMemoryIssueStore = CodeSnifferDog.Modules.Tools.Report.InMemoryIssueStore;
+using ReportWorkflowResult = CodeSnifferDog.Models.Report.WorkflowResult;
+using ReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.IIssueStore;
+using ReviewInMemoryIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.InMemoryIssueStore;
+using ReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
+using RuleReviewWorkflowResult = CodeSnifferDog.Models.RuleReview.WorkflowResult;
 
 namespace CodeSnifferDog.Tests.Services.ProjectExecution;
 
@@ -21,8 +34,8 @@ public sealed class RuleFlowRunnerFactoryTests
     [TestMethod]
     public async Task CreateRunner_DelegatesReviewAndReportInputsStoresAndCancellationToken()
     {
-        CapturingRuleReviewRunnerFactory reviewRunnerFactory = new();
-        CapturingRuleReportRunnerFactory reportRunnerFactory = new();
+        CapturingReviewRunnerFactory reviewRunnerFactory = new();
+        CapturingReportRunnerFactory reportRunnerFactory = new();
         RuleFlowRunnerFactory factory = new(reviewRunnerFactory, reportRunnerFactory);
         WorkflowRuntimeContext context = new(
             NoOpChatClient.Instance,
@@ -30,14 +43,14 @@ public sealed class RuleFlowRunnerFactoryTests
             CompactionOptionsFactory: null!,
             new PromptAssetReader(),
             AgentEventBus: null!);
-        OperationalContextCompactionOptions reviewCompactionOptions = CreateCompactionOptions(12_000);
-        OperationalContextCompactionOptions reportCompactionOptions = CreateCompactionOptions(13_000);
-        InMemoryRuleReviewIssueStore reviewIssueStore = new();
-        InMemoryRuleReportIssueStore reportIssueStore = new();
-        StoredProjectPlanTaskItem taskItem = CreateTaskItem();
+        CompactionOptions reviewCompactionOptions = CreateCompactionOptions(12_000);
+        CompactionOptions reportCompactionOptions = CreateCompactionOptions(13_000);
+        ReviewInMemoryIssueStore reviewIssueStore = new();
+        ReportInMemoryIssueStore reportIssueStore = new();
+        StoredTaskItem taskItem = CreateTaskItem();
         using CancellationTokenSource cancellationTokenSource = new();
 
-        Func<string, string, string, StoredProjectPlanTaskItem, CancellationToken, Task<Result<Models.RuleFlow.RuleFlowWorkflowResult>>> runner =
+        Func<string, string, string, StoredTaskItem, CancellationToken, Task<Result<Models.RuleFlow.WorkflowResult>>> runner =
             factory.CreateRunner(
                 context,
                 reviewCompactionOptions,
@@ -45,7 +58,7 @@ public sealed class RuleFlowRunnerFactoryTests
                 reviewIssueStore,
                 reportIssueStore);
 
-        Result<Models.RuleFlow.RuleFlowWorkflowResult> result = await runner(
+        Result<Models.RuleFlow.WorkflowResult> result = await runner(
             "Z:\\repo",
             "rule-a",
             "# Rule A",
@@ -73,20 +86,20 @@ public sealed class RuleFlowRunnerFactoryTests
         Assert.AreEqual(cancellationTokenSource.Token, reportRunnerFactory.CancellationToken);
     }
 
-    private static OperationalContextCompactionOptions CreateCompactionOptions(long contextWindowTokens) =>
+    private static CompactionOptions CreateCompactionOptions(long contextWindowTokens) =>
         new()
         {
             ModelContextWindowTokens = contextWindowTokens,
-            Mode = OperationalContextCompactionMode.Standard,
+            Mode = CompactionMode.Standard,
         };
 
-    private static StoredProjectPlanTaskItem CreateTaskItem() =>
+    private static StoredTaskItem CreateTaskItem() =>
         new()
         {
             ProjectPlanTaskItemId = "task-a",
             Files =
             [
-                new ProjectPlanFile
+                new PlanFile
                 {
                     FilePath = "Program.cs",
                     TotalLines = 10,
@@ -94,9 +107,9 @@ public sealed class RuleFlowRunnerFactoryTests
             ],
         };
 
-    private sealed class CapturingRuleReviewRunnerFactory : IRuleReviewRunnerFactory
+    private sealed class CapturingReviewRunnerFactory : RuleReviewRunnerFactoryInterface
     {
-        public IReadOnlyList<StoredRuleReviewIssue> ReviewIssues { get; } =
+        public IReadOnlyList<ReviewStoredIssue> ReviewIssues { get; } =
         [
             new()
             {
@@ -123,11 +136,11 @@ public sealed class RuleFlowRunnerFactoryTests
 
         public string? RuleMarkdown { get; private set; }
 
-        public StoredProjectPlanTaskItem? TaskItem { get; private set; }
+        public StoredTaskItem? TaskItem { get; private set; }
 
-        public OperationalContextCompactionOptions? CompactionOptions { get; private set; }
+        public CompactionOptions? CompactionOptions { get; private set; }
 
-        public IRuleReviewIssueStore? IssueStore { get; private set; }
+        public ReviewIssueStore? IssueStore { get; private set; }
 
         public CancellationToken CancellationToken { get; private set; }
 
@@ -136,9 +149,9 @@ public sealed class RuleFlowRunnerFactoryTests
             string repositoryRootPath,
             string ruleKey,
             string ruleMarkdown,
-            StoredProjectPlanTaskItem taskItem,
-            OperationalContextCompactionOptions compactionOptions,
-            IRuleReviewIssueStore issueStore,
+            StoredTaskItem taskItem,
+            CompactionOptions compactionOptions,
+            ReviewIssueStore issueStore,
             CancellationToken cancellationToken)
         {
             Context = context;
@@ -169,7 +182,7 @@ public sealed class RuleFlowRunnerFactoryTests
         }
     }
 
-    private sealed class CapturingRuleReportRunnerFactory : IRuleReportRunnerFactory
+    private sealed class CapturingReportRunnerFactory : RuleReportRunnerFactoryInterface
     {
         public WorkflowRuntimeContext? Context { get; private set; }
 
@@ -179,25 +192,25 @@ public sealed class RuleFlowRunnerFactoryTests
 
         public string? RuleMarkdown { get; private set; }
 
-        public StoredProjectPlanTaskItem? TaskItem { get; private set; }
+        public StoredTaskItem? TaskItem { get; private set; }
 
-        public IReadOnlyList<StoredRuleReviewIssue>? CurrentFlowIssues { get; private set; }
+        public IReadOnlyList<ReviewStoredIssue>? CurrentFlowIssues { get; private set; }
 
-        public OperationalContextCompactionOptions? CompactionOptions { get; private set; }
+        public CompactionOptions? CompactionOptions { get; private set; }
 
-        public IRuleReportIssueStore? ReportIssueStore { get; private set; }
+        public ReportIssueStore? ReportIssueStore { get; private set; }
 
         public CancellationToken CancellationToken { get; private set; }
 
-        public Task<Result<RuleReportWorkflowResult>> RunAsync(
+        public Task<Result<ReportWorkflowResult>> RunAsync(
             WorkflowRuntimeContext context,
             string repositoryRootPath,
             string ruleKey,
             string ruleMarkdown,
-            StoredProjectPlanTaskItem taskItem,
-            IReadOnlyList<StoredRuleReviewIssue> currentFlowIssues,
-            OperationalContextCompactionOptions compactionOptions,
-            IRuleReportIssueStore reportIssueStore,
+            StoredTaskItem taskItem,
+            IReadOnlyList<ReviewStoredIssue> currentFlowIssues,
+            CompactionOptions compactionOptions,
+            ReportIssueStore reportIssueStore,
             CancellationToken cancellationToken)
         {
             Context = context;
@@ -210,11 +223,11 @@ public sealed class RuleFlowRunnerFactoryTests
             ReportIssueStore = reportIssueStore;
             CancellationToken = cancellationToken;
 
-            return Task.FromResult(Result.Ok(new RuleReportWorkflowResult
+            return Task.FromResult(Result.Ok(new ReportWorkflowResult
             {
                 RuleKey = ruleKey,
                 TaskItem = taskItem,
-                Diff = new RuleReportDiff
+                Diff = new Diff
                 {
                     CreatedIssues = [],
                     UpdatedIssues = [],

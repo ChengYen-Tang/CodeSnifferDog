@@ -4,6 +4,11 @@ using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Modules.Tools.Scan;
+using ProjectPlanToolSet = CodeSnifferDog.Modules.Tools.ProjectPlan.ToolSet;
+using RuleReviewToolSet = CodeSnifferDog.Modules.Tools.RuleReview.ToolSet;
+using ReportToolSet = CodeSnifferDog.Modules.Tools.Report.ToolSet;
+using RuleReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.InMemoryIssueStore;
+using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.InMemoryIssueStore;
 
 namespace CodeSnifferDog.Tests.Modules.Tools;
 
@@ -47,7 +52,7 @@ public sealed class ToolMetadataCompatibilityTests
     [TestMethod]
     public void ProjectPlanTools_PreserveToolNamesAndDescriptions()
     {
-        ProjectPlanToolSet toolSet = new(new InMemoryProjectPlanTaskItemStore(), new ReviewVerdictBuffer());
+        ProjectPlanToolSet toolSet = new(new InMemoryTaskItemStore(), new ReviewVerdictBuffer());
 
         ToolMetadataAssertions.AssertToolMetadata(
             toolSet.CreateProjectPlanAgentTools(),
@@ -69,7 +74,7 @@ public sealed class ToolMetadataCompatibilityTests
     public void RuleReviewTools_PreserveToolNamesAndDescriptions()
     {
         RuleReviewToolSet toolSet = new(
-            new InMemoryRuleReviewIssueStore(),
+            new RuleReviewIssueStore(),
             new ReviewVerdictBuffer(),
             TestKeys.RuleFlowKey);
 
@@ -94,7 +99,7 @@ public sealed class ToolMetadataCompatibilityTests
     public void ReportTools_PreserveToolNamesAndDescriptions()
     {
         ReportToolSet toolSet = new(
-            new InMemoryRuleReportIssueStore(),
+            new ReportIssueStore(),
             new ReviewVerdictBuffer(),
             TestKeys.RuleFlowKey,
             TestKeys.RuleReportKey);

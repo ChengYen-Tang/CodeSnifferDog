@@ -1,6 +1,10 @@
 using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
+using CodeSnifferDog.Models.ReviewAgentTeam.Results;
+using CodeSnifferDog.Models.ReviewAgentTeam.Analysis;
+using CodeSnifferDog.Models.ReviewAgentTeam.Agents;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
@@ -10,6 +14,8 @@ using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Modules.Tools.Scan;
 using Microsoft.Extensions.AI;
 using System.Reflection;
+using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.IIssueStore;
+using RuleReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.IIssueStore;
 
 namespace CodeSnifferDog.Tests.Agents;
 
@@ -83,28 +89,28 @@ public sealed class AgentFactoryConventionsTests
             [typeof(IChatClient), typeof(string), typeof(IScanProjectStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
             ["chatClient", "repositoryRootPath", "scanProjectStore", "verdictBuffer", "eventScope"]),
         new(
-            typeof(CodeSnifferDog.Agents.ProjectPlan.ProjectPlanAgentFactory),
-            [typeof(IChatClient), typeof(string), typeof(IProjectPlanTaskItemStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            typeof(CodeSnifferDog.Agents.ProjectPlan.AgentFactory),
+            [typeof(IChatClient), typeof(string), typeof(ITaskItemStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
             ["chatClient", "repositoryRootPath", "taskItemStore", "verdictBuffer", "eventScope"]),
         new(
-            typeof(CodeSnifferDog.Agents.ProjectPlan.ProjectVerifierAgentFactory),
-            [typeof(IChatClient), typeof(string), typeof(StoredScanProject), typeof(IProjectPlanTaskItemStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            typeof(CodeSnifferDog.Agents.ProjectPlan.VerifierFactory),
+            [typeof(IChatClient), typeof(string), typeof(StoredScanProject), typeof(ITaskItemStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
             ["chatClient", "repositoryRootPath", "scanProject", "taskItemStore", "verdictBuffer", "eventScope"]),
         new(
-            typeof(CodeSnifferDog.Agents.RuleReview.RuleReviewAgentFactory),
-            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredProjectPlanTaskItem), typeof(IRuleReviewIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            typeof(CodeSnifferDog.Agents.RuleReview.AgentFactory),
+            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(RuleReviewIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
             ["chatClient", "repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "issueStore", "verdictBuffer", "eventScope"]),
         new(
-            typeof(CodeSnifferDog.Agents.RuleReview.ReviewVerifierAgentFactory),
-            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredProjectPlanTaskItem), typeof(IRuleReviewIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            typeof(CodeSnifferDog.Agents.RuleReview.VerifierFactory),
+            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(RuleReviewIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
             ["chatClient", "repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "issueStore", "verdictBuffer", "eventScope"]),
         new(
             typeof(CodeSnifferDog.Agents.Report.ReportAggregatorAgentFactory),
-            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredProjectPlanTaskItem), typeof(IRuleReportIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(ReportIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
             ["chatClient", "repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "reportIssueStore", "verdictBuffer", "eventScope"]),
         new(
             typeof(CodeSnifferDog.Agents.Report.ReportVerifierAgentFactory),
-            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredProjectPlanTaskItem), typeof(IReadOnlyList<StoredRuleReviewIssue>), typeof(IRuleReportIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(IReadOnlyList<StoredIssue>), typeof(ReportIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
             ["chatClient", "repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "currentFlowIssues", "reportIssueStore", "verdictBuffer", "eventScope"]),
     ];
 
