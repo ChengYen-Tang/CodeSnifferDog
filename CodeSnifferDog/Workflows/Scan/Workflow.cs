@@ -98,11 +98,11 @@ public sealed class Workflow(
             {
                 missingSubmissionAttempts++;
 
-                if (missingSubmissionAttempts >= _options.MaxMissingSubmissionAttempts)
+                if (RetryLimit.IsReached(missingSubmissionAttempts, _options.MaxMissingSubmissionAttempts))
                 {
                     scanAgentResetCount++;
 
-                    if (scanAgentResetCount > _options.MaxScanAgentResets)
+                    if (RetryLimit.IsExceeded(scanAgentResetCount, _options.MaxScanAgentResets))
                     {
                         await scanAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                         return Result.Fail<ScanWorkflowResult>("Scan Agent did not submit any scan projects after the allowed reset limit.");
@@ -121,55 +121,68 @@ public sealed class Workflow(
             }
 
             missingSubmissionAttempts = 0;
-            verifierAttempts++;
-            _verdictBuffer.Reset();
-
             List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(projects);
             int verifierPublishedMessageCount = 0;
+            int verifierMissingVerdictAttempts = 0;
 
-            (Result runVerifierResult, verifierPublishedMessageCount, scanVerifierAgent) = await WorkflowAgentRunService.RunAsync(
-                scanVerifierAgent,
-                () => _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope).Agent,
-                PrepareAttempt,
-                static state => state.Restore(),
-                verifierMessages,
-                scanVerifierAgentScope,
-                verifierPublishedMessageCount,
-                _options.AgentRunTimeout,
-                _options.MaxConsecutiveRunFailures,
-                cancellationToken).ConfigureAwait(false);
-
-            if (runVerifierResult.IsFailed)
-                return runVerifierResult.ToResult<ScanWorkflowResult>();
-
-            if (_verdictBuffer.Latest is not ReviewVerdict verdict)
+            while (true)
             {
-                await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Fail<ScanWorkflowResult>("Scan Verifier Agent finished without submitting a verdict.");
+                verifierAttempts++;
+                _verdictBuffer.Reset();
+
+                (Result runVerifierResult, verifierPublishedMessageCount, scanVerifierAgent) = await WorkflowAgentRunService.RunAsync(
+                    scanVerifierAgent,
+                    () => _scanVerifierAgentFactory(repositoryRootPath, scanVerifierAgentScope).Agent,
+                    PrepareAttempt,
+                    static state => state.Restore(),
+                    verifierMessages,
+                    scanVerifierAgentScope,
+                    verifierPublishedMessageCount,
+                    _options.AgentRunTimeout,
+                    _options.MaxConsecutiveRunFailures,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (runVerifierResult.IsFailed)
+                    return runVerifierResult.ToResult<ScanWorkflowResult>();
+
+                if (_verdictBuffer.Latest is not ReviewVerdict verdict)
+                {
+                    verifierMissingVerdictAttempts++;
+
+                    if (RetryLimit.IsReached(verifierMissingVerdictAttempts, _options.MaxMissingSubmissionAttempts))
+                    {
+                        await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                        return Result.Fail<ScanWorkflowResult>("Scan Verifier Agent finished without submitting a verdict.");
+                    }
+
+                    verifierMessages.Add(_messageBuilder.CreateMissingVerifierVerdictMessage());
+                    continue;
+                }
+
+                if (verdict.Approved)
+                    return Result.Ok(ResultFactory.Create(
+                        projects,
+                        verdict,
+                        scanAttempts,
+                        verifierAttempts,
+                        scanAgentResetCount));
+
+                verifierRejectionAttempts++;
+
+                if (RetryLimit.IsReached(verifierRejectionAttempts, _options.MaxVerifierRejectionAttempts))
+                {
+                    await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                    return Result.Ok(ResultFactory.Create(
+                        projects,
+                        verdict,
+                        scanAttempts,
+                        verifierAttempts,
+                        scanAgentResetCount));
+                }
+
+                scanMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+                break;
             }
-
-            if (verdict.Approved)
-                return Result.Ok(ResultFactory.Create(
-                    projects,
-                    verdict,
-                    scanAttempts,
-                    verifierAttempts,
-                    scanAgentResetCount));
-
-            verifierRejectionAttempts++;
-
-            if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
-            {
-                await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Ok(ResultFactory.Create(
-                    projects,
-                    verdict,
-                    scanAttempts,
-                    verifierAttempts,
-                    scanAgentResetCount));
-            }
-
-            scanMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
         }
     }
 

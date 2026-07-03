@@ -105,11 +105,11 @@ public sealed class Workflow(
             {
                 missingSubmissionAttempts++;
 
-                if (missingSubmissionAttempts >= _options.MaxMissingSubmissionAttempts)
+                if (RetryLimit.IsReached(missingSubmissionAttempts, _options.MaxMissingSubmissionAttempts))
                 {
                     projectPlanAgentResetCount++;
 
-                    if (projectPlanAgentResetCount > _options.MaxProjectPlanAgentResets)
+                    if (RetryLimit.IsExceeded(projectPlanAgentResetCount, _options.MaxProjectPlanAgentResets))
                     {
                         await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                         return Result.Fail<WorkflowResult>(
@@ -129,61 +129,74 @@ public sealed class Workflow(
             }
 
             missingSubmissionAttempts = 0;
-            verifierAttempts++;
-            _verdictBuffer.Reset();
-
             List<ChatMessage> verifierMessages = messageBuilder.CreateVerifierMessages(taskItems);
             int verifierPublishedMessageCount = 0;
+            int verifierMissingVerdictAttempts = 0;
 
-            (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await WorkflowAgentRunService.RunAsync(
-                projectVerifierAgent,
-                () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope).Agent,
-                PrepareAttempt,
-                static state => state.Restore(),
-                verifierMessages,
-                verifierAgentScope,
-                verifierPublishedMessageCount,
-                _options.AgentRunTimeout,
-                _options.MaxConsecutiveRunFailures,
-                cancellationToken).ConfigureAwait(false);
-
-            if (runVerifierResult.IsFailed)
-                return runVerifierResult.ToResult<WorkflowResult>();
-
-            if (_verdictBuffer.Latest is not ReviewVerdict verdict)
+            while (true)
             {
-                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Fail<WorkflowResult>("Project Verifier Agent finished without submitting a verdict.");
+                verifierAttempts++;
+                _verdictBuffer.Reset();
+
+                (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await WorkflowAgentRunService.RunAsync(
+                    projectVerifierAgent,
+                    () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope).Agent,
+                    PrepareAttempt,
+                    static state => state.Restore(),
+                    verifierMessages,
+                    verifierAgentScope,
+                    verifierPublishedMessageCount,
+                    _options.AgentRunTimeout,
+                    _options.MaxConsecutiveRunFailures,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (runVerifierResult.IsFailed)
+                    return runVerifierResult.ToResult<WorkflowResult>();
+
+                if (_verdictBuffer.Latest is not ReviewVerdict verdict)
+                {
+                    verifierMissingVerdictAttempts++;
+
+                    if (RetryLimit.IsReached(verifierMissingVerdictAttempts, _options.MaxMissingSubmissionAttempts))
+                    {
+                        await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                        return Result.Fail<WorkflowResult>("Project Verifier Agent finished without submitting a verdict.");
+                    }
+
+                    verifierMessages.Add(messageBuilder.CreateMissingVerifierVerdictMessage());
+                    continue;
+                }
+
+                if (verdict.Approved)
+                {
+                    return Result.Ok(ResultFactory.Create(
+                        scanProject,
+                        taskItems,
+                        verdict,
+                        planAttempts,
+                        verifierAttempts,
+                        projectPlanAgentResetCount,
+                        continuedAfterVerifierRejectionLimit: false));
+                }
+
+                verifierRejectionAttempts++;
+
+                if (RetryLimit.IsReached(verifierRejectionAttempts, _options.MaxVerifierRejectionAttempts))
+                {
+                    await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
+                    return Result.Ok(ResultFactory.Create(
+                        scanProject,
+                        taskItems,
+                        verdict,
+                        planAttempts,
+                        verifierAttempts,
+                        projectPlanAgentResetCount,
+                        continuedAfterVerifierRejectionLimit: true));
+                }
+
+                planMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
+                break;
             }
-
-            if (verdict.Approved)
-            {
-                return Result.Ok(ResultFactory.Create(
-                    scanProject,
-                    taskItems,
-                    verdict,
-                    planAttempts,
-                    verifierAttempts,
-                    projectPlanAgentResetCount,
-                    continuedAfterVerifierRejectionLimit: false));
-            }
-
-            verifierRejectionAttempts++;
-
-            if (verifierRejectionAttempts >= _options.MaxVerifierRejectionAttempts)
-            {
-                await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                return Result.Ok(ResultFactory.Create(
-                    scanProject,
-                    taskItems,
-                    verdict,
-                    planAttempts,
-                    verifierAttempts,
-                    projectPlanAgentResetCount,
-                    continuedAfterVerifierRejectionLimit: true));
-            }
-
-            planMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
         }
     }
 

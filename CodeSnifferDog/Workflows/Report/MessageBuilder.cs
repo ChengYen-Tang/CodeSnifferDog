@@ -1,6 +1,7 @@
 using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.AI;
 using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
@@ -21,6 +22,10 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
     [
         new(ChatRole.User, BuildVerifierInput(diff)),
     ];
+
+    public ChatMessage CreateMissingVerifierVerdictMessage()
+        =>
+        new(ChatRole.User, WorkflowRetryMessages.MissingVerifierVerdictMessage);
 
     private string BuildAggregatorInput(IReadOnlyList<RuleReviewStoredIssue> currentFlowIssues)
         =>

@@ -78,5 +78,8 @@ internal sealed class ScanRunnerFactory(
         {
             AgentRunTimeout = executionOptions.AgentRunTimeout,
             MaxConsecutiveRunFailures = executionOptions.MaxConsecutiveAgentRunFailures,
+            MaxMissingSubmissionAttempts = executionOptions.MaxMissingSubmissionAttempts,
+            MaxVerifierRejectionAttempts = executionOptions.MaxVerifierRejectionAttempts,
+            MaxScanAgentResets = executionOptions.MaxVerifierRejectionAttempts,
         };
 }

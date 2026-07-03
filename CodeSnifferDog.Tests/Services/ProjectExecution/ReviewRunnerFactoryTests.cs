@@ -132,17 +132,31 @@ public sealed class ReviewRunnerFactoryTests
         {
             AgentRunTimeoutSeconds = 37,
             MaxConsecutiveAgentRunFailures = 9,
+            MaxMissingSubmissionAttempts = 11,
+            MaxVerifierRejectionAttempts = 12,
         };
 
-        AssertWorkflowOptions(ScanRunnerFactory.CreateWorkflowOptions(executionOptions));
-        AssertWorkflowOptions(ProjectPlanRunnerFactory.CreateWorkflowOptions(executionOptions));
-        AssertWorkflowOptions(RuleReviewRunnerFactory.CreateWorkflowOptions(executionOptions));
-        AssertWorkflowOptions(RuleReportRunnerFactory.CreateWorkflowOptions(executionOptions));
+        ScanWorkflowOptions scanOptions = ScanRunnerFactory.CreateWorkflowOptions(executionOptions);
+        AssertWorkflowOptions(scanOptions);
+        Assert.AreEqual(12, scanOptions.MaxScanAgentResets);
+
+        CodeSnifferDog.Models.ProjectPlan.WorkflowOptions projectPlanOptions = ProjectPlanRunnerFactory.CreateWorkflowOptions(executionOptions);
+        AssertWorkflowOptions(projectPlanOptions);
+        Assert.AreEqual(12, projectPlanOptions.MaxProjectPlanAgentResets);
+
+        CodeSnifferDog.Models.RuleReview.WorkflowOptions ruleReviewOptions = RuleReviewRunnerFactory.CreateWorkflowOptions(executionOptions);
+        AssertWorkflowOptions(ruleReviewOptions);
+        Assert.AreEqual(12, ruleReviewOptions.MaxRuleReviewAgentResets);
+
+        CodeSnifferDog.Models.Report.WorkflowOptions reportOptions = RuleReportRunnerFactory.CreateWorkflowOptions(executionOptions);
+        AssertWorkflowOptions(reportOptions);
 
         void AssertWorkflowOptions(dynamic options)
         {
             Assert.AreEqual(TimeSpan.FromSeconds(37), options.AgentRunTimeout);
             Assert.AreEqual(9, options.MaxConsecutiveRunFailures);
+            Assert.AreEqual(11, options.MaxMissingSubmissionAttempts);
+            Assert.AreEqual(12, options.MaxVerifierRejectionAttempts);
         }
     }
 

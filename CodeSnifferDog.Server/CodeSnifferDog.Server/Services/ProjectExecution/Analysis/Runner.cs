@@ -81,8 +81,15 @@ internal sealed class Runner(
         if (_options.AgentRunTimeoutSeconds <= 0)
             throw new InvalidOperationException("ExecutionOptions:AgentRunTimeoutSeconds must be greater than zero.");
 
-        if (_options.MaxConsecutiveAgentRunFailures <= 0)
-            throw new InvalidOperationException("ExecutionOptions:MaxConsecutiveAgentRunFailures must be greater than zero.");
+        if (_options.MaxConsecutiveAgentRunFailures < 0)
+            throw new InvalidOperationException("ExecutionOptions:MaxConsecutiveAgentRunFailures must be zero or greater.");
+
+        if (_options.MaxMissingSubmissionAttempts < 0)
+            throw new InvalidOperationException("ExecutionOptions:MaxMissingSubmissionAttempts must be zero or greater.");
+
+        if (_options.MaxVerifierRejectionAttempts < 0)
+            throw new InvalidOperationException("ExecutionOptions:MaxVerifierRejectionAttempts must be zero or greater.");
+
     }
 
     private async Task ClearAgentStatusDataAsync(Guid projectId, CancellationToken cancellationToken)

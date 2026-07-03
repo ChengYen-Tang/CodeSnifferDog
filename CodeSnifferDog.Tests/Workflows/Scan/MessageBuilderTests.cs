@@ -1,6 +1,7 @@
 using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Prompts;
+using CodeSnifferDog.Workflows.Common;
 using CodeSnifferDog.Workflows.Scan;
 using Microsoft.Extensions.AI;
 
@@ -58,5 +59,16 @@ public sealed class MessageBuilderTests
         Assert.AreEqual(
             $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projects)}",
             messages[0].Text);
+    }
+
+    [TestMethod]
+    public void CreateMissingVerifierVerdictMessage_UsesFixedUserMessage()
+    {
+        MessageBuilder builder = new(new MessageTemplates(new PromptAssetReader()));
+
+        ChatMessage message = builder.CreateMissingVerifierVerdictMessage();
+
+        Assert.AreEqual(ChatRole.User, message.Role);
+        Assert.AreEqual(WorkflowRetryMessages.MissingVerifierVerdictMessage, message.Text);
     }
 }

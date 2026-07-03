@@ -1,6 +1,7 @@
 using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Workflows.ProjectPlan;
@@ -24,6 +25,10 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
     [
         new(ChatRole.User, BuildVerifierInput(taskItems)),
     ];
+
+    public ChatMessage CreateMissingVerifierVerdictMessage()
+        =>
+        new(ChatRole.User, WorkflowRetryMessages.MissingVerifierVerdictMessage);
 
     private string BuildPlanInput(StoredScanProject scanProject)
         =>
