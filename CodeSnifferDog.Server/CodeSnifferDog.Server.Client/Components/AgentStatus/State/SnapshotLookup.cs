@@ -7,6 +7,9 @@ namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 /// </summary>
 internal sealed class SnapshotLookup
 {
+    /// <summary>
+    /// Shared empty lookup returned when no snapshot groups are available.
+    /// </summary>
     private static readonly SnapshotLookup Empty = new(
         new Dictionary<Guid, int>(),
         new Dictionary<Guid, AgentStatusSnapshotAgentLocation>(),
@@ -15,6 +18,12 @@ internal sealed class SnapshotLookup
     private readonly IReadOnlyDictionary<Guid, int> _groupIndexesById;
     private readonly IReadOnlyDictionary<Guid, AgentStatusSnapshotAgentLocation> _agentLocationsById;
 
+    /// <summary>
+    /// Creates a lookup from precomputed group and agent indexes.
+    /// </summary>
+    /// <param name="groupIndexesById">Map from group identifiers to their snapshot indexes.</param>
+    /// <param name="agentLocationsById">Map from agent identifiers to their snapshot locations.</param>
+    /// <param name="firstAgentId">First agent identifier encountered while building the lookup.</param>
     private SnapshotLookup(
         IReadOnlyDictionary<Guid, int> groupIndexesById,
         IReadOnlyDictionary<Guid, AgentStatusSnapshotAgentLocation> agentLocationsById,

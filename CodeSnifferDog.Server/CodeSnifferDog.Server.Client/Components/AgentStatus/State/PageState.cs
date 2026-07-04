@@ -17,6 +17,9 @@ internal sealed class PageState(
     HistoryState history,
     SelectedAgentLiveConnectionState selectedAgentLiveConnection)
 {
+    /// <summary>
+    /// Applies live updates to snapshot, selection, and history state as one coordinated operation.
+    /// </summary>
     private readonly LiveUpdateReducer _liveUpdateReducer = new();
 
     /// <summary>
