@@ -4,6 +4,10 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 
+/// <summary>
+/// Uses SignalR to receive live agent-status updates for the agent-status page.
+/// </summary>
+/// <param name="httpClient">HTTP client whose base address is used to connect to the project updates hub.</param>
 public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILiveSubscriptionClient
 {
     private readonly HttpClient _httpClient = httpClient;
@@ -14,6 +18,8 @@ public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILive
     private Func<Task>? _onReconnecting;
     private Func<Task>? _onReconnectRequired;
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentNullException"><paramref name="request" />, <paramref name="onUpdate" />, <paramref name="onReconnecting" />, or <paramref name="onReconnectRequired" /> is <see langword="null" />.</exception>
     public async Task SubscribeAsync(
         LiveSubscriptionRequestDto request,
         Func<LiveUpdateDto, Task> onUpdate,
@@ -48,6 +54,7 @@ public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILive
         _subscribedAgentId = request.AgentId;
     }
 
+    /// <inheritdoc />
     public async Task UnsubscribeAsync(CancellationToken cancellationToken = default)
     {
         if (_connection is null || _subscribedProjectId is null || _connection.State != HubConnectionState.Connected)
@@ -62,6 +69,10 @@ public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILive
         _subscribedAgentId = null;
     }
 
+    /// <summary>
+    /// Ensures the SignalR connection exists and is started.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels connection startup.</param>
     private async Task EnsureConnectionAsync(CancellationToken cancellationToken)
     {
         if (_connection is null)
@@ -88,6 +99,7 @@ public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILive
         await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (_connection is not null)
@@ -103,12 +115,20 @@ public sealed class SignalRLiveSubscriptionClient(HttpClient httpClient) : ILive
         _onReconnectRequired = null;
     }
 
+    /// <summary>
+    /// Invokes the reconnecting callback when one is registered.
+    /// </summary>
+    /// <returns>A completed task when no callback is registered; otherwise the callback task.</returns>
     private Task NotifyReconnectingAsync()
     {
         Func<Task>? handler = _onReconnecting;
         return handler is null ? Task.CompletedTask : handler();
     }
 
+    /// <summary>
+    /// Invokes the reconnect-required callback when one is registered.
+    /// </summary>
+    /// <returns>A completed task when no callback is registered; otherwise the callback task.</returns>
     private Task NotifyReconnectRequiredAsync()
     {
         Func<Task>? handler = _onReconnectRequired;
