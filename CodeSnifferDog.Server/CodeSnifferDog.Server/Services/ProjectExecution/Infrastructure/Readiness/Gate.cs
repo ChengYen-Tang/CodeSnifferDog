@@ -2,10 +2,14 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Readiness;
 
+/// <summary>
+/// Checks whether the chat client, review rules, and analysis runner are ready for execution.
+/// </summary>
 internal sealed class Gate(IServiceScopeFactory serviceScopeFactory) : IGate
 {
     private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
 
+    /// <inheritdoc />
     public Result Check()
     {
         using IServiceScope scope = _serviceScopeFactory.CreateScope();

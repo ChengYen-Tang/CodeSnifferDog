@@ -13,6 +13,9 @@ using CodeSnifferDog.Json;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 
+/// <summary>
+/// Creates chat clients that honor the configured inference provider and request customization settings.
+/// </summary>
 public sealed class ProjectChatClientProvider(
     IOptions<InferenceProviderOptions> options) : IProjectChatClientProvider
 {
@@ -21,6 +24,7 @@ public sealed class ProjectChatClientProvider(
         ? options.Value.OpenAICompatible.ExtraBody
         : null;
 
+    /// <inheritdoc />
     public bool IsReady
     {
         get
@@ -40,6 +44,7 @@ public sealed class ProjectChatClientProvider(
         }
     }
 
+    /// <inheritdoc />
     public IChatClient CreateChatClient()
     {
         if (!HasRequiredConfiguration())
@@ -84,18 +89,31 @@ public sealed class ProjectChatClientProvider(
             .AsIChatClient());
     }
 
+    /// <summary>
+    /// Applies the configured request timeout to OpenAI-compatible client options.
+    /// </summary>
+    /// <param name="clientOptions">Client options to update.</param>
     private void ApplyNetworkTimeout(OpenAIClientOptions clientOptions)
     {
         if (_options.RequestTimeoutSeconds is > 0)
             clientOptions.NetworkTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds.Value);
     }
 
+    /// <summary>
+    /// Applies the configured request timeout to Azure OpenAI client options.
+    /// </summary>
+    /// <param name="clientOptions">Client options to update.</param>
     private void ApplyNetworkTimeout(AzureOpenAIClientOptions clientOptions)
     {
         if (_options.RequestTimeoutSeconds is > 0)
             clientOptions.NetworkTimeout = TimeSpan.FromSeconds(_options.RequestTimeoutSeconds.Value);
     }
 
+    /// <summary>
+    /// Configures the chat client so tool calling and provider-specific raw request mutations are enabled.
+    /// </summary>
+    /// <param name="chatClient">Chat client returned by the provider SDK.</param>
+    /// <returns>The wrapped chat client used by project execution workflows.</returns>
     private IChatClient ConfigureChatClient(IChatClient chatClient) =>
         chatClient
             .AsBuilder()
@@ -112,6 +130,11 @@ public sealed class ProjectChatClientProvider(
             })
             .Build();
 
+    /// <summary>
+    /// Creates a default raw request object when the provider SDK has not created one yet.
+    /// </summary>
+    /// <param name="chatClient">Chat client that determines which request type to create.</param>
+    /// <returns>A raw request object understood by the current SDK implementation.</returns>
     private static object CreateDefaultRawRequest(IChatClient chatClient)
     {
         string typeName = chatClient.GetType().FullName ?? string.Empty;
@@ -120,6 +143,11 @@ public sealed class ProjectChatClientProvider(
             : new ChatCompletionOptions();
     }
 
+    /// <summary>
+    /// Enables parallel tool calls and applies any configured extra request body fields.
+    /// </summary>
+    /// <param name="request">Raw request object produced by the underlying SDK.</param>
+    /// <returns>The updated request object.</returns>
     private object ConfigureRawRequest(object request)
     {
         switch (request)
@@ -139,6 +167,10 @@ public sealed class ProjectChatClientProvider(
         }
     }
 
+    /// <summary>
+    /// Applies the configured extra request body fields to the outgoing provider request.
+    /// </summary>
+    /// <param name="patch">Patch object used to mutate the raw provider request.</param>
     private void ApplyExtraBodyPatch(JsonPatch patch)
     {
         if (_extraBody is null || _extraBody.Count == 0)
@@ -158,14 +190,28 @@ public sealed class ProjectChatClientProvider(
         }
     }
 
+    /// <summary>
+    /// Determines whether the provider name refers to a supported inference backend.
+    /// </summary>
+    /// <param name="provider">Provider name from configuration.</param>
+    /// <returns><see langword="true"/> when the provider is supported; otherwise, <see langword="false"/>.</returns>
     private static bool IsSupportedProvider(string provider) =>
         IsOpenAIProvider(provider) || IsAzureOpenAIProvider(provider) || IsOpenAICompatibleProvider(provider);
 
+    /// <summary>
+    /// Determines whether the current configuration is sufficient to build a chat client.
+    /// </summary>
+    /// <returns><see langword="true"/> when all required settings are present; otherwise, <see langword="false"/>.</returns>
     private bool HasRequiredConfiguration() =>
         !string.IsNullOrWhiteSpace(_options.Provider) &&
         IsSupportedProvider(_options.Provider) &&
         HasRequiredProviderConfiguration(_options.Provider);
 
+    /// <summary>
+    /// Validates that the required settings exist for the specified provider.
+    /// </summary>
+    /// <param name="provider">Provider name from configuration.</param>
+    /// <returns><see langword="true"/> when the provider-specific settings are complete; otherwise, <see langword="false"/>.</returns>
     private bool HasRequiredProviderConfiguration(string provider)
     {
         if (IsOpenAIProvider(provider))
@@ -181,15 +227,30 @@ public sealed class ProjectChatClientProvider(
             && !string.IsNullOrWhiteSpace(_options.OpenAICompatible.ModelId);
     }
 
+    /// <summary>
+    /// Determines whether the provider name refers to OpenAI.
+    /// </summary>
+    /// <param name="provider">Provider name from configuration.</param>
+    /// <returns><see langword="true"/> when the provider refers to OpenAI; otherwise, <see langword="false"/>.</returns>
     private static bool IsOpenAIProvider(string provider) =>
         string.Equals(provider.Trim(), "openai", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), nameof(InferenceProviderOptions.OpenAI), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Determines whether the provider name refers to Azure OpenAI.
+    /// </summary>
+    /// <param name="provider">Provider name from configuration.</param>
+    /// <returns><see langword="true"/> when the provider refers to Azure OpenAI; otherwise, <see langword="false"/>.</returns>
     private static bool IsAzureOpenAIProvider(string provider) =>
         string.Equals(provider.Trim(), nameof(InferenceProviderOptions.AzureOpenAI), StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "azure-openai", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "azure openai", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Determines whether the provider name refers to an OpenAI-compatible backend.
+    /// </summary>
+    /// <param name="provider">Provider name from configuration.</param>
+    /// <returns><see langword="true"/> when the provider refers to an OpenAI-compatible backend; otherwise, <see langword="false"/>.</returns>
     private static bool IsOpenAICompatibleProvider(string provider) =>
         string.Equals(provider.Trim(), nameof(InferenceProviderOptions.OpenAICompatible), StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider.Trim(), "openai-compatible", StringComparison.OrdinalIgnoreCase) ||

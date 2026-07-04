@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 
+/// <summary>
+/// Persists execution state transitions and publishes the corresponding live updates.
+/// </summary>
 internal sealed class StateService(
     IServiceScopeFactory serviceScopeFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
@@ -19,6 +22,7 @@ internal sealed class StateService(
     private readonly ILiveUpdateNotifier _projectAgentStatusLiveUpdateNotifier = projectAgentStatusLiveUpdateNotifier;
     private readonly IProjectStatusMapper _projectStatusMapper = projectStatusMapper;
 
+    /// <inheritdoc />
     public async Task<bool> CanStartExecutionAsync(Guid projectId, CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory
@@ -33,6 +37,7 @@ internal sealed class StateService(
         return status == ProjectProcessingStatus.Reviewing;
     }
 
+    /// <inheritdoc />
     public async Task CompleteAsync(
         Guid projectId,
         ProjectProcessingStatus status,
@@ -62,6 +67,7 @@ internal sealed class StateService(
         await projectChangePublisher.PublishProjectsChangedAsync(CancellationToken.None);
     }
 
+    /// <inheritdoc />
     public Task PublishStatusUpdateAsync(
         Guid projectId,
         ProjectProcessingStatus status,

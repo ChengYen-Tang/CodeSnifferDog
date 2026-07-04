@@ -8,6 +8,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Queue;
 
+/// <summary>
+/// Claims queued projects from the database and transitions them into the reviewing state.
+/// </summary>
 internal sealed class Claimer(
     IServiceScopeFactory serviceScopeFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
@@ -21,6 +24,7 @@ internal sealed class Claimer(
     private readonly IStateService _StateService = StateService;
     private readonly ILogger<Claimer> _logger = logger ?? NullLogger<Claimer>.Instance;
 
+    /// <inheritdoc />
     public async Task<Claim?> TryClaimNextAsync(CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();
@@ -53,6 +57,11 @@ internal sealed class Claimer(
         }
     }
 
+    /// <summary>
+    /// Claims the next queued project record from the database.
+    /// </summary>
+    /// <param name="cancellationToken">Token that cancels the database operation.</param>
+    /// <returns>The claimed project data, or <see langword="null"/> when the queue is empty.</returns>
     private async Task<ClaimData?> TryClaimNextProjectFromDatabaseAsync(CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory
@@ -79,5 +88,10 @@ internal sealed class Claimer(
         return new ClaimData(project.Id, project.StoredZipRelativePath);
     }
 
+    /// <summary>
+    /// Holds the database fields required to start project execution.
+    /// </summary>
+    /// <param name="ProjectId">Project identifier.</param>
+    /// <param name="StoredZipRelativePath">Relative path to the uploaded archive.</param>
     private sealed record ClaimData(Guid ProjectId, string StoredZipRelativePath);
 }

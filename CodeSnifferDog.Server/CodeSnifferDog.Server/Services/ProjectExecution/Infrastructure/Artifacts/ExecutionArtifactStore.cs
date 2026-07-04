@@ -4,6 +4,9 @@ using System.IO.Compression;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Artifacts;
 
+/// <summary>
+/// Prepares and cleans up repository artifacts used by project execution workers.
+/// </summary>
 internal sealed class ExecutionArtifactStore(
     ProjectTemporaryStoragePaths storagePaths,
     ILogger<ExecutionArtifactStore> logger) : IExecutionArtifactStore
@@ -11,6 +14,7 @@ internal sealed class ExecutionArtifactStore(
     private readonly ProjectTemporaryStoragePaths _storagePaths = storagePaths;
     private readonly ILogger<ExecutionArtifactStore> _logger = logger;
 
+    /// <inheritdoc />
     public string PrepareRepository(Claim claim)
     {
         string uploadedZipPath = _storagePaths.ResolveStoredZipPath(claim.StoredZipRelativePath);
@@ -31,12 +35,15 @@ internal sealed class ExecutionArtifactStore(
         return extractedProjectPath;
     }
 
+    /// <inheritdoc />
     public bool StoredZipExists(string storedZipRelativePath) =>
         File.Exists(_storagePaths.ResolveStoredZipPath(storedZipRelativePath));
 
+    /// <inheritdoc />
     public bool ExtractedProjectExists(Guid projectId) =>
         Directory.Exists(_storagePaths.ResolveExtractedProjectPath(projectId));
 
+    /// <inheritdoc />
     public void TryDeleteExtractedProjectDirectory(Guid projectId)
     {
         try
@@ -49,6 +56,7 @@ internal sealed class ExecutionArtifactStore(
         }
     }
 
+    /// <inheritdoc />
     public void TryDeleteUploadedZipFile(string storedZipRelativePath, Guid projectId)
     {
         try
@@ -61,12 +69,21 @@ internal sealed class ExecutionArtifactStore(
         }
     }
 
+    /// <summary>
+    /// Deletes a directory when it exists.
+    /// </summary>
+    /// <param name="directoryPath">Directory path to delete.</param>
     private static void DeleteDirectoryIfExists(string directoryPath)
     {
         if (Directory.Exists(directoryPath))
             Directory.Delete(directoryPath, recursive: true);
     }
 
+    /// <summary>
+    /// Attempts to delete an extracted repository directory and logs failures.
+    /// </summary>
+    /// <param name="directoryPath">Directory path to delete.</param>
+    /// <param name="projectId">Project identifier used for logging.</param>
     private void TryDeleteDirectory(string directoryPath, Guid projectId)
     {
         try
@@ -79,6 +96,11 @@ internal sealed class ExecutionArtifactStore(
         }
     }
 
+    /// <summary>
+    /// Attempts to delete an uploaded archive and logs failures.
+    /// </summary>
+    /// <param name="filePath">File path to delete.</param>
+    /// <param name="projectId">Project identifier used for logging.</param>
     private void TryDeleteFile(string filePath, Guid projectId)
     {
         try
