@@ -9,6 +9,9 @@ using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
+/// <summary>
+/// Stores repository-level report issues in memory with retry-safe rollback support.
+/// </summary>
 public sealed class InMemoryIssueStore : IIssueStore
 {
     private readonly SnapshotStore _snapshotStore = new();
@@ -16,6 +19,7 @@ public sealed class InMemoryIssueStore : IIssueStore
     private readonly ScopedAttemptWriteGuard<RuleFlowKey> _writeGuard = new();
     private readonly Lock _syncRoot = new();
 
+    /// <inheritdoc />
     public ValueTask InitializeWorkingReportAsync(
         RuleReportKey ruleReportKey,
         string ruleKey,
@@ -38,6 +42,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public ValueTask<ReportStoredIssue> AddAsync(
         RuleFlowKey ruleFlowKey,
         Issue issue,
@@ -61,6 +66,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<ReportStoredIssue> GetAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReportIssueId,
@@ -72,6 +78,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             return ValueTask.FromResult(_workingStateStore.Get(ruleFlowKey, ruleReportIssueId));
     }
 
+    /// <inheritdoc />
     public ValueTask<IReadOnlyList<ReportStoredIssue>> ListAsync(
         RuleFlowKey ruleFlowKey,
         CancellationToken _)
@@ -80,6 +87,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             return ValueTask.FromResult(_workingStateStore.List(ruleFlowKey));
     }
 
+    /// <inheritdoc />
     public ValueTask<ReportStoredIssue> UpdateAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReportIssueId,
@@ -99,6 +107,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<bool> DeleteAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReportIssueId,
@@ -115,6 +124,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<IReadOnlyList<ReportStoredIssue>> GetLatestSnapshotAsync(
         RuleReportKey ruleReportKey,
         CancellationToken _)
@@ -123,6 +133,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             return ValueTask.FromResult(_snapshotStore.GetLatestSnapshot(ruleReportKey));
     }
 
+    /// <inheritdoc />
     public ValueTask<Diff> GetLatestDiffAsync(
         RuleFlowKey ruleFlowKey,
         CancellationToken _)
@@ -131,6 +142,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             return ValueTask.FromResult(_workingStateStore.GetLatestDiff(ruleFlowKey));
     }
 
+    /// <inheritdoc />
     public ValueTask SetLatestDiffAsync(
         RuleFlowKey ruleFlowKey,
         Diff diff,
@@ -149,6 +161,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public ValueTask PromoteWorkingReportAsync(
         RuleReportKey ruleReportKey,
         RuleFlowKey ruleFlowKey,
@@ -165,6 +178,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public ValueTask ClearWorkingReportAsync(RuleFlowKey ruleFlowKey, CancellationToken _)
     {
         lock (_syncRoot)
@@ -178,6 +192,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public ValueTask ClearAsync(
         RuleReportKey ruleReportKey,
         RuleFlowKey ruleFlowKey,
@@ -196,6 +211,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public IAgentAttemptLease BeginAttempt(RuleFlowKey ruleFlowKey, Guid attemptId)
     {
         lock (_syncRoot)
