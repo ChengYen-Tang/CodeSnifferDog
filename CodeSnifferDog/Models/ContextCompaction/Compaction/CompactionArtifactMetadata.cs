@@ -34,31 +34,135 @@ public static class CompactionArtifactMetadata
     /// Metadata key that stores how many preserved-tail messages were kept.
     /// </summary>
     public const string PreservedTailCountKey = "codesnifferdog.compaction.preserved_tail_count";
+
+    /// <summary>
+    /// Metadata key that stores the index of the boundary anchor message.
+    /// </summary>
     public const string BoundaryAnchorIndexKey = "codesnifferdog.compaction.boundary_anchor_index";
+
+    /// <summary>
+    /// Metadata key that stores the identifier of the boundary anchor message.
+    /// </summary>
     public const string BoundaryAnchorIdKey = "codesnifferdog.compaction.boundary_anchor_id";
+
+    /// <summary>
+    /// Metadata key that stores the role of the boundary anchor message.
+    /// </summary>
     public const string BoundaryAnchorRoleKey = "codesnifferdog.compaction.boundary_anchor_role";
+
+    /// <summary>
+    /// Metadata key that stores the text snapshot of the boundary anchor message.
+    /// </summary>
     public const string BoundaryAnchorTextKey = "codesnifferdog.compaction.boundary_anchor_text";
+
+    /// <summary>
+    /// Metadata key that stores the synthesized boundary summary text.
+    /// </summary>
     public const string BoundarySummaryKey = "codesnifferdog.compaction.boundary_summary";
+
+    /// <summary>
+    /// Metadata key that stores the first preserved-segment message index.
+    /// </summary>
     public const string PreservedSegmentHeadIndexKey = "codesnifferdog.compaction.preserved_segment_head_index";
+
+    /// <summary>
+    /// Metadata key that stores the identifier of the first preserved-segment message.
+    /// </summary>
     public const string PreservedSegmentHeadIdKey = "codesnifferdog.compaction.preserved_segment_head_id";
+
+    /// <summary>
+    /// Metadata key that stores the last preserved-segment message index.
+    /// </summary>
     public const string PreservedSegmentTailIndexKey = "codesnifferdog.compaction.preserved_segment_tail_index";
+
+    /// <summary>
+    /// Metadata key that stores the identifier of the last preserved-segment message.
+    /// </summary>
     public const string PreservedSegmentTailIdKey = "codesnifferdog.compaction.preserved_segment_tail_id";
+
+    /// <summary>
+    /// Metadata key that stores the preserved-tail message indexes.
+    /// </summary>
     public const string PreservedTailIndexesKey = "codesnifferdog.compaction.preserved_tail_indexes";
+
+    /// <summary>
+    /// Metadata key that stores the preserved-tail message identifiers.
+    /// </summary>
     public const string PreservedTailIdsKey = "codesnifferdog.compaction.preserved_tail_ids";
+
+    /// <summary>
+    /// Metadata key that stores preserved-tail text snapshots.
+    /// </summary>
     public const string PreservedTailTextsKey = "codesnifferdog.compaction.preserved_tail_texts";
+
+    /// <summary>
+    /// Metadata key that stores how many transcript messages were kept after compaction.
+    /// </summary>
     public const string MessagesToKeepCountKey = "codesnifferdog.compaction.messages_to_keep_count";
+
+    /// <summary>
+    /// Metadata key that stores how many attachment messages were preserved.
+    /// </summary>
     public const string AttachmentsCountKey = "codesnifferdog.compaction.attachments_count";
+
+    /// <summary>
+    /// Metadata key that stores how many hook-result messages were preserved.
+    /// </summary>
     public const string HookResultsCountKey = "codesnifferdog.compaction.hook_results_count";
+
+    /// <summary>
+    /// Metadata key that stores the continuity current objective.
+    /// </summary>
     public const string ContinuityCurrentObjectiveKey = "codesnifferdog.compaction.continuity.current_objective";
+
+    /// <summary>
+    /// Metadata key that stores continuity completed work.
+    /// </summary>
     public const string ContinuityCompletedWorkKey = "codesnifferdog.compaction.continuity.completed_work";
+
+    /// <summary>
+    /// Metadata key that stores continuity next steps.
+    /// </summary>
     public const string ContinuityNextStepsKey = "codesnifferdog.compaction.continuity.next_steps";
+
+    /// <summary>
+    /// Metadata key that stores continuity critical context.
+    /// </summary>
     public const string ContinuityCriticalContextKey = "codesnifferdog.compaction.continuity.critical_context";
+
+    /// <summary>
+    /// Metadata key that stores which shrink operation ran.
+    /// </summary>
     public const string ShrinkOperationKey = "codesnifferdog.compaction.shrink_operation";
+
+    /// <summary>
+    /// Metadata key that stores how many tool-result messages were shrunk.
+    /// </summary>
     public const string ShrunkToolResultCountKey = "codesnifferdog.compaction.shrunk_tool_result_count";
+
+    /// <summary>
+    /// Metadata key that stores the estimated tokens freed by shrinking.
+    /// </summary>
     public const string FreedEstimatedTokensKey = "codesnifferdog.compaction.freed_estimated_tokens";
+
+    /// <summary>
+    /// Metadata key that stores the compacted tool call identifier.
+    /// </summary>
     public const string CompactedToolCallIdKey = "codesnifferdog.compaction.compacted_tool_call_id";
+
+    /// <summary>
+    /// Metadata key that stores the compacted tool name.
+    /// </summary>
     public const string CompactedToolNameKey = "codesnifferdog.compaction.compacted_tool_name";
+
+    /// <summary>
+    /// Metadata key that stores the compacted tool-result kind.
+    /// </summary>
     public const string CompactedToolResultKindKey = "codesnifferdog.compaction.compacted_tool_result_kind";
+
+    /// <summary>
+    /// Metadata key that stores the committed collapse-span identifier.
+    /// </summary>
     public const string CollapseCommitIdKey = "codesnifferdog.compaction.collapse_commit_id";
 
     /// <summary>
