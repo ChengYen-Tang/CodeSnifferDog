@@ -6,6 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.Projects.Sidebar.Queries;
 
+/// <summary>
+/// Queries projects and arranges them into grouped sidebar read models.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for read queries.</param>
+/// <param name="statusMapper">Status mapper used to convert persisted statuses.</param>
 internal sealed class QueryService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectStatusMapper statusMapper) : IQueryService
@@ -13,6 +18,7 @@ internal sealed class QueryService(
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IProjectStatusMapper _statusMapper = statusMapper;
 
+    /// <inheritdoc />
     public async Task<SnapshotReadModel> GetSnapshotAsync(
         Guid? selectedProjectId,
         CancellationToken cancellationToken = default)
@@ -66,6 +72,10 @@ internal sealed class QueryService(
         return new SnapshotReadModel(resolvedSelectedProjectId, groups);
     }
 
+    /// <summary>
+    /// Creates the fixed sidebar group definitions and their sort order.
+    /// </summary>
+    /// <returns>The ordered sidebar group definitions.</returns>
     private static IReadOnlyList<GroupDefinition> CreateGroupDefinitions() =>
     [
         new("reviewing", "Reviewing", ProjectStatus.Reviewing, 0),
@@ -75,6 +85,11 @@ internal sealed class QueryService(
         new("canceled", "Canceled", ProjectStatus.Canceled, 4),
     ];
 
+    /// <summary>
+    /// Gets the primary sort timestamp for one project inside a sidebar group.
+    /// </summary>
+    /// <param name="project">Mapped project whose group-specific sort key should be computed.</param>
+    /// <returns>The primary sort timestamp.</returns>
     private static DateTimeOffset GetProjectSortPrimary(MappedProject project) =>
         project.Status switch
         {
@@ -83,6 +98,12 @@ internal sealed class QueryService(
             _ => project.FinishedAtUtc ?? project.UpdatedAtUtc,
         };
 
+    /// <summary>
+    /// Resolves the selected project identifier against the grouped sidebar results.
+    /// </summary>
+    /// <param name="requestedSelectedProjectId">Requested selected project identifier from the client.</param>
+    /// <param name="groups">Grouped sidebar read models.</param>
+    /// <returns>The resolved selected project identifier, or the first available project when the requested one is absent.</returns>
     private static Guid? ResolveSelectedProjectId(
         Guid? requestedSelectedProjectId,
         IReadOnlyList<GroupReadModel> groups)
@@ -102,6 +123,13 @@ internal sealed class QueryService(
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// Fixed definition of one sidebar group.
+    /// </summary>
+    /// <param name="GroupKey">Stable group key.</param>
+    /// <param name="DisplayName">Display name shown to the client.</param>
+    /// <param name="Status">Shared status represented by the group.</param>
+    /// <param name="SortOrder">Fixed sort order of the group.</param>
     private sealed record GroupDefinition(
         string GroupKey,
         string DisplayName,
