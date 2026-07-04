@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Runtime;
 
+/// <summary>
+/// Creates the persistence services that back project-execution status tracking.
+/// </summary>
 internal sealed class RuntimeComponentsFactory(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     ILiveUpdateNotifier liveUpdateNotifier,
@@ -19,6 +22,7 @@ internal sealed class RuntimeComponentsFactory(
     private readonly IProjectionMapper _projectionMapper = projectionMapper;
     private readonly ITimelinePersistenceService _timelinePersistenceService = timelinePersistenceService;
 
+    /// <inheritdoc />
     public RuntimeComponents Create(Guid projectId)
     {
         LiveUpdateFactory liveUpdateFactory = new(_projectionMapper);

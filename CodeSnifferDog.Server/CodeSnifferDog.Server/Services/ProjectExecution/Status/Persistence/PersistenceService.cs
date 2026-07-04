@@ -8,6 +8,9 @@ using CodeSnifferDog.Models.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
+/// <summary>
+/// Persists agent groups, agents, and timeline events for a project's execution status stream.
+/// </summary>
 internal sealed class PersistenceService(
     Guid projectId,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
@@ -21,6 +24,7 @@ internal sealed class PersistenceService(
     private readonly LiveUpdateFactory _liveUpdateFactory = liveUpdateFactory;
     private readonly ITimelinePersistenceService _timelinePersistenceService = timelinePersistenceService;
 
+    /// <inheritdoc />
     public async Task UpsertGroupAsync(GroupCreatedEvent agentEvent, CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -54,6 +58,7 @@ internal sealed class PersistenceService(
         await NotifyAsync(_liveUpdateFactory.CreateGroupUpdate(_projectId, group), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task UpsertAgentAsync(CreatedEvent agentEvent, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(agentEvent.GroupKey))
@@ -100,6 +105,7 @@ internal sealed class PersistenceService(
         await NotifyAsync(_liveUpdateFactory.CreateAgentUpsertUpdate(_projectId, agent), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task UpdateAgentStatusAsync(StatusChangedEvent agentEvent, CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -111,6 +117,7 @@ internal sealed class PersistenceService(
         await NotifyAsync(_liveUpdateFactory.CreateAgentStatusChangedUpdate(_projectId, agent.Id, agent.Status, agentEvent.OccurredAtUtc), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task RemoveTranscriptEntriesAsync(
         TranscriptClearedEvent agentEvent,
         CancellationToken cancellationToken)
@@ -137,6 +144,7 @@ internal sealed class PersistenceService(
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task AppendToolCallStartedEntryAsync(ToolCallStartedEvent agentEvent, CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -152,6 +160,7 @@ internal sealed class PersistenceService(
         await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, result.Entry), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task CompleteToolCallEntryAsync(ToolCallCompletedEvent agentEvent, CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -167,6 +176,7 @@ internal sealed class PersistenceService(
         await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, result.Entry), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task AppendTimelineEntryAsync(
         string groupKey,
         string agentKey,
@@ -190,6 +200,14 @@ internal sealed class PersistenceService(
         await NotifyAsync(_liveUpdateFactory.CreateTimelineEntryUpsertUpdate(_projectId, result.Entry), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Gets the persisted agent record for a runtime group and agent key pair.
+    /// </summary>
+    /// <param name="dbContext">Database context used for persistence.</param>
+    /// <param name="groupKey">Runtime key of the agent group.</param>
+    /// <param name="agentKey">Runtime key of the agent.</param>
+    /// <param name="cancellationToken">Token that cancels the database operation.</param>
+    /// <returns>The matching persisted agent record.</returns>
     private async Task<ProjectAgentRecord> GetAgentAsync(
         CodeSnifferDogServerDbContext dbContext,
         string groupKey,
@@ -202,10 +220,16 @@ internal sealed class PersistenceService(
                     candidate.Group != null &&
                     candidate.Group.ProjectId == _projectId &&
                     candidate.Group.RuntimeKey == groupKey &&
-                    candidate.RuntimeKey == agentKey,
+                candidate.RuntimeKey == agentKey,
                 cancellationToken)
             .ConfigureAwait(false);
 
+    /// <summary>
+    /// Parses a runtime status string into the persisted agent status enum.
+    /// </summary>
+    /// <param name="status">Runtime status string.</param>
+    /// <returns>The persisted agent status.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when <paramref name="status"/> is not supported.</exception>
     internal static Data.Entities.ProjectAgentStatus ParseStatus(string status) =>
         status.Trim() switch
         {
@@ -216,6 +240,11 @@ internal sealed class PersistenceService(
             _ => throw new InvalidOperationException($"Unsupported agent status '{status}'."),
         };
 
+    /// <summary>
+    /// Publishes a live update for a persisted mutation.
+    /// </summary>
+    /// <param name="update">Live update payload to publish.</param>
+    /// <param name="cancellationToken">Token that cancels publishing.</param>
     private Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken) =>
         _liveUpdateNotifier.NotifyAsync(update, cancellationToken);
 }
