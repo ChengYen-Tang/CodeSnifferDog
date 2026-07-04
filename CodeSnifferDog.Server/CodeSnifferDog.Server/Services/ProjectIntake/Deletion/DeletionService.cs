@@ -5,6 +5,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake.Deletion;
 
+/// <summary>
+/// Deletes projects from persistence and removes their temporary storage.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for deletion.</param>
+/// <param name="storagePaths">Path helper used to resolve stored zip and extracted project paths.</param>
 internal sealed class DeletionService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     ProjectTemporaryStoragePaths storagePaths) : IDeletionService
@@ -12,6 +17,7 @@ internal sealed class DeletionService(
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly ProjectTemporaryStoragePaths _storagePaths = storagePaths;
 
+    /// <inheritdoc />
     public async Task<bool> DeleteAsync(Guid projectId, CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext =
@@ -37,12 +43,20 @@ internal sealed class DeletionService(
         return true;
     }
 
+    /// <summary>
+    /// Deletes one file when it exists.
+    /// </summary>
+    /// <param name="filePath">File path to delete.</param>
     private static void DeleteFileIfExists(string filePath)
     {
         if (File.Exists(filePath))
             File.Delete(filePath);
     }
 
+    /// <summary>
+    /// Deletes one directory recursively when it exists.
+    /// </summary>
+    /// <param name="directoryPath">Directory path to delete.</param>
     private static void DeleteDirectoryIfExists(string directoryPath)
     {
         if (Directory.Exists(directoryPath))

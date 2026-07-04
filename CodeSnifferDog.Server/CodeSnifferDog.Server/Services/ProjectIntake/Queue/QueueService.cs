@@ -8,6 +8,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake.Queue;
 
+/// <summary>
+/// Adds uploaded projects to the persisted processing queue.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for queue persistence.</param>
+/// <param name="Settings">Execution settings that define queue limits.</param>
+/// <param name="projectionMapper">Mapper used to convert persisted rows into shared DTOs.</param>
+/// <param name="logger">Optional logger used for queue diagnostics.</param>
 internal sealed class QueueService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IOptions<Settings> Settings,
@@ -19,6 +26,7 @@ internal sealed class QueueService(
     private readonly IProjectProjectionMapper _projectionMapper = projectionMapper;
     private readonly ILogger<QueueService> _logger = logger ?? NullLogger<QueueService>.Instance;
 
+    /// <inheritdoc />
     public async Task<ProjectUploadResult> QueueAsync(Request request, CancellationToken cancellationToken)
     {
         if (_Settings.MaxQueuedProjects <= 0)

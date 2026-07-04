@@ -2,6 +2,11 @@ using CodeSnifferDog.Server.Services.ProjectStorage;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake.Upload;
 
+/// <summary>
+/// Stores uploaded project zip files on disk and cleans them up on failure.
+/// </summary>
+/// <param name="storagePaths">Path helper used to resolve temporary storage locations.</param>
+/// <param name="logger">Logger used for cleanup warnings.</param>
 internal sealed class UploadService(
     ProjectTemporaryStoragePaths storagePaths,
     ILogger<UploadService> logger) : IUploadService
@@ -9,6 +14,9 @@ internal sealed class UploadService(
     private readonly ProjectTemporaryStoragePaths _storagePaths = storagePaths;
     private readonly ILogger<UploadService> _logger = logger;
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentNullException"><paramref name="zipFile" /> is <see langword="null" />.</exception>
+    /// <exception cref="InvalidOperationException">The uploaded file is empty or does not have a <c>.zip</c> extension.</exception>
     public async Task<Artifact> StoreAsync(
         Guid projectId,
         IFormFile zipFile,
@@ -53,6 +61,7 @@ internal sealed class UploadService(
         }
     }
 
+    /// <inheritdoc />
     public void TryDeleteStoredFile(Artifact artifact)
     {
         try
