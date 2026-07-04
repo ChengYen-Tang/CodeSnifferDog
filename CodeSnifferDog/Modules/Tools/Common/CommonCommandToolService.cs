@@ -5,6 +5,9 @@ using System.Text;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
 
+/// <summary>
+/// Executes shell and ripgrep commands for the common tool set.
+/// </summary>
 internal sealed class CommonCommandToolService
 {
     private readonly string _repositoryRootPath;
@@ -27,6 +30,15 @@ internal sealed class CommonCommandToolService
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CommonCommandToolService"/> class for tests or composed services.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path used as the working directory.</param>
+    /// <param name="argumentsRunner">Runner used for argument-list processes.</param>
+    /// <param name="textRunner">Runner used for raw-argument-string processes.</param>
+    /// <param name="ripgrepExecutablePathProvider">Provider that resolves the ripgrep executable path.</param>
+    /// <param name="isWindows">Function that reports whether the current platform is Windows.</param>
+    /// <param name="logger">Optional logger.</param>
     internal CommonCommandToolService(
         string repositoryRootPath,
         CommandArgumentsRunner argumentsRunner,
@@ -48,6 +60,14 @@ internal sealed class CommonCommandToolService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Runs one shell command in the repository root.
+    /// </summary>
+    /// <param name="args">Shell command arguments.</param>
+    /// <param name="cancellationToken">Token that cancels command execution.</param>
+    /// <returns>The command execution result.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="args"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when the command text is blank.</exception>
     public async ValueTask<CommandExecutionResult> RunShellCommandAsync(
         RunShellCommandArgs args,
         CancellationToken cancellationToken)
@@ -70,6 +90,14 @@ internal sealed class CommonCommandToolService
         return result;
     }
 
+    /// <summary>
+    /// Runs one ripgrep command in the repository root.
+    /// </summary>
+    /// <param name="args">Ripgrep command arguments.</param>
+    /// <param name="cancellationToken">Token that cancels command execution.</param>
+    /// <returns>The command execution result.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="args"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Thrown when the command text is blank or includes the rg executable name.</exception>
     public async ValueTask<CommandExecutionResult> RunRipgrepCommandAsync(
         RunRipgrepCommandArgs args,
         CancellationToken cancellationToken)
@@ -98,6 +126,13 @@ internal sealed class CommonCommandToolService
         return result;
     }
 
+    /// <summary>
+    /// Logs the result of one executed tool command.
+    /// </summary>
+    /// <param name="toolName">Logical tool name.</param>
+    /// <param name="command">Executed command text.</param>
+    /// <param name="result">Execution result.</param>
+    /// <param name="durationMs">Elapsed duration in milliseconds.</param>
     private void LogCommandResult(
         string toolName,
         string command,
@@ -127,6 +162,13 @@ internal sealed class CommonCommandToolService
             result.StandardError);
     }
 
+    /// <summary>
+    /// Validates and normalizes the repository root path.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path to validate.</param>
+    /// <returns>The normalized full path.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="repositoryRootPath"/> is blank.</exception>
+    /// <exception cref="DirectoryNotFoundException">Thrown when the directory does not exist.</exception>
     private static string ValidateRepositoryRootPath(string repositoryRootPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRootPath);
@@ -138,14 +180,29 @@ internal sealed class CommonCommandToolService
         return fullPath;
     }
 
+    /// <summary>
+    /// Encodes one PowerShell command for use with <c>-EncodedCommand</c>.
+    /// </summary>
+    /// <param name="command">Command text to encode.</param>
+    /// <returns>The Base64-encoded command.</returns>
     private static string EncodePowerShellCommand(string command)
         =>
         Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
 
+    /// <summary>
+    /// Prepends standard PowerShell setup to one command.
+    /// </summary>
+    /// <param name="command">Command text to wrap.</param>
+    /// <returns>The wrapped command.</returns>
     private static string BuildPowerShellCommand(string command)
         =>
         "$ProgressPreference = 'SilentlyContinue'" + Environment.NewLine + command;
 
+    /// <summary>
+    /// Determines whether a command string starts with the rg executable name.
+    /// </summary>
+    /// <param name="command">Command text to inspect.</param>
+    /// <returns><see langword="true"/> when the command starts with rg; otherwise, <see langword="false"/>.</returns>
     internal static bool StartsWithRipgrepExecutable(string command)
     {
         ReadOnlySpan<char> remaining = command.AsSpan().TrimStart();
@@ -160,6 +217,12 @@ internal sealed class CommonCommandToolService
         return remaining.IsEmpty || char.IsWhiteSpace(remaining[0]);
     }
 
+    /// <summary>
+    /// Tries to consume one case-insensitive token from the start of a character span.
+    /// </summary>
+    /// <param name="remaining">Remaining character span.</param>
+    /// <param name="token">Token to consume.</param>
+    /// <returns><see langword="true"/> when the token was consumed; otherwise, <see langword="false"/>.</returns>
     private static bool TryConsumeToken(ref ReadOnlySpan<char> remaining, string token)
     {
         if (!remaining.StartsWith(token, StringComparison.OrdinalIgnoreCase))
@@ -170,16 +233,25 @@ internal sealed class CommonCommandToolService
     }
 }
 
+/// <summary>
+/// Represents the runner used for processes invoked with an argument list.
+/// </summary>
 internal delegate ValueTask<CommandExecutionResult> CommandArgumentsRunner(
     string fileName,
     IReadOnlyList<string> arguments,
     string workingDirectory,
     CancellationToken cancellationToken);
 
+/// <summary>
+/// Represents the runner used for processes invoked with a raw argument string.
+/// </summary>
 internal delegate ValueTask<CommandExecutionResult> CommandTextRunner(
     string fileName,
     string arguments,
     string workingDirectory,
     CancellationToken cancellationToken);
 
+/// <summary>
+/// Represents the provider that resolves the ripgrep executable path.
+/// </summary>
 internal delegate string RipgrepExecutablePathProvider();

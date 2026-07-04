@@ -7,6 +7,9 @@ using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
+/// <summary>
+/// Builds the tool set used by rule-review agents and verifiers.
+/// </summary>
 public sealed class ToolSet
 {
     private readonly IssueToolService _issueToolService;
@@ -24,6 +27,12 @@ public sealed class ToolSet
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ToolSet"/> class for tests or composed services.
+    /// </summary>
+    /// <param name="issueToolService">Service that manages stored rule-review issues.</param>
+    /// <param name="verdictToolService">Service that stores verifier verdicts.</param>
+    /// <param name="reviewVerdictScopeKey">Verdict scope key for the current rule flow.</param>
     internal ToolSet(
         IssueToolService issueToolService,
         ReviewVerdictToolService verdictToolService,
@@ -34,6 +43,10 @@ public sealed class ToolSet
         _reviewVerdictScopeKey = reviewVerdictScopeKey;
     }
 
+    /// <summary>
+    /// Creates the tools used by rule-review agents.
+    /// </summary>
+    /// <returns>The rule-review agent tools.</returns>
     public IList<AITool> CreateRuleReviewAgentTools()
         =>
         ToolFactory.CreateAgentTools(new AgentToolCallbacks(
@@ -44,6 +57,10 @@ public sealed class ToolSet
             DeleteRuleReviewIssueToolAsync,
             SubmitNoIssueConclusionToolAsync));
 
+    /// <summary>
+    /// Creates the tools used by rule-review verifiers.
+    /// </summary>
+    /// <returns>The rule-review verifier tools.</returns>
     public IList<AITool> CreateVerifierTools()
         =>
         ToolFactory.CreateVerifierTools(new VerifierToolCallbacks(SubmitReviewVerdictToolAsync));
@@ -195,39 +212,63 @@ public sealed class ToolSet
             },
             cancellationToken);
 
+    /// <summary>
+    /// Creates one stored rule-review issue.
+    /// </summary>
     public ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueAsync(
         CreateRuleReviewIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.CreateRuleReviewIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Gets one stored rule-review issue.
+    /// </summary>
     public ValueTask<StoredIssue> GetRuleReviewIssueAsync(
         GetRuleReviewIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.GetRuleReviewIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Lists the stored rule-review issues.
+    /// </summary>
     public ValueTask<IReadOnlyList<StoredIssue>> ListRuleReviewIssuesAsync(CancellationToken cancellationToken)
         =>
         _issueToolService.ListRuleReviewIssuesAsync(cancellationToken);
 
+    /// <summary>
+    /// Gets the submitted no-issue conclusion, if one exists.
+    /// </summary>
     public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(CancellationToken cancellationToken)
         =>
         _issueToolService.GetNoIssueConclusionAsync(cancellationToken);
 
+    /// <summary>
+    /// Updates one stored rule-review issue.
+    /// </summary>
     public ValueTask<StoredIssue> UpdateRuleReviewIssueAsync(
         UpdateRuleReviewIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.UpdateRuleReviewIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Deletes one stored rule-review issue.
+    /// </summary>
     public ValueTask<bool> DeleteRuleReviewIssueAsync(
         DeleteRuleReviewIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.DeleteRuleReviewIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Submits a no-issue conclusion for the current rule flow.
+    /// </summary>
     public ValueTask<bool> SubmitNoIssueConclusionAsync(
         SubmitNoIssueConclusionArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.SubmitNoIssueConclusionAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Stores the verifier verdict for the current rule flow.
+    /// </summary>
     public ValueTask<bool> SubmitReviewVerdictAsync(
         SubmitReviewVerdictArgs args,
         CancellationToken _) =>

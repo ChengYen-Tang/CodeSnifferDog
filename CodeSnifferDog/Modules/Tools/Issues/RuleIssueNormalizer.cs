@@ -2,8 +2,14 @@ using CodeSnifferDog.Models.RuleReview;
 
 namespace CodeSnifferDog.Modules.Tools.Issues;
 
+/// <summary>
+/// Normalizes rule issues into the canonical stored representation.
+/// </summary>
 internal static class RuleIssueNormalizer
 {
+    /// <summary>
+    /// Creates a normalized <see cref="Issue" /> from raw issue fields.
+    /// </summary>
     public static Issue Create(
         string issueType,
         string severity,
@@ -31,6 +37,9 @@ internal static class RuleIssueNormalizer
             ReviewStrategy = reviewStrategy,
         });
 
+    /// <summary>
+    /// Creates a normalized rule-issue contract from raw issue fields.
+    /// </summary>
     public static NormalizedRuleIssue CreateContract(
         string issueType,
         string severity,
@@ -58,10 +67,20 @@ internal static class RuleIssueNormalizer
             ReviewStrategy = reviewStrategy,
         });
 
+    /// <summary>
+    /// Normalizes one issue into its canonical stored form.
+    /// </summary>
+    /// <param name="issue">Issue to normalize.</param>
+    /// <returns>The normalized issue.</returns>
     public static Issue Normalize(Issue issue)
         =>
         NormalizeToContract(issue).Issue;
 
+    /// <summary>
+    /// Normalizes one issue and keeps it wrapped in a comparison contract.
+    /// </summary>
+    /// <param name="issue">Issue to normalize.</param>
+    /// <returns>The normalized issue contract.</returns>
     public static NormalizedRuleIssue NormalizeToContract(Issue issue)
     {
         Validate(issue);
@@ -81,6 +100,10 @@ internal static class RuleIssueNormalizer
         });
     }
 
+    /// <summary>
+    /// Validates that one issue contains all required fields.
+    /// </summary>
+    /// <param name="issue">Issue to validate.</param>
     private static void Validate(Issue issue)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(issue.IssueType);

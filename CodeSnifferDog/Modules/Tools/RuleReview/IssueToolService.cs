@@ -5,6 +5,9 @@ using CodeSnifferDog.Modules.Tools.Issues;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
+/// <summary>
+/// Validates rule-review tool arguments and delegates issue operations to <see cref="IIssueStore" />.
+/// </summary>
 internal sealed class IssueToolService(
     IIssueStore issueStore,
     RuleFlowKey ruleFlowKey)
@@ -12,6 +15,9 @@ internal sealed class IssueToolService(
     private readonly IIssueStore _issueStore = issueStore;
     private readonly RuleFlowKey _ruleFlowKey = ruleFlowKey;
 
+    /// <summary>
+    /// Creates one stored rule-review issue.
+    /// </summary>
     public async ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueAsync(
         CreateRuleReviewIssueArgs args,
         CancellationToken cancellationToken)
@@ -28,6 +34,9 @@ internal sealed class IssueToolService(
         };
     }
 
+    /// <summary>
+    /// Gets one stored rule-review issue.
+    /// </summary>
     public ValueTask<StoredIssue> GetRuleReviewIssueAsync(
         GetRuleReviewIssueArgs args,
         CancellationToken cancellationToken)
@@ -37,14 +46,23 @@ internal sealed class IssueToolService(
         return _issueStore.GetAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), cancellationToken);
     }
 
+    /// <summary>
+    /// Lists the stored rule-review issues.
+    /// </summary>
     public ValueTask<IReadOnlyList<StoredIssue>> ListRuleReviewIssuesAsync(CancellationToken cancellationToken)
         =>
         _issueStore.ListAsync(_ruleFlowKey, cancellationToken);
 
+    /// <summary>
+    /// Gets the submitted no-issue conclusion, if one exists.
+    /// </summary>
     public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(CancellationToken cancellationToken)
         =>
         _issueStore.GetNoIssueConclusionAsync(_ruleFlowKey, cancellationToken);
 
+    /// <summary>
+    /// Updates one stored rule-review issue.
+    /// </summary>
     public ValueTask<StoredIssue> UpdateRuleReviewIssueAsync(
         UpdateRuleReviewIssueArgs args,
         CancellationToken cancellationToken)
@@ -54,6 +72,9 @@ internal sealed class IssueToolService(
         return _issueStore.UpdateAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), CreateIssue(args), cancellationToken);
     }
 
+    /// <summary>
+    /// Deletes one stored rule-review issue.
+    /// </summary>
     public ValueTask<bool> DeleteRuleReviewIssueAsync(
         DeleteRuleReviewIssueArgs args,
         CancellationToken cancellationToken)
@@ -63,6 +84,9 @@ internal sealed class IssueToolService(
         return _issueStore.DeleteAsync(_ruleFlowKey, args.RuleReviewIssueId.Trim(), cancellationToken);
     }
 
+    /// <summary>
+    /// Submits a no-issue conclusion for the current rule flow.
+    /// </summary>
     public async ValueTask<bool> SubmitNoIssueConclusionAsync(
         SubmitNoIssueConclusionArgs args,
         CancellationToken cancellationToken)
@@ -81,6 +105,9 @@ internal sealed class IssueToolService(
         return true;
     }
 
+    /// <summary>
+    /// Creates a normalized issue from create arguments.
+    /// </summary>
     private static Issue CreateIssue(CreateRuleReviewIssueArgs args) =>
         RuleIssueNormalizer.Create(
             args.IssueType,
@@ -95,6 +122,9 @@ internal sealed class IssueToolService(
             args.CrossScopeAnalysis,
             args.ReviewStrategy);
 
+    /// <summary>
+    /// Creates a normalized issue from update arguments.
+    /// </summary>
     private static Issue CreateIssue(UpdateRuleReviewIssueArgs args) =>
         RuleIssueNormalizer.Create(
             args.IssueType,

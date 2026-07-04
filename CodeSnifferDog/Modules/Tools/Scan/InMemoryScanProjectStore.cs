@@ -5,12 +5,16 @@ using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.Tools.Scan;
 
+/// <summary>
+/// Stores scan projects in memory with retry-safe rollback support.
+/// </summary>
 public sealed class InMemoryScanProjectStore : IScanProjectStore
 {
     private readonly ScanProjectStateStore _stateStore = new();
     private readonly AttemptWriteGuard _writeGuard = new();
     private readonly Lock _syncRoot = new();
 
+    /// <inheritdoc />
     public ValueTask<StoredScanProject> AddAsync(ScanProject project, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(project);
@@ -27,6 +31,7 @@ public sealed class InMemoryScanProjectStore : IScanProjectStore
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<IReadOnlyList<StoredScanProject>> AddRangeAsync(
         IReadOnlyList<ScanProject> projects,
         CancellationToken cancellationToken)
@@ -44,6 +49,7 @@ public sealed class InMemoryScanProjectStore : IScanProjectStore
         return storedProjects;
     }
 
+    /// <inheritdoc />
     public ValueTask<bool> DeleteAsync(string scanProjectId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(scanProjectId);
@@ -57,12 +63,14 @@ public sealed class InMemoryScanProjectStore : IScanProjectStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<IReadOnlyList<StoredScanProject>> ListAsync(CancellationToken cancellationToken)
     {
         lock (_syncRoot)
             return ValueTask.FromResult(_stateStore.List());
     }
 
+    /// <inheritdoc />
     public ValueTask ClearAsync(CancellationToken cancellationToken)
     {
         lock (_syncRoot)
@@ -76,6 +84,7 @@ public sealed class InMemoryScanProjectStore : IScanProjectStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public IAgentAttemptLease BeginAttempt(Guid attemptId)
     {
         lock (_syncRoot)

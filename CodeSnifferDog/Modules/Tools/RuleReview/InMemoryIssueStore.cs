@@ -7,12 +7,16 @@ using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
+/// <summary>
+/// Stores rule-review issues in memory with retry-safe rollback support.
+/// </summary>
 public sealed class InMemoryIssueStore : IIssueStore
 {
     private readonly IssueStateStore _stateStore = new();
     private readonly ScopedAttemptWriteGuard<RuleFlowKey> _writeGuard = new();
     private readonly Lock _syncRoot = new();
 
+    /// <inheritdoc />
     public ValueTask<StoredIssue> AddAsync(
         RuleFlowKey ruleFlowKey,
         Issue issue,
@@ -36,6 +40,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<StoredIssue> GetAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReviewIssueId,
@@ -47,6 +52,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             return ValueTask.FromResult(_stateStore.Get(ruleFlowKey, ruleReviewIssueId));
     }
 
+    /// <inheritdoc />
     public ValueTask<IReadOnlyList<StoredIssue>> ListAsync(
         RuleFlowKey ruleFlowKey,
         CancellationToken _)
@@ -55,6 +61,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             return ValueTask.FromResult(_stateStore.List(ruleFlowKey));
     }
 
+    /// <inheritdoc />
     public ValueTask<StoredIssue> UpdateAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReviewIssueId,
@@ -74,6 +81,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<bool> DeleteAsync(
         RuleFlowKey ruleFlowKey,
         string ruleReviewIssueId,
@@ -90,6 +98,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<NoIssueConclusion?> GetNoIssueConclusionAsync(
         RuleFlowKey ruleFlowKey,
         CancellationToken _)
@@ -98,6 +107,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             return ValueTask.FromResult(_stateStore.GetNoIssueConclusion(ruleFlowKey));
     }
 
+    /// <inheritdoc />
     public ValueTask SubmitNoIssueConclusionAsync(
         RuleFlowKey ruleFlowKey,
         NoIssueConclusion conclusion,
@@ -117,6 +127,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public ValueTask ClearAsync(RuleFlowKey ruleFlowKey, CancellationToken _)
     {
         lock (_syncRoot)
@@ -131,6 +142,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public IAgentAttemptLease BeginAttempt(RuleFlowKey ruleFlowKey, Guid attemptId)
     {
         lock (_syncRoot)
@@ -143,6 +155,11 @@ public sealed class InMemoryIssueStore : IIssueStore
         }
     }
 
+    /// <summary>
+    /// Normalizes a no-issue conclusion before storage.
+    /// </summary>
+    /// <param name="conclusion">Conclusion to normalize.</param>
+    /// <returns>The normalized conclusion.</returns>
     private static NoIssueConclusion NormalizeNoIssueConclusion(NoIssueConclusion conclusion)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(conclusion.ReviewStrategy);
