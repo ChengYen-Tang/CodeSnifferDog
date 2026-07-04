@@ -10,9 +10,15 @@ public sealed class MessageTemplates(PromptAssetReader promptAssetReader)
 {
     private readonly PromptAssetReader _promptAssetReader = promptAssetReader;
 
+    /// <summary>
+    /// Gets the prompt prefix injected before report aggregator input.
+    /// </summary>
     public string AggregatorInputPrefix =>
         _promptAssetReader.ReadRequiredPrompt(PromptAssetPaths.AggregatorInputPrefix);
 
+    /// <summary>
+    /// Gets the prompt prefix injected before report verifier input.
+    /// </summary>
     public string VerifierInputPrefix =>
         _promptAssetReader.ReadRequiredPrompt(PromptAssetPaths.VerifierInputPrefix);
 }

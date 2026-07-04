@@ -245,8 +245,14 @@ public sealed class CollapseProjectionBuilder
     /// </summary>
     private sealed class NonSystemMessageEntry
     {
+        /// <summary>
+        /// Gets the message index among non-system transcript entries.
+        /// </summary>
         public required int NonSystemIndex { get; init; }
 
+        /// <summary>
+        /// Gets the stored message identity, when one exists.
+        /// </summary>
         public string? MessageId { get; init; }
     }
 

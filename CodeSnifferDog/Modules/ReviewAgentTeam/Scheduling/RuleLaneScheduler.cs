@@ -236,10 +236,19 @@ internal sealed class RuleLaneScheduler(
     /// <param name="taskItem">Stored task item that should be executed.</param>
     private sealed class PendingRuleWorkItem(int projectIndex, int taskItemIndex, StoredTaskItem taskItem)
     {
+        /// <summary>
+        /// Gets the project index inside the overall result grid.
+        /// </summary>
         public int ProjectIndex { get; } = projectIndex;
 
+        /// <summary>
+        /// Gets the task-item index inside the project.
+        /// </summary>
         public int TaskItemIndex { get; } = taskItemIndex;
 
+        /// <summary>
+        /// Gets the stored task item that should be executed.
+        /// </summary>
         public StoredTaskItem TaskItem { get; } = taskItem;
     }
 
@@ -252,12 +261,24 @@ internal sealed class RuleLaneScheduler(
     {
         private readonly Queue<PendingRuleWorkItem> _queue = [];
 
+        /// <summary>
+        /// Gets the rule index inside the caller-provided definition list.
+        /// </summary>
         public int RuleIndex { get; } = ruleIndex;
 
+        /// <summary>
+        /// Gets the rule definition executed by this lane.
+        /// </summary>
         public RuleDefinition RuleDefinition { get; } = ruleDefinition;
 
+        /// <summary>
+        /// Gets or sets whether a work item from this lane is currently running.
+        /// </summary>
         public bool IsRunning { get; set; }
 
+        /// <summary>
+        /// Gets how many work items remain queued for this lane.
+        /// </summary>
         public int QueueCount => _queue.Count;
 
         /// <summary>
@@ -284,10 +305,19 @@ internal sealed class RuleLaneScheduler(
         PendingRuleWorkItem workItem,
         Task<RuleFlowExecutionResult> executionTask)
     {
+        /// <summary>
+        /// Gets the lane that owns the in-flight execution.
+        /// </summary>
         public RuleLaneState LaneState { get; } = laneState;
 
+        /// <summary>
+        /// Gets the work item being executed.
+        /// </summary>
         public PendingRuleWorkItem WorkItem { get; } = workItem;
 
+        /// <summary>
+        /// Gets the task that completes with the rule-flow execution result.
+        /// </summary>
         public Task<RuleFlowExecutionResult> ExecutionTask { get; } = executionTask;
     }
 
@@ -297,6 +327,9 @@ internal sealed class RuleLaneScheduler(
     /// <param name="result">Rule-flow result to expose.</param>
     private sealed class RuleFlowExecutionResult(Result<RuleFlowWorkflowResult> result)
     {
+        /// <summary>
+        /// Gets the fluent result returned by the rule-flow execution.
+        /// </summary>
         public Result<RuleFlowWorkflowResult> Result { get; } = result;
     }
 }
