@@ -234,39 +234,129 @@ internal sealed class WindowsProcessJob : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr hObject);
 
+    /// <summary>
+    /// Mirrors the Win32 basic job-object limit information structure.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct JOBOBJECT_BASIC_LIMIT_INFORMATION
     {
+        /// <summary>
+        /// Gets or sets the per-process user-mode time limit.
+        /// </summary>
         public long PerProcessUserTimeLimit;
+
+        /// <summary>
+        /// Gets or sets the cumulative per-job user-mode time limit.
+        /// </summary>
         public long PerJobUserTimeLimit;
+
+        /// <summary>
+        /// Gets or sets the job-object limit flags.
+        /// </summary>
         public uint LimitFlags;
+
+        /// <summary>
+        /// Gets or sets the minimum working-set size.
+        /// </summary>
         public UIntPtr MinimumWorkingSetSize;
+
+        /// <summary>
+        /// Gets or sets the maximum working-set size.
+        /// </summary>
         public UIntPtr MaximumWorkingSetSize;
+
+        /// <summary>
+        /// Gets or sets the maximum number of active processes allowed in the job.
+        /// </summary>
         public uint ActiveProcessLimit;
+
+        /// <summary>
+        /// Gets or sets the processor affinity mask.
+        /// </summary>
         public UIntPtr Affinity;
+
+        /// <summary>
+        /// Gets or sets the process priority class.
+        /// </summary>
         public uint PriorityClass;
+
+        /// <summary>
+        /// Gets or sets the process scheduling class.
+        /// </summary>
         public uint SchedulingClass;
     }
 
+    /// <summary>
+    /// Mirrors the Win32 job-object I/O counters structure.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct IO_COUNTERS
     {
+        /// <summary>
+        /// Gets or sets the number of read operations.
+        /// </summary>
         public ulong ReadOperationCount;
+
+        /// <summary>
+        /// Gets or sets the number of write operations.
+        /// </summary>
         public ulong WriteOperationCount;
+
+        /// <summary>
+        /// Gets or sets the number of non-read and non-write operations.
+        /// </summary>
         public ulong OtherOperationCount;
+
+        /// <summary>
+        /// Gets or sets the number of bytes transferred by read operations.
+        /// </summary>
         public ulong ReadTransferCount;
+
+        /// <summary>
+        /// Gets or sets the number of bytes transferred by write operations.
+        /// </summary>
         public ulong WriteTransferCount;
+
+        /// <summary>
+        /// Gets or sets the number of bytes transferred by other operations.
+        /// </summary>
         public ulong OtherTransferCount;
     }
 
+    /// <summary>
+    /// Mirrors the Win32 extended job-object limit information structure.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
     {
+        /// <summary>
+        /// Gets or sets the basic job-object limits.
+        /// </summary>
         public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+
+        /// <summary>
+        /// Gets or sets the accumulated I/O counters.
+        /// </summary>
         public IO_COUNTERS IoInfo;
+
+        /// <summary>
+        /// Gets or sets the per-process memory limit.
+        /// </summary>
         public UIntPtr ProcessMemoryLimit;
+
+        /// <summary>
+        /// Gets or sets the per-job memory limit.
+        /// </summary>
         public UIntPtr JobMemoryLimit;
+
+        /// <summary>
+        /// Gets or sets the peak memory used by any single process in the job.
+        /// </summary>
         public UIntPtr PeakProcessMemoryUsed;
+
+        /// <summary>
+        /// Gets or sets the peak memory used by the entire job.
+        /// </summary>
         public UIntPtr PeakJobMemoryUsed;
     }
 }
