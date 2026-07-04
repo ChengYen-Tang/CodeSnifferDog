@@ -9,6 +9,9 @@ using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
+/// <summary>
+/// Builds the tool set used by report aggregators and verifiers.
+/// </summary>
 public sealed class ToolSet
 {
     private readonly IssueToolService _issueToolService;
@@ -29,6 +32,9 @@ public sealed class ToolSet
         _ = ruleReportKey;
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ToolSet"/> class for tests or composed services.
+    /// </summary>
     internal ToolSet(
         IssueToolService issueToolService,
         ReviewVerdictToolService verdictToolService,
@@ -39,6 +45,9 @@ public sealed class ToolSet
         _reportVerdictScopeKey = reportVerdictScopeKey;
     }
 
+    /// <summary>
+    /// Creates the tools used by report aggregators.
+    /// </summary>
     public IList<AITool> CreateReportAggregatorTools()
         =>
         ToolFactory.CreateAggregatorTools(new AggregatorToolCallbacks(
@@ -48,6 +57,9 @@ public sealed class ToolSet
             UpdateRuleReportIssueToolAsync,
             DeleteRuleReportIssueToolAsync));
 
+    /// <summary>
+    /// Creates the tools used by report verifiers.
+    /// </summary>
     public IList<AITool> CreateVerifierTools()
         =>
         ToolFactory.CreateVerifierTools(new VerifierToolCallbacks(SubmitReviewVerdictToolAsync));
@@ -178,38 +190,62 @@ public sealed class ToolSet
             },
             cancellationToken);
 
+    /// <summary>
+    /// Gets one stored repository-level issue.
+    /// </summary>
     public ValueTask<ReportStoredIssue> GetRuleReportIssueAsync(
         GetRuleReportIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.GetRuleReportIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Lists the repository-level issues in the working report.
+    /// </summary>
     public ValueTask<IReadOnlyList<ReportStoredIssue>> ListRuleReportIssuesAsync(CancellationToken cancellationToken)
         =>
         _issueToolService.ListRuleReportIssuesAsync(cancellationToken);
 
+    /// <summary>
+    /// Creates one stored repository-level issue.
+    /// </summary>
     public ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueAsync(
         CreateRuleReportIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.CreateRuleReportIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Updates one stored repository-level issue.
+    /// </summary>
     public ValueTask<ReportStoredIssue> UpdateRuleReportIssueAsync(
         UpdateRuleReportIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.UpdateRuleReportIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Deletes one stored repository-level issue.
+    /// </summary>
     public ValueTask<bool> DeleteRuleReportIssueAsync(
         DeleteRuleReportIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.DeleteRuleReportIssueAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Gets the latest diff for the working report.
+    /// </summary>
     public ValueTask<Diff> GetLatestDiffAsync(CancellationToken cancellationToken)
         =>
         _issueToolService.GetLatestDiffAsync(cancellationToken);
 
+    /// <summary>
+    /// Stores the latest diff for the working report.
+    /// </summary>
     public ValueTask SetLatestDiffAsync(Diff diff, CancellationToken cancellationToken)
         =>
         _issueToolService.SetLatestDiffAsync(diff, cancellationToken);
 
+    /// <summary>
+    /// Stores the verifier verdict for the current report flow.
+    /// </summary>
     public ValueTask<bool> SubmitReviewVerdictAsync(
         SubmitReviewVerdictArgs args,
         CancellationToken _) =>

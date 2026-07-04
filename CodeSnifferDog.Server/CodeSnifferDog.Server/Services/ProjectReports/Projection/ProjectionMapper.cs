@@ -2,8 +2,12 @@ using CodeSnifferDog.Server.Shared.Reports;
 
 namespace CodeSnifferDog.Server.Services.ProjectReports.Projection;
 
+/// <summary>
+/// Maps persisted project-report projections into shared API DTOs.
+/// </summary>
 internal sealed class ProjectionMapper : IProjectionMapper
 {
+    /// <inheritdoc />
     public BundleDto MapBundle(ProjectProjection project) => new()
     {
         OriginalFileName = project.OriginalFileName,
@@ -17,6 +21,7 @@ internal sealed class ProjectionMapper : IProjectionMapper
             .ToList(),
     };
 
+    /// <inheritdoc />
     public ListDto MapList(ProjectProjection project) => new()
     {
         OriginalFileName = project.OriginalFileName,
@@ -29,6 +34,7 @@ internal sealed class ProjectionMapper : IProjectionMapper
             .ToList(),
     };
 
+    /// <inheritdoc />
     public ContentDto MapContent(RuleReportProjection report) => new()
     {
         ReportId = report.ReportId,

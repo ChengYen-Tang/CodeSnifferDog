@@ -2,10 +2,16 @@ using CodeSnifferDog.Models.ProjectPlan;
 
 namespace CodeSnifferDog.Modules.Tools.ProjectPlan.State;
 
+/// <summary>
+/// Stores project-plan task items for the current workflow run and supports snapshot rollback.
+/// </summary>
 internal sealed class TaskItemStateStore
 {
     private readonly List<StoredTaskItem> _taskItems = [];
 
+    /// <summary>
+    /// Adds a stored task item unless an equivalent item already exists.
+    /// </summary>
     public StoredTaskItem Add(StoredTaskItem storedTaskItem)
     {
         StoredTaskItem? existingTaskItem = _taskItems
@@ -17,6 +23,9 @@ internal sealed class TaskItemStateStore
         return storedTaskItem;
     }
 
+    /// <summary>
+    /// Deletes a stored task item by identifier.
+    /// </summary>
     public bool Delete(string projectPlanTaskItemId)
     {
         StoredTaskItem? existingTaskItem =
@@ -29,21 +38,36 @@ internal sealed class TaskItemStateStore
         return true;
     }
 
+    /// <summary>
+    /// Lists the stored task items in insertion order.
+    /// </summary>
     public IReadOnlyList<StoredTaskItem> List() =>
         [.. _taskItems];
 
+    /// <summary>
+    /// Clears all stored task items.
+    /// </summary>
     public void Clear() =>
         _taskItems.Clear();
 
+    /// <summary>
+    /// Creates a snapshot clone of all stored task items.
+    /// </summary>
     public IReadOnlyList<StoredTaskItem> Clone() =>
         [.. _taskItems.Select(CloneStoredTaskItem)];
 
+    /// <summary>
+    /// Restores the store from a cloned snapshot.
+    /// </summary>
     public void Restore(IReadOnlyList<StoredTaskItem> snapshot)
     {
         _taskItems.Clear();
         _taskItems.AddRange(snapshot.Select(CloneStoredTaskItem));
     }
 
+    /// <summary>
+    /// Creates a stored task item from a task item and generated identifier.
+    /// </summary>
     public static StoredTaskItem CreateStoredTaskItem(TaskItem taskItem, string projectPlanTaskItemId)
     {
         Validate(taskItem);
@@ -59,6 +83,9 @@ internal sealed class TaskItemStateStore
         };
     }
 
+    /// <summary>
+    /// Validates one task item.
+    /// </summary>
     private static void Validate(TaskItem taskItem)
     {
         if (taskItem.Files.Count == 0)
@@ -68,6 +95,9 @@ internal sealed class TaskItemStateStore
             ValidateFile(file);
     }
 
+    /// <summary>
+    /// Validates one plan file.
+    /// </summary>
     private static void ValidateFile(PlanFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
@@ -77,6 +107,9 @@ internal sealed class TaskItemStateStore
             throw new ArgumentOutOfRangeException(nameof(file), "Total lines must be greater than zero.");
     }
 
+    /// <summary>
+    /// Determines whether two plan-file lists are equivalent.
+    /// </summary>
     private static bool HaveEquivalentFiles(
         IReadOnlyList<PlanFile> left,
         IReadOnlyList<PlanFile> right)
@@ -94,6 +127,9 @@ internal sealed class TaskItemStateStore
         return true;
     }
 
+    /// <summary>
+    /// Clones one stored task item.
+    /// </summary>
     private static StoredTaskItem CloneStoredTaskItem(StoredTaskItem taskItem) =>
         new()
         {

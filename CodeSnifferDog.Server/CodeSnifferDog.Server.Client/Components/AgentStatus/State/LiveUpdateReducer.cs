@@ -2,8 +2,19 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Server.Client.Components.AgentStatus.State;
 
+/// <summary>
+/// Applies live-update DTOs to snapshot, selection, and history state.
+/// </summary>
 internal sealed class LiveUpdateReducer
 {
+    /// <summary>
+    /// Applies one live update and synchronizes dependent selection/history state when needed.
+    /// </summary>
+    /// <param name="update">Live update to apply.</param>
+    /// <param name="snapshot">Snapshot state to mutate.</param>
+    /// <param name="selection">Selection state that may need reconciliation.</param>
+    /// <param name="history">History state for the selected agent.</param>
+    /// <returns><see langword="true" /> when the update changed state.</returns>
     public bool Apply(
         LiveUpdateDto update,
         SnapshotState snapshot,

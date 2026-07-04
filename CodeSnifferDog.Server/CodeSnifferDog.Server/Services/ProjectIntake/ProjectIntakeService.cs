@@ -11,6 +11,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectIntake;
 
+/// <summary>
+/// Coordinates project upload, queueing, lookup, cancellation, and deletion workflows.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for project lookups.</param>
+/// <param name="projectChangePublisher">Publisher used to notify clients when project lists change.</param>
+/// <param name="projectUploadService">Service that stores uploaded zip files.</param>
+/// <param name="projectQueueService">Service that persists queued project requests.</param>
+/// <param name="projectDeletionService">Service that deletes projects and their temporary storage.</param>
+/// <param name="projectionMapper">Mapper used to convert persisted rows into shared DTOs.</param>
+/// <param name="executionLeaseRegistry">Registry used to request cancellation of running executions.</param>
+/// <param name="queueLock">Lock that serializes queue mutations.</param>
+/// <param name="logger">Logger used for cancellation diagnostics.</param>
 internal sealed class ProjectIntakeService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IProjectChangePublisher projectChangePublisher,
@@ -32,6 +44,7 @@ internal sealed class ProjectIntakeService(
     private readonly IQueueLock _queueLock = queueLock;
     private readonly ILogger<ProjectIntakeService> _logger = logger;
 
+    /// <inheritdoc />
     public async Task<ProjectUploadResult> UploadAsync(IFormFile zipFile, CancellationToken cancellationToken = default)
     {
         Guid projectId = Guid.NewGuid();
@@ -62,6 +75,7 @@ internal sealed class ProjectIntakeService(
         }
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ProjectListItemDto>> ListAsync(CancellationToken cancellationToken = default)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -91,6 +105,7 @@ internal sealed class ProjectIntakeService(
             .ToList();
     }
 
+    /// <inheritdoc />
     public async Task<ProjectSummaryDto?> GetAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
@@ -113,6 +128,7 @@ internal sealed class ProjectIntakeService(
         return project is null ? null : _projectionMapper.MapSummary(project);
     }
 
+    /// <inheritdoc />
     public async Task<bool> CancelAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -138,6 +154,7 @@ internal sealed class ProjectIntakeService(
         return true;
     }
 
+    /// <inheritdoc />
     public async Task<bool> DeleteAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

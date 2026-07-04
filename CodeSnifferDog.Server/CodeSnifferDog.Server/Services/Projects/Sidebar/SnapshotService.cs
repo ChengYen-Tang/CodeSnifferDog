@@ -5,6 +5,11 @@ using CodeSnifferDog.Server.Shared.Projects;
 
 namespace CodeSnifferDog.Server.Services.Projects.Sidebar;
 
+/// <summary>
+/// Builds sidebar snapshots from query read models and projection mappers.
+/// </summary>
+/// <param name="queryService">Query service that loads sidebar read models.</param>
+/// <param name="projectionMapper">Mapper that converts internal projections to shared DTOs.</param>
 internal sealed class SnapshotService(
     IQueryService queryService,
     IProjectProjectionMapper projectionMapper) : ISnapshotService
@@ -12,6 +17,7 @@ internal sealed class SnapshotService(
     private readonly IQueryService _queryService = queryService;
     private readonly IProjectProjectionMapper _projectionMapper = projectionMapper;
 
+    /// <inheritdoc />
     public async Task<ProjectSidebarSnapshotDto> GetSnapshotAsync(Guid? selectedProjectId, CancellationToken cancellationToken = default)
     {
         SnapshotReadModel snapshot = await _queryService
@@ -26,6 +32,11 @@ internal sealed class SnapshotService(
         };
     }
 
+    /// <summary>
+    /// Maps one sidebar group read model to the shared sidebar group DTO.
+    /// </summary>
+    /// <param name="group">Sidebar group read model.</param>
+    /// <returns>The mapped sidebar group DTO.</returns>
     private ProjectSidebarGroupDto MapGroup(GroupReadModel group) => new()
     {
         GroupKey = group.GroupKey,

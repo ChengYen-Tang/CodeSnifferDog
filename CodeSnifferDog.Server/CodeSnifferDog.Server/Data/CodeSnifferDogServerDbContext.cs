@@ -3,18 +3,37 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Data;
 
+/// <summary>
+/// Entity Framework Core database context for the CodeSnifferDog server.
+/// </summary>
 public sealed class CodeSnifferDogServerDbContext(DbContextOptions<CodeSnifferDogServerDbContext> options) : DbContext(options)
 {
+    /// <summary>
+    /// Gets the persisted projects.
+    /// </summary>
     public DbSet<ProjectRecord> Projects => Set<ProjectRecord>();
 
+    /// <summary>
+    /// Gets the persisted project rule reports.
+    /// </summary>
     public DbSet<ProjectRuleReportRecord> ProjectRuleReports => Set<ProjectRuleReportRecord>();
 
+    /// <summary>
+    /// Gets the persisted project agent groups.
+    /// </summary>
     public DbSet<ProjectAgentGroupRecord> ProjectAgentGroups => Set<ProjectAgentGroupRecord>();
 
+    /// <summary>
+    /// Gets the persisted project agents.
+    /// </summary>
     public DbSet<ProjectAgentRecord> ProjectAgents => Set<ProjectAgentRecord>();
 
+    /// <summary>
+    /// Gets the persisted project agent timeline entries.
+    /// </summary>
     public DbSet<ProjectAgentTimelineEntryRecord> ProjectAgentTimelineEntries => Set<ProjectAgentTimelineEntryRecord>();
 
+    /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ProjectRecord>(entity =>

@@ -6,12 +6,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 
+/// <summary>
+/// Loads persisted rows required to backfill newly connected live-update clients.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for read queries.</param>
 internal sealed class BackfillQueryService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory)
     : IBackfillQueryService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
 
+    /// <inheritdoc />
     public async Task<BackfillReadModel> GetBackfillAsync(
         LiveSubscriptionRequestDto request,
         CancellationToken cancellationToken = default)
@@ -74,6 +79,14 @@ internal sealed class BackfillQueryService(
             timelineEntries);
     }
 
+    /// <summary>
+    /// Loads timeline entries newer than the client's latest known sequence for one agent.
+    /// </summary>
+    /// <param name="dbContext">Database context used for the query.</param>
+    /// <param name="agentId">Agent identifier whose timeline should be loaded.</param>
+    /// <param name="latestSequence">Latest sequence the client already knows.</param>
+    /// <param name="cancellationToken">Cancels query execution.</param>
+    /// <returns>The matching timeline-entry projections ordered by sequence.</returns>
     private static Task<List<TimelineEntryProjection>> LoadTimelineEntriesAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,

@@ -5,12 +5,16 @@ using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.Tools.ProjectPlan;
 
+/// <summary>
+/// Stores project-plan task items in memory with retry-safe rollback support.
+/// </summary>
 public sealed class InMemoryTaskItemStore : ITaskItemStore
 {
     private readonly TaskItemStateStore _stateStore = new();
     private readonly AttemptWriteGuard _writeGuard = new();
     private readonly Lock _syncRoot = new();
 
+    /// <inheritdoc />
     public ValueTask<StoredTaskItem> AddAsync(TaskItem taskItem, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(taskItem);
@@ -27,6 +31,7 @@ public sealed class InMemoryTaskItemStore : ITaskItemStore
         }
     }
 
+    /// <inheritdoc />
     public async ValueTask<IReadOnlyList<StoredTaskItem>> AddRangeAsync(
         IReadOnlyList<TaskItem> taskItems,
         CancellationToken cancellationToken)
@@ -44,6 +49,7 @@ public sealed class InMemoryTaskItemStore : ITaskItemStore
         return storedTaskItems;
     }
 
+    /// <inheritdoc />
     public ValueTask<bool> DeleteAsync(string projectPlanTaskItemId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPlanTaskItemId);
@@ -57,12 +63,14 @@ public sealed class InMemoryTaskItemStore : ITaskItemStore
         }
     }
 
+    /// <inheritdoc />
     public ValueTask<IReadOnlyList<StoredTaskItem>> ListAsync(CancellationToken cancellationToken)
     {
         lock (_syncRoot)
             return ValueTask.FromResult(_stateStore.List());
     }
 
+    /// <inheritdoc />
     public ValueTask ClearAsync(CancellationToken cancellationToken)
     {
         lock (_syncRoot)
@@ -76,6 +84,7 @@ public sealed class InMemoryTaskItemStore : ITaskItemStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public IAgentAttemptLease BeginAttempt(Guid attemptId)
     {
         lock (_syncRoot)

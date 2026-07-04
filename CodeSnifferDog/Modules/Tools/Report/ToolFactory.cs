@@ -4,8 +4,14 @@ using CodeSnifferDog.Models.Report.Tools;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
+/// <summary>
+/// Creates the AI tools exposed to report aggregators and verifiers.
+/// </summary>
 internal static class ToolFactory
 {
+    /// <summary>
+    /// Creates the tools used by report aggregators.
+    /// </summary>
     public static IList<AITool> CreateAggregatorTools(AggregatorToolCallbacks callbacks)
         =>
     [
@@ -36,6 +42,9 @@ internal static class ToolFactory
             serializerOptions: null),
     ];
 
+    /// <summary>
+    /// Creates the tools used by report verifiers.
+    /// </summary>
     public static IList<AITool> CreateVerifierTools(VerifierToolCallbacks callbacks)
         =>
     [
@@ -47,6 +56,9 @@ internal static class ToolFactory
     ];
 }
 
+/// <summary>
+/// Groups callbacks used by report-aggregator tools.
+/// </summary>
 internal readonly record struct AggregatorToolCallbacks(
     GetRuleReportIssueToolCallback GetRuleReportIssueTool,
     ListRuleReportIssuesToolCallback ListRuleReportIssuesTool,
@@ -54,16 +66,28 @@ internal readonly record struct AggregatorToolCallbacks(
     UpdateRuleReportIssueToolCallback UpdateRuleReportIssueTool,
     DeleteRuleReportIssueToolCallback DeleteRuleReportIssueTool);
 
+/// <summary>
+/// Groups callbacks used by report-verifier tools.
+/// </summary>
 internal readonly record struct VerifierToolCallbacks(
     SubmitReviewVerdictToolCallback SubmitReviewVerdictTool);
 
+/// <summary>
+/// Represents the callback used to retrieve one stored report issue.
+/// </summary>
 internal delegate ValueTask<StoredIssue> GetRuleReportIssueToolCallback(
     string RuleReportIssueId,
     CancellationToken cancellationToken);
 
+/// <summary>
+/// Represents the callback used to list stored report issues.
+/// </summary>
 internal delegate ValueTask<IReadOnlyList<StoredIssue>> ListRuleReportIssuesToolCallback(
     CancellationToken cancellationToken);
 
+/// <summary>
+/// Represents the callback used to create one report issue.
+/// </summary>
 internal delegate ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueToolCallback(
     string IssueType,
     string Severity,
@@ -78,6 +102,9 @@ internal delegate ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueTo
     string ReviewStrategy,
     CancellationToken cancellationToken);
 
+/// <summary>
+/// Represents the callback used to update one report issue.
+/// </summary>
 internal delegate ValueTask<StoredIssue> UpdateRuleReportIssueToolCallback(
     string RuleReportIssueId,
     string IssueType,
@@ -93,10 +120,16 @@ internal delegate ValueTask<StoredIssue> UpdateRuleReportIssueToolCallback(
     string ReviewStrategy,
     CancellationToken cancellationToken);
 
+/// <summary>
+/// Represents the callback used to delete one report issue.
+/// </summary>
 internal delegate ValueTask<bool> DeleteRuleReportIssueToolCallback(
     string RuleReportIssueId,
     CancellationToken cancellationToken);
 
+/// <summary>
+/// Represents the callback used to submit the verifier verdict.
+/// </summary>
 internal delegate ValueTask<bool> SubmitReviewVerdictToolCallback(
     bool Approved,
     string Message,

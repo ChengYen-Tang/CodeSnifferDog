@@ -12,6 +12,16 @@ using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.Scan;
 
+/// <summary>
+/// Runs repository scanning with a scan agent, a verifier agent, retry limits, and submission-reset handling.
+/// </summary>
+/// <param name="scanAgentFactory">Creates the scan agent for one repository run.</param>
+/// <param name="scanVerifierAgentFactory">Creates the verifier agent for scan submissions.</param>
+/// <param name="scanProjectStore">Store that receives scan project submissions.</param>
+/// <param name="verdictBuffer">Buffer that captures verifier verdict submissions.</param>
+/// <param name="promptAssetReader">Optional prompt reader used to load workflow prompt assets.</param>
+/// <param name="options">Optional workflow options that control retries and timeouts.</param>
+/// <param name="agentEventBus">Optional event bus used to publish agent lifecycle and transcript events.</param>
 public sealed class Workflow(
     Func<string, IAgentEventScope, AgentCreationResult> scanAgentFactory,
     Func<string, IAgentEventScope, AgentCreationResult> scanVerifierAgentFactory,
@@ -30,6 +40,12 @@ public sealed class Workflow(
     private readonly ScanWorkflowOptions _options = options ?? new ScanWorkflowOptions();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
+    /// <summary>
+    /// Runs the scan workflow for one repository.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path that should be scanned.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
+    /// <returns>The scan workflow result.</returns>
     public async Task<Result<ScanWorkflowResult>> RunAsync(
         string repositoryRootPath,
         CancellationToken cancellationToken = default)
@@ -186,6 +202,11 @@ public sealed class Workflow(
         }
     }
 
+    /// <summary>
+    /// Captures restorable state for one scan workflow attempt.
+    /// </summary>
+    /// <param name="attemptId">Attempt identifier associated with the snapshot.</param>
+    /// <returns>A lease pair that can restore both the scan-project store and verdict buffer.</returns>
     private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
         return new WorkflowAttemptLeasePair(

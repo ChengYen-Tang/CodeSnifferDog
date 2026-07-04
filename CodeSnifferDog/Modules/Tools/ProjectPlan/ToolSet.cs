@@ -7,6 +7,9 @@ using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.ProjectPlan;
 
+/// <summary>
+/// Builds the tool set used by project-plan agents and verifiers.
+/// </summary>
 public sealed class ToolSet
 {
     private readonly TaskItemToolService _taskItemToolService;
@@ -17,6 +20,9 @@ public sealed class ToolSet
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ToolSet"/> class for tests or composed services.
+    /// </summary>
     internal ToolSet(
         TaskItemToolService taskItemToolService,
         ReviewVerdictToolService verdictToolService)
@@ -25,6 +31,9 @@ public sealed class ToolSet
         _verdictToolService = verdictToolService;
     }
 
+    /// <summary>
+    /// Creates the tools used by project-plan agents.
+    /// </summary>
     public IList<AITool> CreateProjectPlanAgentTools()
         =>
         ToolFactory.CreateAgentTools(new ProjectPlanAgentToolCallbacks(
@@ -33,6 +42,9 @@ public sealed class ToolSet
             DeleteProjectPlanTaskItemToolAsync,
             ListProjectPlanTaskItemsAsync));
 
+    /// <summary>
+    /// Creates the tools used by project-plan verifiers.
+    /// </summary>
     public IList<AITool> CreateVerifierTools()
         =>
         ToolFactory.CreateVerifierTools(new ProjectPlanVerifierToolCallbacks(
@@ -90,25 +102,40 @@ public sealed class ToolSet
             },
             cancellationToken);
 
+    /// <summary>
+    /// Adds one project-plan task item.
+    /// </summary>
     public ValueTask<AddProjectPlanTaskItemResult> AddProjectPlanTaskItemAsync(
         AddProjectPlanTaskItemArgs args,
         CancellationToken cancellationToken) =>
         _taskItemToolService.AddProjectPlanTaskItemAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Adds multiple project-plan task items.
+    /// </summary>
     public ValueTask<AddProjectPlanTaskItemsResult> AddProjectPlanTaskItemsAsync(
         AddProjectPlanTaskItemsArgs args,
         CancellationToken cancellationToken) =>
         _taskItemToolService.AddProjectPlanTaskItemsAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Deletes one stored project-plan task item.
+    /// </summary>
     public ValueTask<bool> DeleteProjectPlanTaskItemAsync(
         DeleteProjectPlanTaskItemArgs args,
         CancellationToken cancellationToken) =>
         _taskItemToolService.DeleteProjectPlanTaskItemAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Lists all stored project-plan task items.
+    /// </summary>
     public ValueTask<IReadOnlyList<StoredTaskItem>> ListProjectPlanTaskItemsAsync(CancellationToken cancellationToken)
         =>
         _taskItemToolService.ListProjectPlanTaskItemsAsync(cancellationToken);
 
+    /// <summary>
+    /// Stores the verifier verdict for the current project-plan attempt.
+    /// </summary>
     public ValueTask<bool> SubmitReviewVerdictAsync(
         SubmitReviewVerdictArgs args,
         CancellationToken _) =>

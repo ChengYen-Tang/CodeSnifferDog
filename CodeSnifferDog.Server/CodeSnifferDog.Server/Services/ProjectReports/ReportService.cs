@@ -9,6 +9,12 @@ using System.Text;
 
 namespace CodeSnifferDog.Server.Services.ProjectReports;
 
+/// <summary>
+/// Persists generated rule reports and projects them into shared DTOs for API consumers.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for report persistence.</param>
+/// <param name="queryService">Query service that loads persisted report projections.</param>
+/// <param name="projectionMapper">Mapper that converts persisted projections to shared DTOs.</param>
 internal sealed class ReportService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
     IQueryService queryService,
@@ -18,6 +24,10 @@ internal sealed class ReportService(
     private readonly IQueryService _queryService = queryService;
     private readonly IProjectionMapper _projectionMapper = projectionMapper;
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentNullException"><paramref name="reports" /> is <see langword="null" />.</exception>
+    /// <exception cref="InvalidOperationException">The target project does not exist.</exception>
+    /// <exception cref="ArgumentException">One of the supplied drafts contains required text that is null, empty, or whitespace.</exception>
     public async Task ReplaceProjectReportsAsync(
         Guid projectId,
         IReadOnlyList<RuleDraft> reports,
@@ -60,12 +70,14 @@ internal sealed class ReportService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<BundleDto?> GetProjectReportBundleAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         ProjectProjection? project = await _queryService.GetProjectReportsAsync(projectId, cancellationToken);
         return project is null ? null : _projectionMapper.MapBundle(project);
     }
 
+    /// <inheritdoc />
     public async Task<ListDto?> GetProjectReportListAsync(
         Guid projectId,
         CancellationToken cancellationToken = default)
@@ -74,6 +86,7 @@ internal sealed class ReportService(
         return project is null ? null : _projectionMapper.MapList(project);
     }
 
+    /// <inheritdoc />
     public async Task<ContentDto?> GetProjectReportAsync(
         Guid projectId,
         Guid reportId,
@@ -83,6 +96,13 @@ internal sealed class ReportService(
         return report is null ? null : _projectionMapper.MapContent(report);
     }
 
+    /// <summary>
+    /// Validates required draft text before persistence.
+    /// </summary>
+    /// <param name="value">Candidate text.</param>
+    /// <param name="parameterName">Name used in the thrown exception when validation fails.</param>
+    /// <returns>The validated text.</returns>
+    /// <exception cref="ArgumentException"><paramref name="value" /> is null, empty, or whitespace.</exception>
     private static string ValidateRequiredText(string? value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -91,6 +111,11 @@ internal sealed class ReportService(
         return value;
     }
 
+    /// <summary>
+    /// Computes a stable SHA-256 hash for one rule key.
+    /// </summary>
+    /// <param name="value">Rule key to hash.</param>
+    /// <returns>The uppercase hexadecimal SHA-256 hash.</returns>
     private static string ComputeStableHash(string value)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(value);

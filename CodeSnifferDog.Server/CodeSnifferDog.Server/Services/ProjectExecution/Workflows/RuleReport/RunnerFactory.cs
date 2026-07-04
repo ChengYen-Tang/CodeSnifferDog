@@ -17,16 +17,23 @@ using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleReport;
 
+/// <summary>
+/// Runs the workflow stage that turns reviewed issues into repository-level report issues.
+/// </summary>
 internal sealed class RunnerFactory(
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider) : IRunnerFactory
 {
+    /// <summary>
+    /// Gets the prompt asset used when report agents summarize compacted history.
+    /// </summary>
     internal static string SummaryPromptAssetPath => ReportAgentPromptAssets.ReportSummaryPrompt;
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
     private readonly ILogger<RunnerFactory> _logger = loggerFactory.CreateLogger<RunnerFactory>();
 
+    /// <inheritdoc />
     public async Task<Result<ReportWorkflowResult>> RunAsync(
         WorkflowRuntimeContext context,
         string repositoryRootPath,
@@ -85,6 +92,11 @@ internal sealed class RunnerFactory(
         return result;
     }
 
+    /// <summary>
+    /// Creates workflow options for report runs from the configured execution limits.
+    /// </summary>
+    /// <param name="executionOptions">Execution limits shared across review workflows.</param>
+    /// <returns>The workflow options passed to the report workflow.</returns>
     internal static ReportWorkflowOptions CreateWorkflowOptions(ExecutionOptions executionOptions) =>
         new()
         {

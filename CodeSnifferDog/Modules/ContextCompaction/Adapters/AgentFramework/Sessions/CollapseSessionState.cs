@@ -5,18 +5,39 @@ using CodeSnifferDog.Models.ContextCompaction.Continuity;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions;
 
+/// <summary>
+/// Persists per-session collapse state, including staged spans, committed spans, and snapshot telemetry.
+/// </summary>
 public sealed class CollapseSessionState
 {
     private const string StateKey = "codesnifferdog.context_compaction.collapse_state";
     private readonly ProviderSessionState<CollapseState> _sessionState =
         new(static _ => new CollapseState(), StateKey);
 
+    /// <summary>
+    /// Gets the current collapse state for the supplied session, creating an empty state on first access.
+    /// </summary>
+    /// <param name="session">Session whose collapse state should be loaded.</param>
+    /// <returns>The current per-session collapse state.</returns>
     public CollapseState Get(AgentSession? session) =>
         _sessionState.GetOrInitializeState(session);
 
+    /// <summary>
+    /// Resets the collapse state for the supplied session to an empty value.
+    /// </summary>
+    /// <param name="session">Session whose collapse state should be cleared.</param>
     public void Reset(AgentSession? session) =>
         _sessionState.SaveState(session, new CollapseState());
 
+    /// <summary>
+    /// Converts one compaction result into a staged collapse span that can be committed or discarded later.
+    /// </summary>
+    /// <param name="session">Session whose collapse state should be updated.</param>
+    /// <param name="result">Compaction result that produced archived message references.</param>
+    /// <param name="reason">Reason the collapse span is being staged.</param>
+    /// <returns>The updated collapse state containing the new staged span.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="result" /> is <see langword="null" />.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="result" /> does not contain archived message references.</exception>
     public CollapseState StageCollapseSpan(
         AgentSession? session,
         CompactionResult result,
@@ -35,6 +56,13 @@ public sealed class CollapseSessionState
         return nextState;
     }
 
+    /// <summary>
+    /// Promotes one staged collapse span into the committed span list.
+    /// </summary>
+    /// <param name="session">Session whose collapse state should be updated.</param>
+    /// <param name="collapseId">Identifier of the staged collapse span to commit.</param>
+    /// <returns>The updated collapse state, or the unchanged state when the identifier is not staged.</returns>
+    /// <exception cref="ArgumentException"><paramref name="collapseId" /> is <see langword="null" />, empty, or whitespace.</exception>
     public CollapseState CommitStagedSpan(
         AgentSession? session,
         string collapseId)
@@ -88,6 +116,13 @@ public sealed class CollapseSessionState
         return nextState;
     }
 
+    /// <summary>
+    /// Removes one staged collapse span without committing it.
+    /// </summary>
+    /// <param name="session">Session whose collapse state should be updated.</param>
+    /// <param name="collapseId">Identifier of the staged collapse span to discard.</param>
+    /// <returns>The updated collapse state after the staged span is removed.</returns>
+    /// <exception cref="ArgumentException"><paramref name="collapseId" /> is <see langword="null" />, empty, or whitespace.</exception>
     public CollapseState DiscardStagedSpan(
         AgentSession? session,
         string collapseId)
@@ -113,6 +148,13 @@ public sealed class CollapseSessionState
         return nextState;
     }
 
+    /// <summary>
+    /// Records which committed collapse identifiers were projected into the current request.
+    /// </summary>
+    /// <param name="session">Session whose projection snapshot should be updated.</param>
+    /// <param name="projectedCollapseIds">Collapse identifiers projected into the request transcript.</param>
+    /// <returns>The updated collapse state.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="projectedCollapseIds" /> is <see langword="null" />.</exception>
     public CollapseState RecordProjection(
         AgentSession? session,
         IReadOnlyList<string> projectedCollapseIds)
@@ -131,6 +173,13 @@ public sealed class CollapseSessionState
         return nextState;
     }
 
+    /// <summary>
+    /// Records a proactive-collapse threshold observation for the current session.
+    /// </summary>
+    /// <param name="session">Session whose snapshot telemetry should be updated.</param>
+    /// <param name="estimatedTokens">Estimated token count observed for the projected request.</param>
+    /// <param name="armed"><see langword="true" /> when the proactive-collapse threshold is currently armed.</param>
+    /// <returns>The updated collapse state.</returns>
     public CollapseState RecordSpawnObservation(
         AgentSession? session,
         int estimatedTokens,
@@ -152,6 +201,14 @@ public sealed class CollapseSessionState
         return nextState;
     }
 
+    /// <summary>
+    /// Creates the staged span persisted after a compaction pass archives part of the transcript.
+    /// </summary>
+    /// <param name="currentState">Current collapse state used to generate the next collapse identifier.</param>
+    /// <param name="result">Compaction result that produced the archived message references.</param>
+    /// <param name="reason">Reason the collapse span is being staged.</param>
+    /// <returns>The staged collapse span that can later be committed or discarded.</returns>
+    /// <exception cref="InvalidOperationException"><paramref name="result" /> does not contain at least one archived message reference.</exception>
     private static StagedCollapseSpan CreateStagedSpan(
         CollapseState currentState,
         CompactionResult result,
@@ -192,6 +249,11 @@ public sealed class CollapseSessionState
         };
     }
 
+    /// <summary>
+    /// Allocates the next monotonic collapse identifier across committed and staged spans.
+    /// </summary>
+    /// <param name="currentState">Current collapse state whose identifiers must remain unique.</param>
+    /// <returns>The next zero-padded collapse identifier.</returns>
     private static string GetNextCollapseId(CollapseState currentState)
     {
         int nextId = currentState.Commits
@@ -203,17 +265,47 @@ public sealed class CollapseSessionState
         return nextId.ToString("D16", System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// Parses a numeric collapse identifier, returning zero when the identifier is malformed.
+    /// </summary>
+    /// <param name="collapseId">Collapse identifier to parse.</param>
+    /// <returns>The parsed numeric identifier, or zero when parsing fails.</returns>
     private static int TryParseCollapseId(string collapseId) =>
         int.TryParse(collapseId, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int parsed)
             ? parsed
             : 0;
 
+    /// <summary>
+    /// Creates the message identity for the committed summary artifact of one collapse span.
+    /// </summary>
+    /// <param name="collapseId">Collapse identifier that owns the summary artifact.</param>
+    /// <returns>The summary artifact message identity.</returns>
     private static string CreateSummaryMessageId(string collapseId) => $"collapse-summary-{collapseId}";
 
+    /// <summary>
+    /// Creates the message identity for the projection artifact of one collapse span.
+    /// </summary>
+    /// <param name="collapseId">Collapse identifier that owns the projection artifact.</param>
+    /// <returns>The projection artifact message identity.</returns>
     private static string CreateProjectionMessageId(string collapseId) => $"collapse-projection-{collapseId}";
 
+    /// <summary>
+    /// Creates the message identity for the projected continuity artifact of one collapse span.
+    /// </summary>
+    /// <param name="collapseId">Collapse identifier that owns the continuity projection artifact.</param>
+    /// <returns>The continuity projection artifact message identity.</returns>
     private static string CreateContinuityProjectionMessageId(string collapseId) => $"collapse-continuity-{collapseId}";
 
+    /// <summary>
+    /// Clones collapse state while selectively replacing mutable slices and snapshot values.
+    /// </summary>
+    /// <param name="currentState">Current state to clone.</param>
+    /// <param name="stagedSpans">Optional replacement staged spans.</param>
+    /// <param name="lastCollapseReason">Optional replacement last-collapse reason.</param>
+    /// <param name="preserveLastCollapseReason"><see langword="true" /> to fall back to the current state's last-collapse reason when no replacement is supplied.</param>
+    /// <param name="commits">Optional replacement committed spans.</param>
+    /// <param name="snapshot">Optional replacement snapshot.</param>
+    /// <returns>The cloned collapse state.</returns>
     private static CollapseState CloneState(
         CollapseState currentState,
         IReadOnlyList<StagedCollapseSpan>? stagedSpans = null,
@@ -228,6 +320,24 @@ public sealed class CollapseSessionState
             Snapshot = snapshot ?? currentState.Snapshot,
         };
 
+    /// <summary>
+    /// Clones collapse snapshot telemetry while allowing specific fields to be replaced or intentionally cleared.
+    /// </summary>
+    /// <param name="currentSnapshot">Current snapshot to clone.</param>
+    /// <param name="projectedCollapseIds">Optional replacement projected collapse identifiers.</param>
+    /// <param name="lastCommittedCollapseId">Optional replacement last committed collapse identifier.</param>
+    /// <param name="preserveLastCommittedCollapseId"><see langword="true" /> to retain the existing committed identifier when no replacement is supplied.</param>
+    /// <param name="lastStagedCollapseId">Optional replacement last staged collapse identifier.</param>
+    /// <param name="preserveLastStagedCollapseId"><see langword="true" /> to retain the existing staged identifier when no replacement is supplied.</param>
+    /// <param name="lastProjectedAtUtc">Optional replacement projection timestamp.</param>
+    /// <param name="preserveLastProjectedAtUtc"><see langword="true" /> to retain the existing projection timestamp when no replacement is supplied.</param>
+    /// <param name="armed">Optional replacement armed flag.</param>
+    /// <param name="preserveArmed"><see langword="true" /> to merge the new armed flag with the existing armed flag.</param>
+    /// <param name="lastSpawnTokens">Optional replacement observed spawn token count.</param>
+    /// <param name="preserveLastSpawnTokens"><see langword="true" /> to retain the existing spawn token count when no replacement is supplied.</param>
+    /// <param name="lastArmedAtUtc">Optional replacement last-armed timestamp.</param>
+    /// <param name="preserveLastArmedAtUtc"><see langword="true" /> to retain the existing last-armed timestamp when no replacement is supplied.</param>
+    /// <returns>The cloned snapshot.</returns>
     private static CollapseSnapshot CloneSnapshot(
         CollapseSnapshot currentSnapshot,
         IReadOnlyList<string>? projectedCollapseIds = null,

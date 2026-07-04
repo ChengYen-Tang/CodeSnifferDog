@@ -4,6 +4,11 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots;
 
+/// <summary>
+/// Builds live-update backfill sequences from persisted snapshot projections.
+/// </summary>
+/// <param name="queryService">Query service that loads persisted backfill read models.</param>
+/// <param name="projectionMapper">Mapper that converts persisted projections to shared DTOs.</param>
 internal sealed class LiveBackfillService(
     IBackfillQueryService queryService,
     IProjectionMapper projectionMapper)
@@ -12,6 +17,7 @@ internal sealed class LiveBackfillService(
     private readonly IBackfillQueryService _queryService = queryService;
     private readonly IProjectionMapper _projectionMapper = projectionMapper;
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<LiveUpdateDto>> GetBackfillAsync(
         LiveSubscriptionRequestDto request,
         CancellationToken cancellationToken = default)

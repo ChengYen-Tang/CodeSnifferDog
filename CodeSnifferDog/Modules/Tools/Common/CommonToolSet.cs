@@ -5,6 +5,9 @@ using System.ComponentModel;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
 
+/// <summary>
+/// Builds the tool set that exposes shell and ripgrep commands.
+/// </summary>
 public sealed class CommonToolSet
 {
     private readonly CommonCommandToolService _commandToolService;
@@ -16,11 +19,19 @@ public sealed class CommonToolSet
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CommonToolSet"/> class for tests or composed services.
+    /// </summary>
+    /// <param name="commandToolService">Service that executes shell and ripgrep commands.</param>
     internal CommonToolSet(CommonCommandToolService commandToolService)
     {
         _commandToolService = commandToolService;
     }
 
+    /// <summary>
+    /// Creates the common AI tools.
+    /// </summary>
+    /// <returns>The created tools.</returns>
     public IList<AITool> CreateTools()
         =>
         CommonToolFactory.CreateTools(new CommonToolCallbacks(
@@ -51,11 +62,23 @@ public sealed class CommonToolSet
             },
             cancellationToken);
 
+    /// <summary>
+    /// Runs one shell command.
+    /// </summary>
+    /// <param name="args">Shell command arguments.</param>
+    /// <param name="cancellationToken">Token that cancels command execution.</param>
+    /// <returns>The command execution result.</returns>
     public ValueTask<CommandExecutionResult> RunShellCommandAsync(
         RunShellCommandArgs args,
         CancellationToken cancellationToken) =>
         _commandToolService.RunShellCommandAsync(args, cancellationToken);
 
+    /// <summary>
+    /// Runs one ripgrep command.
+    /// </summary>
+    /// <param name="args">Ripgrep command arguments.</param>
+    /// <param name="cancellationToken">Token that cancels command execution.</param>
+    /// <returns>The command execution result.</returns>
     public ValueTask<CommandExecutionResult> RunRipgrepCommandAsync(
         RunRipgrepCommandArgs args,
         CancellationToken cancellationToken) =>

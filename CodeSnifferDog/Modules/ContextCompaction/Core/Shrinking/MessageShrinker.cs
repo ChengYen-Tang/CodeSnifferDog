@@ -5,12 +5,17 @@ using CodeSnifferDog.Models.ContextCompaction.Shrinking;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
+/// <summary>
+/// Rewrites verbose tool-call transcripts into smaller local artifacts before full transcript compaction is required.
+/// </summary>
 public sealed class MessageShrinker
 {
-    // This stage intentionally operates at the local message layer because the current
-    // Microsoft Agent Framework abstraction does not expose Claude-style API-layer
-    // cache edits. It preserves the shrinking intent, but it is not a byte-for-byte
-    // equivalent of Claude Code's primary microcompact path.
+    /// <summary>
+    /// Replaces older tool result payloads with compact placeholder artifacts while keeping the surrounding messages.
+    /// </summary>
+    /// <param name="messages">Messages to inspect for eligible tool results.</param>
+    /// <param name="options">Compaction settings that control trigger counts and eligible tool names.</param>
+    /// <returns>The rewritten message sequence and shrink statistics, or a no-change result when shrinking is disabled or unnecessary.</returns>
     public static MessageShrinkResult ApplyMicroCompaction(
         IReadOnlyList<ChatMessage> messages,
         CompactionOptions options)
@@ -44,6 +49,12 @@ public sealed class MessageShrinker
             "microcompact");
     }
 
+    /// <summary>
+    /// Removes older tool call and tool result payloads entirely and inserts a snip boundary artifact.
+    /// </summary>
+    /// <param name="messages">Messages to inspect for eligible tool results.</param>
+    /// <param name="options">Compaction settings that control trigger counts and eligible tool names.</param>
+    /// <returns>The rewritten message sequence and shrink statistics, or a no-change result when snipping is disabled or unnecessary.</returns>
     public static MessageShrinkResult ApplySnip(
         IReadOnlyList<ChatMessage> messages,
         CompactionOptions options)
@@ -92,6 +103,14 @@ public sealed class MessageShrinker
         };
     }
 
+    /// <summary>
+    /// Finds shrink candidates and normalizes the trigger thresholds for one shrink mode.
+    /// </summary>
+    /// <param name="messages">Messages to scan for function calls and function results.</param>
+    /// <param name="options">Compaction settings that define which tools are compactable.</param>
+    /// <param name="triggerCount">Minimum number of eligible tool results required before shrinking begins.</param>
+    /// <param name="keepRecentCount">Number of most recent tool results that must remain untouched.</param>
+    /// <returns>A shrink plan describing the eligible candidates and normalized retention count.</returns>
     private static ShrinkPlan CreatePlan(
         IReadOnlyList<ChatMessage> messages,
         CompactionOptions options,
@@ -133,6 +152,14 @@ public sealed class MessageShrinker
             : new ShrinkPlan(candidates, normalizedKeepRecentCount);
     }
 
+    /// <summary>
+    /// Rewrites messages according to the selected shrink mode and records the estimated token savings.
+    /// </summary>
+    /// <param name="messages">Original message sequence.</param>
+    /// <param name="candidates">Tool result candidates selected for rewriting.</param>
+    /// <param name="removeCompactedMessages"><see langword="true" /> to remove compacted tool payloads entirely; otherwise only rewrite results.</param>
+    /// <param name="shrinkOperation">Operation name recorded in the rewritten message metadata.</param>
+    /// <returns>The rewritten messages together with aggregate shrink statistics.</returns>
     private static MessageShrinkResult RewriteMessages(
         IReadOnlyList<ChatMessage> messages,
         IReadOnlyList<ToolResultCandidate> candidates,
@@ -201,6 +228,15 @@ public sealed class MessageShrinker
         };
     }
 
+    /// <summary>
+    /// Clones one message with rewritten contents and annotates it with shrink metadata.
+    /// </summary>
+    /// <param name="original">Original message being rewritten.</param>
+    /// <param name="contents">Replacement content payloads.</param>
+    /// <param name="shrinkOperation">Operation name stored in message metadata.</param>
+    /// <param name="shrunkToolResultCount">Number of tool results shrunk so far in the current rewrite pass.</param>
+    /// <param name="freedEstimatedTokens">Estimated tokens freed so far in the current rewrite pass.</param>
+    /// <returns>A cloned message that preserves role and metadata while carrying the rewritten contents.</returns>
     private static ChatMessage CloneMessage(
         ChatMessage original,
         List<AIContent> contents,
@@ -222,6 +258,12 @@ public sealed class MessageShrinker
         return clone;
     }
 
+    /// <summary>
+    /// Creates the placeholder text used for micro-compacted tool results.
+    /// </summary>
+    /// <param name="toolName">Name of the tool whose output was removed.</param>
+    /// <param name="callId">Call identifier of the removed tool result.</param>
+    /// <returns>A stable placeholder artifact that explains why the raw tool output was omitted.</returns>
     private static string CreateMicroCompactedToolResultArtifact(string toolName, string callId) =>
         $$"""
         [Compacted tool result]
@@ -231,6 +273,12 @@ public sealed class MessageShrinker
         Omitted: raw tool output removed to reduce context pressure
         """;
 
+    /// <summary>
+    /// Creates the system boundary message that marks a snip operation.
+    /// </summary>
+    /// <param name="shrunkToolResultCount">Number of tool results removed by the snip.</param>
+    /// <param name="freedEstimatedTokens">Estimated tokens freed by the snip.</param>
+    /// <returns>A system message that records the snip metadata.</returns>
     private static ChatMessage CreateSnipBoundaryMessage(int shrunkToolResultCount, int freedEstimatedTokens)
     {
         ChatMessage boundaryMessage = new(ChatRole.System, "Operational snip boundary")
@@ -251,6 +299,13 @@ public sealed class MessageShrinker
         IReadOnlyList<ToolResultCandidate> Candidates,
         int KeepRecentCount);
 
+    /// <summary>
+    /// Describes one tool result that can be rewritten or removed during shrinking.
+    /// </summary>
+    /// <param name="CallId">Call identifier shared by the tool invocation and result.</param>
+    /// <param name="ToolName">Tool name associated with the result.</param>
+    /// <param name="Message">Original message containing the result payload.</param>
+    /// <param name="Result">Function result content selected for shrinking.</param>
     private sealed record ToolResultCandidate(
         string CallId,
         string ToolName,

@@ -6,10 +6,19 @@ using CodeSnifferDog.Server.Shared.AgentStatus;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
+/// <summary>
+/// Creates live-update payloads from persisted project-agent records.
+/// </summary>
 internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
 {
     private readonly IProjectionMapper _projectionMapper = projectionMapper;
 
+    /// <summary>
+    /// Creates a live update for an agent group insert or update.
+    /// </summary>
+    /// <param name="projectId">Project identifier that owns the group.</param>
+    /// <param name="group">Persisted agent group record.</param>
+    /// <returns>The live update payload.</returns>
     public LiveUpdateDto CreateGroupUpdate(Guid projectId, ProjectAgentGroupRecord group) =>
         new()
         {
@@ -23,6 +32,12 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
                 group.CreatedAtUtc)),
         };
 
+    /// <summary>
+    /// Creates a live update for an agent insert or update.
+    /// </summary>
+    /// <param name="projectId">Project identifier that owns the agent.</param>
+    /// <param name="agent">Persisted agent record.</param>
+    /// <returns>The live update payload.</returns>
     public LiveUpdateDto CreateAgentUpsertUpdate(Guid projectId, ProjectAgentRecord agent) =>
         new()
         {
@@ -39,6 +54,14 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
                 agent.CreatedAtUtc)),
         };
 
+    /// <summary>
+    /// Creates a live update for an agent status transition.
+    /// </summary>
+    /// <param name="projectId">Project identifier that owns the agent.</param>
+    /// <param name="agentId">Agent identifier whose status changed.</param>
+    /// <param name="status">Persisted status value.</param>
+    /// <param name="occurredAtUtc">Timestamp for the status change.</param>
+    /// <returns>The live update payload.</returns>
     public LiveUpdateDto CreateAgentStatusChangedUpdate(
         Guid projectId,
         Guid agentId,
@@ -57,6 +80,12 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
             },
         };
 
+    /// <summary>
+    /// Creates a live update for a timeline entry insert or update.
+    /// </summary>
+    /// <param name="projectId">Project identifier that owns the timeline entry.</param>
+    /// <param name="entry">Persisted timeline entry record.</param>
+    /// <returns>The live update payload.</returns>
     public LiveUpdateDto CreateTimelineEntryUpsertUpdate(
         Guid projectId,
         ProjectAgentTimelineEntryRecord entry) =>
@@ -78,6 +107,14 @@ internal sealed class LiveUpdateFactory(IProjectionMapper projectionMapper)
                 entry.ToolResult)),
         };
 
+    /// <summary>
+    /// Creates a live update for removed timeline entries.
+    /// </summary>
+    /// <param name="projectId">Project identifier that owns the timeline entries.</param>
+    /// <param name="agentId">Agent identifier whose entries were removed.</param>
+    /// <param name="removedEntryIds">Identifiers of removed timeline entries.</param>
+    /// <param name="occurredAtUtc">Timestamp for the removal.</param>
+    /// <returns>The live update payload.</returns>
     public LiveUpdateDto CreateTimelineEntriesRemovedUpdate(
         Guid projectId,
         Guid agentId,

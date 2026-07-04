@@ -10,16 +10,23 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 
+/// <summary>
+/// Creates the runner that executes the scan workflow.
+/// </summary>
 internal sealed class ScanRunnerFactory(
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider) : IScanRunnerFactory
 {
+    /// <summary>
+    /// Gets the prompt asset used when scan agents summarize compacted history.
+    /// </summary>
     internal static string SummaryPromptAssetPath => ScanAgentPromptAssets.ScanSummaryPrompt;
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
     private readonly ILogger<ScanRunnerFactory> _logger = loggerFactory.CreateLogger<ScanRunnerFactory>();
 
+    /// <inheritdoc />
     public Func<string, CancellationToken, Task<Result<ScanWorkflowResult>>> CreateRunner(
         WorkflowRuntimeContext context,
         CompactionOptions compactionOptions) =>
@@ -73,6 +80,11 @@ internal sealed class ScanRunnerFactory(
         return result;
     }
 
+    /// <summary>
+    /// Creates workflow options for scan runs from the configured execution limits.
+    /// </summary>
+    /// <param name="executionOptions">Execution limits shared across review workflows.</param>
+    /// <returns>The workflow options passed to the scan workflow.</returns>
     internal static ScanWorkflowOptions CreateWorkflowOptions(ExecutionOptions executionOptions) =>
         new()
         {

@@ -1,14 +1,19 @@
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 
+/// <summary>
+/// Loads rule markdown files from the application's <c>rules</c> directory.
+/// </summary>
 public sealed class FileSystemRuleMarkdownProvider : IReviewRuleMarkdownProvider
 {
     private const string RulesDirectoryName = "rules";
 
+    /// <inheritdoc />
     public bool HasRules =>
         Directory.Exists(ResolveRulesDirectoryPath()) &&
         Directory.EnumerateFiles(ResolveRulesDirectoryPath(), "*.md", SearchOption.TopDirectoryOnly)
             .Any(ruleFilePath => !string.IsNullOrWhiteSpace(File.ReadAllText(ruleFilePath)));
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<RuleDefinition>> LoadRulesAsync(CancellationToken cancellationToken = default)
     {
         string rulesDirectoryPath = ResolveRulesDirectoryPath();
@@ -36,6 +41,10 @@ public sealed class FileSystemRuleMarkdownProvider : IReviewRuleMarkdownProvider
         return rules;
     }
 
+    /// <summary>
+    /// Resolves the absolute path of the directory that stores rule markdown files.
+    /// </summary>
+    /// <returns>The absolute rules directory path.</returns>
     private string ResolveRulesDirectoryPath()
         => Path.Combine(AppContext.BaseDirectory, RulesDirectoryName);
 }

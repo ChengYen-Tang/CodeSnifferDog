@@ -7,6 +7,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Recovery;
 
+/// <summary>
+/// Requeues interrupted projects or marks them failed when their artifacts can no longer be recovered.
+/// </summary>
 internal sealed class Service(
     IServiceScopeFactory serviceScopeFactory,
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory,
@@ -16,6 +19,7 @@ internal sealed class Service(
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
     private readonly IExecutionArtifactStore _artifactStore = artifactStore;
 
+    /// <inheritdoc />
     public async Task RecoverAsync(CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _serviceScopeFactory.CreateAsyncScope();

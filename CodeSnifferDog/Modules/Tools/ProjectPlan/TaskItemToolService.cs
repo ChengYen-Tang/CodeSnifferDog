@@ -3,10 +3,16 @@ using CodeSnifferDog.Models.ProjectPlan.Tools;
 
 namespace CodeSnifferDog.Modules.Tools.ProjectPlan;
 
+/// <summary>
+/// Validates project-plan tool arguments and delegates storage operations to <see cref="ITaskItemStore" />.
+/// </summary>
 internal sealed class TaskItemToolService(ITaskItemStore taskItemStore)
 {
     private readonly ITaskItemStore _taskItemStore = taskItemStore;
 
+    /// <summary>
+    /// Adds one project-plan task item.
+    /// </summary>
     public async ValueTask<AddProjectPlanTaskItemResult> AddProjectPlanTaskItemAsync(
         AddProjectPlanTaskItemArgs args,
         CancellationToken cancellationToken)
@@ -24,6 +30,9 @@ internal sealed class TaskItemToolService(ITaskItemStore taskItemStore)
         };
     }
 
+    /// <summary>
+    /// Adds multiple project-plan task items.
+    /// </summary>
     public async ValueTask<AddProjectPlanTaskItemsResult> AddProjectPlanTaskItemsAsync(
         AddProjectPlanTaskItemsArgs args,
         CancellationToken cancellationToken)
@@ -46,6 +55,9 @@ internal sealed class TaskItemToolService(ITaskItemStore taskItemStore)
         };
     }
 
+    /// <summary>
+    /// Deletes one stored project-plan task item.
+    /// </summary>
     public ValueTask<bool> DeleteProjectPlanTaskItemAsync(
         DeleteProjectPlanTaskItemArgs args,
         CancellationToken cancellationToken)
@@ -55,16 +67,25 @@ internal sealed class TaskItemToolService(ITaskItemStore taskItemStore)
         return _taskItemStore.DeleteAsync(args.ProjectPlanTaskItemId.Trim(), cancellationToken);
     }
 
+    /// <summary>
+    /// Lists all stored project-plan task items.
+    /// </summary>
     public ValueTask<IReadOnlyList<StoredTaskItem>> ListProjectPlanTaskItemsAsync(CancellationToken cancellationToken)
         =>
         _taskItemStore.ListAsync(cancellationToken);
 
+    /// <summary>
+    /// Creates a normalized task item from tool arguments.
+    /// </summary>
     private static TaskItem CreateTaskItem(AddProjectPlanTaskItemArgs args) =>
         new()
         {
             Files = [.. args.Files.Select(CreateNormalizedFile)],
         };
 
+    /// <summary>
+    /// Creates a normalized plan file from tool arguments.
+    /// </summary>
     private static PlanFile CreateNormalizedFile(PlanFile file)
         =>
         new()
@@ -73,6 +94,9 @@ internal sealed class TaskItemToolService(ITaskItemStore taskItemStore)
             TotalLines = file.TotalLines,
         };
 
+    /// <summary>
+    /// Validates one plan-file list.
+    /// </summary>
     private static void ValidateFiles(IReadOnlyList<PlanFile> files, string paramName)
     {
         ArgumentNullException.ThrowIfNull(files);

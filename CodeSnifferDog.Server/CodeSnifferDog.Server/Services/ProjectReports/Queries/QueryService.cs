@@ -4,11 +4,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectReports.Queries;
 
+/// <summary>
+/// Loads persisted project report rows and shapes them into report projections.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for report queries.</param>
 internal sealed class QueryService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory) : IQueryService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
 
+    /// <inheritdoc />
     public async Task<ProjectProjection?> GetProjectReportsAsync(
         Guid projectId,
         CancellationToken cancellationToken = default)
@@ -34,6 +39,7 @@ internal sealed class QueryService(
                 .ToList());
     }
 
+    /// <inheritdoc />
     public async Task<RuleReportProjection?> GetProjectReportAsync(
         Guid projectId,
         Guid reportId,
@@ -52,6 +58,12 @@ internal sealed class QueryService(
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Creates the query that joins a project row with its optional stored rule reports.
+    /// </summary>
+    /// <param name="dbContext">Database context used to compose the query.</param>
+    /// <param name="projectId">Project identifier to query.</param>
+    /// <returns>The joined query rows used to build project report projections.</returns>
     internal static IQueryable<QueryRow> CreateProjectReportsQuery(
         CodeSnifferDogServerDbContext dbContext,
         Guid projectId) =>
@@ -66,6 +78,13 @@ internal sealed class QueryService(
             report == null ? null : report.RuleName,
             report == null ? null : report.MarkdownContent);
 
+    /// <summary>
+    /// Joined row used while projecting a project and its optional report row.
+    /// </summary>
+    /// <param name="OriginalFileName">Original uploaded file name.</param>
+    /// <param name="ReportId">Report identifier, when one exists.</param>
+    /// <param name="RuleName">Rule name, when one exists.</param>
+    /// <param name="MarkdownContent">Markdown content, when one exists.</param>
     internal sealed record QueryRow(
         string OriginalFileName,
         Guid? ReportId,

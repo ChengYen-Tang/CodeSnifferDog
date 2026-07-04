@@ -4,11 +4,22 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 
+/// <summary>
+/// Reattaches metadata artifact messages that fit inside the configured post-compaction budget.
+/// </summary>
+/// <param name="options">Compaction settings that define the artifact token budget.</param>
 public sealed class MetadataCompactionArtifactsProvider(
     CompactionOptions options) : ICompactionArtifactsProvider
 {
     private readonly CompactionOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Only messages tagged as attachments or hook results are considered, and selection stops when the configured
+    /// attachment budget would be exceeded.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="originalMessages" /> or <paramref name="messagesToKeep" /> is <see langword="null" />.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken" /> is canceled while scanning messages.</exception>
     public ValueTask<CompactionArtifacts> GetArtifactsAsync(
         IReadOnlyList<ChatMessage> originalMessages,
         IReadOnlyList<ChatMessage> messagesToKeep,

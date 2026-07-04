@@ -4,11 +4,15 @@ using CodeSnifferDog.Models.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
+/// <summary>
+/// Maps runtime status events to persistence operations.
+/// </summary>
 internal sealed class PersistenceEventHandler(
     IPersistenceService persistenceService) : IEventHandler
 {
     private readonly IPersistenceService _persistenceService = persistenceService;
 
+    /// <inheritdoc />
     public async Task HandleAsync(StatusEvent agentEvent, CancellationToken cancellationToken)
     {
         switch (agentEvent)

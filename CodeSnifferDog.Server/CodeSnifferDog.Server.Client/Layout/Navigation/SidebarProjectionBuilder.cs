@@ -3,8 +3,16 @@ using CodeSnifferDog.Server.Shared.Projects;
 
 namespace CodeSnifferDog.Server.Client.Layout.Navigation;
 
+/// <summary>
+/// Projects sidebar state into navigation view models consumed by the Blazor layout.
+/// </summary>
 internal static class SidebarProjectionBuilder
 {
+    /// <summary>
+    /// Builds grouped project navigation items from the sidebar state.
+    /// </summary>
+    /// <param name="state">Sidebar state to project.</param>
+    /// <returns>The projected sidebar groups.</returns>
     public static IReadOnlyList<ProjectGroup> CreateGroups(State state) =>
         state.Snapshot.Groups
             .Select(group => new ProjectGroup(
@@ -25,6 +33,12 @@ internal static class SidebarProjectionBuilder
             })
             .ToList();
 
+    /// <summary>
+    /// Creates the action list for one project row based on its current status.
+    /// </summary>
+    /// <param name="projectId">Project identifier used by generated links.</param>
+    /// <param name="status">Current project status.</param>
+    /// <returns>The projected action list.</returns>
     private static IReadOnlyList<ProjectAction> CreateActions(Guid projectId, ProjectStatus status) => status switch
     {
         ProjectStatus.Reviewing =>
@@ -44,6 +58,11 @@ internal static class SidebarProjectionBuilder
         ],
     };
 
+    /// <summary>
+    /// Gets the short icon-like text used for one project-status group.
+    /// </summary>
+    /// <param name="status">Project status represented by the group.</param>
+    /// <returns>The icon text.</returns>
     private static string GetGroupIconText(ProjectStatus status) => status switch
     {
         ProjectStatus.Reviewing => "R",
@@ -54,6 +73,11 @@ internal static class SidebarProjectionBuilder
         _ => "?",
     };
 
+    /// <summary>
+    /// Gets the CSS class applied to one project-status group icon.
+    /// </summary>
+    /// <param name="status">Project status represented by the group.</param>
+    /// <returns>The icon CSS class.</returns>
     private static string GetGroupIconCssClass(ProjectStatus status) => status switch
     {
         ProjectStatus.Reviewing => "group-icon-reviewing",

@@ -5,10 +5,14 @@ using CodeSnifferDog.Server.Services.ProjectReports;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 
+/// <summary>
+/// Persists analysis reports and translates completion policy failures into exceptions.
+/// </summary>
 internal sealed class CompletionService(IReportService projectReportService) : ICompletionService
 {
     private readonly IReportService _projectReportService = projectReportService;
 
+    /// <inheritdoc />
     public async Task CompleteAnalysisAsync(
         Guid projectId,
         IReadOnlyList<RuleDefinition> rules,
@@ -27,6 +31,16 @@ internal sealed class CompletionService(IReportService projectReportService) : I
             throw new InvalidOperationException(completionDecision.FailureMessage);
     }
 
+    /// <summary>
+    /// Persists rule reports with the human-readable rule names that belong to each report.
+    /// </summary>
+    /// <param name="projectId">Project identifier whose reports are being replaced.</param>
+    /// <param name="rules">Rules that define the rule-key to rule-name mapping.</param>
+    /// <param name="ruleReports">Rule reports produced by analysis.</param>
+    /// <param name="cancellationToken">Token that cancels persistence.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a rule report references a rule key that is not present in <paramref name="rules"/>.
+    /// </exception>
     private async Task PersistReportsAsync(
         Guid projectId,
         IReadOnlyList<RuleDefinition> rules,

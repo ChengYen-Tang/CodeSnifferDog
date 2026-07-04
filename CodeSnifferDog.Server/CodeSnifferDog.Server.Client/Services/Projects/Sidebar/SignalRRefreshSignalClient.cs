@@ -3,6 +3,10 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace CodeSnifferDog.Server.Client.Services.Projects.Sidebar;
 
+/// <summary>
+/// Uses SignalR to receive push-based sidebar refresh notifications and connection-state changes.
+/// </summary>
+/// <param name="httpClient">HTTP client whose base address is used to connect to the project updates hub.</param>
 public sealed class SignalRRefreshSignalClient(HttpClient httpClient) : IRefreshSignalClient
 {
     private readonly HttpClient _httpClient = httpClient;
@@ -10,6 +14,8 @@ public sealed class SignalRRefreshSignalClient(HttpClient httpClient) : IRefresh
     private Func<CancellationToken, Task>? _onRefreshRequested;
     private Action<bool, bool, string?>? _onConnectionStateChanged;
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentNullException"><paramref name="onRefreshRequested" /> or <paramref name="onConnectionStateChanged" /> is <see langword="null" />.</exception>
     public async Task StartAsync(
         Func<CancellationToken, Task> onRefreshRequested,
         Action<bool, bool, string?> onConnectionStateChanged,
@@ -56,6 +62,7 @@ public sealed class SignalRRefreshSignalClient(HttpClient httpClient) : IRefresh
         _onConnectionStateChanged.Invoke(true, false, null);
     }
 
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (_connection is not null)
@@ -68,6 +75,11 @@ public sealed class SignalRRefreshSignalClient(HttpClient httpClient) : IRefresh
         _onConnectionStateChanged = null;
     }
 
+    /// <summary>
+    /// Invokes the current refresh-request handler, when one is registered.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token forwarded to the handler.</param>
+    /// <returns>A completed task when no handler is registered; otherwise the handler task.</returns>
     private Task NotifyRefreshRequestedAsync(CancellationToken cancellationToken)
     {
         Func<CancellationToken, Task>? handler = _onRefreshRequested;

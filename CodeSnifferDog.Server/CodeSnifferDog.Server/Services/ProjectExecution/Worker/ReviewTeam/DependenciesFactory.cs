@@ -11,6 +11,9 @@ using ReviewIssueStore = CodeSnifferDog.Modules.Tools.RuleReview.InMemoryIssueSt
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 
+/// <summary>
+/// Creates the workflow runners and issue stores required by the review-team runtime.
+/// </summary>
 internal sealed class DependenciesFactory(
     OptionsFactory compactionOptionsFactory,
     IReviewRunnerFactory workflowRunnerFactory) : IDependenciesFactory
@@ -18,6 +21,7 @@ internal sealed class DependenciesFactory(
     private readonly OptionsFactory _compactionOptionsFactory = compactionOptionsFactory;
     private readonly IReviewRunnerFactory _workflowRunnerFactory = workflowRunnerFactory;
 
+    /// <inheritdoc />
     public Dependencies CreateDependencies(
         IChatClient chatClient,
         ExecutionOptions executionOptions,

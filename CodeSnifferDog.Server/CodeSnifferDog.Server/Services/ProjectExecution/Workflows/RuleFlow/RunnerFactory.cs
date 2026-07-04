@@ -14,6 +14,9 @@ using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleFlow;
 
+/// <summary>
+/// Creates the runner that chains rule review and rule report workflows into a single flow.
+/// </summary>
 internal sealed class RunnerFactory(
     ReviewRunnerFactoryInterface ruleReviewRunnerFactory,
     ReportRunnerFactoryInterface ruleReportRunnerFactory) : IRunnerFactory
@@ -21,6 +24,7 @@ internal sealed class RunnerFactory(
     private readonly ReviewRunnerFactoryInterface _ruleReviewRunnerFactory = ruleReviewRunnerFactory;
     private readonly ReportRunnerFactoryInterface _ruleReportRunnerFactory = ruleReportRunnerFactory;
 
+    /// <inheritdoc />
     public Func<string, string, string, StoredTaskItem, CancellationToken, Task<Result<RuleFlowWorkflowResult>>> CreateRunner(
         WorkflowRuntimeContext context,
         CompactionOptions ruleReviewCompactionOptions,

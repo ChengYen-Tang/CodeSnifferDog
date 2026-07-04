@@ -2,8 +2,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Data;
 
+/// <summary>
+/// Applies pending Entity Framework Core migrations during application startup.
+/// </summary>
 public static class DatabaseMigrator
 {
+    /// <summary>
+    /// Applies all pending database migrations.
+    /// </summary>
+    /// <param name="services">Service provider used to resolve logging and database services.</param>
+    /// <param name="cancellationToken">Token that cancels the migration operation.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is <see langword="null"/>.</exception>
     public static async Task MigrateAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(services);

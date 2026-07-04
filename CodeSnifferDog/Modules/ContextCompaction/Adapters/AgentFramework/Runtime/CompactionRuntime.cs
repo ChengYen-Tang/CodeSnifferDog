@@ -5,8 +5,21 @@ using CodeSnifferDog.Models.ContextCompaction.Agents;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 
+/// <summary>
+/// Wraps agent execution with staged-collapse bookkeeping and reactive compaction retry behavior.
+/// </summary>
 internal static class CompactionRuntime
 {
+    /// <summary>
+    /// Runs a non-streaming agent invocation with staged-collapse commit/rollback and reactive retry handling.
+    /// </summary>
+    /// <param name="messages">Messages to send to the inner agent.</param>
+    /// <param name="session">Agent session associated with the invocation.</param>
+    /// <param name="runOptions">Optional run options passed to the inner agent.</param>
+    /// <param name="innerAgent">Inner agent that performs the actual invocation.</param>
+    /// <param name="options">Compaction options that control collapse and retry behavior.</param>
+    /// <param name="cancellationToken">Cancels the invocation.</param>
+    /// <returns>The successful agent response.</returns>
     public static async Task<AgentResponse> RunAsync(
         IEnumerable<ChatMessage> messages,
         AgentSession? session,
@@ -67,6 +80,16 @@ internal static class CompactionRuntime
         }
     }
 
+    /// <summary>
+    /// Runs a streaming agent invocation with staged-collapse commit/rollback and reactive retry handling.
+    /// </summary>
+    /// <param name="messages">Messages to send to the inner agent.</param>
+    /// <param name="session">Agent session associated with the invocation.</param>
+    /// <param name="runOptions">Optional run options passed to the inner agent.</param>
+    /// <param name="innerAgent">Inner agent that performs the actual invocation.</param>
+    /// <param name="options">Compaction options that control collapse and retry behavior.</param>
+    /// <param name="cancellationToken">Cancels the invocation.</param>
+    /// <returns>An async stream of response updates from the successful run or retry.</returns>
     public static IAsyncEnumerable<AgentResponseUpdate> RunStreamingAsync(
         IEnumerable<ChatMessage> messages,
         AgentSession? session,

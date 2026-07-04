@@ -6,8 +6,12 @@ using CodeSnifferDog.Models.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Status.Persistence;
 
+/// <summary>
+/// Persists timeline entries for runtime status events.
+/// </summary>
 internal sealed class TimelinePersistenceService : ITimelinePersistenceService
 {
+    /// <inheritdoc />
     public async Task<TimelineEntryMutationResult> AppendTimelineEntryAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
@@ -30,6 +34,7 @@ internal sealed class TimelinePersistenceService : ITimelinePersistenceService
         return new TimelineEntryMutationResult(entry);
     }
 
+    /// <inheritdoc />
     public async Task<TimelineEntryMutationResult> AppendToolCallStartedEntryAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
@@ -48,6 +53,7 @@ internal sealed class TimelinePersistenceService : ITimelinePersistenceService
         return new TimelineEntryMutationResult(entry);
     }
 
+    /// <inheritdoc />
     public async Task<TimelineEntryMutationResult> CompleteToolCallEntryAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
@@ -65,6 +71,7 @@ internal sealed class TimelinePersistenceService : ITimelinePersistenceService
         return new TimelineEntryMutationResult(entry);
     }
 
+    /// <inheritdoc />
     public async Task<TimelineRemovalMutationResult?> RemoveTranscriptEntriesAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
@@ -88,6 +95,15 @@ internal sealed class TimelinePersistenceService : ITimelinePersistenceService
         return new TimelineRemovalMutationResult(agentId, removedEntryIds, agentEvent.OccurredAtUtc);
     }
 
+    /// <summary>
+    /// Gets the tool timeline entry for a tool call or creates it when it does not exist.
+    /// </summary>
+    /// <param name="dbContext">Database context used for persistence.</param>
+    /// <param name="agentId">Agent identifier that owns the timeline entry.</param>
+    /// <param name="toolCallId">Tool call identifier.</param>
+    /// <param name="occurredAtUtc">Timestamp assigned when a new entry is created.</param>
+    /// <param name="cancellationToken">Token that cancels the persistence operation.</param>
+    /// <returns>The existing or newly created tool timeline entry.</returns>
     private static async Task<ProjectAgentTimelineEntryRecord> GetOrCreateToolTimelineEntryAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
@@ -121,6 +137,13 @@ internal sealed class TimelinePersistenceService : ITimelinePersistenceService
         return entry;
     }
 
+    /// <summary>
+    /// Gets the next timeline sequence number for an agent.
+    /// </summary>
+    /// <param name="dbContext">Database context used for persistence.</param>
+    /// <param name="agentId">Agent identifier that owns the timeline.</param>
+    /// <param name="cancellationToken">Token that cancels the persistence operation.</param>
+    /// <returns>The next sequence number to assign.</returns>
     private static async Task<long> GetNextSequenceAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,

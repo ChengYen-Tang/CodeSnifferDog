@@ -13,6 +13,14 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Agents.Report;
 
+/// <summary>
+/// Creates the verifier agent that validates repository-level report aggregation diffs.
+/// </summary>
+/// <param name="compactionOptions">Compaction options applied to created agents.</param>
+/// <param name="promptAssetReader">Optional prompt reader used to load prompt assets.</param>
+/// <param name="promptTemplateRenderer">Optional template renderer used to inject repository and issue placeholders.</param>
+/// <param name="loggerFactory">Optional logger factory forwarded to agent construction and common tools.</param>
+/// <param name="serviceProvider">Optional service provider used by the agent builder pipeline.</param>
 public sealed class ReportVerifierAgentFactory(
     AgentCompactionOptions compactionOptions,
     PromptAssetReader? promptAssetReader = null,
@@ -24,6 +32,19 @@ public sealed class ReportVerifierAgentFactory(
     private readonly AgentToolComposer _toolComposer = new(loggerFactory);
     private readonly AgentBuilderService _agentBuilderService = new(compactionOptions, loggerFactory, serviceProvider);
 
+    /// <summary>
+    /// Creates a report verifier agent from the default verifier prompt asset.
+    /// </summary>
+    /// <param name="chatClient">Chat client that backs the created agent.</param>
+    /// <param name="repositoryRootPath">Repository root path that contains the reviewed code.</param>
+    /// <param name="ruleKey">Rule key whose repository-level report is being verified.</param>
+    /// <param name="ruleMarkdown">Rendered rule guidance supplied to the agent.</param>
+    /// <param name="taskItem">Task item whose scope produced the current flow issues.</param>
+    /// <param name="currentFlowIssues">Current flow issues that the verifier should compare against the aggregation diff.</param>
+    /// <param name="reportIssueStore">Store that persists report issues and diffs.</param>
+    /// <param name="verdictBuffer">Verdict buffer that receives verifier submissions.</param>
+    /// <param name="eventScope">Optional event scope used to publish transcript events.</param>
+    /// <returns>The created agent result.</returns>
     public AgentCreationResult Create(
         IChatClient chatClient,
         string repositoryRootPath,
@@ -46,6 +67,22 @@ public sealed class ReportVerifierAgentFactory(
             verdictBuffer,
             eventScope);
 
+    /// <summary>
+    /// Creates a report verifier agent from one explicit prompt template.
+    /// </summary>
+    /// <param name="chatClient">Chat client that backs the created agent.</param>
+    /// <param name="promptTemplate">Prompt template used to build the verifier system prompt.</param>
+    /// <param name="repositoryRootPath">Repository root path that contains the reviewed code.</param>
+    /// <param name="ruleKey">Rule key whose repository-level report is being verified.</param>
+    /// <param name="ruleMarkdown">Rendered rule guidance supplied to the agent.</param>
+    /// <param name="taskItem">Task item whose scope produced the current flow issues.</param>
+    /// <param name="currentFlowIssues">Current flow issues that the verifier should compare against the aggregation diff.</param>
+    /// <param name="reportIssueStore">Store that persists report issues and diffs.</param>
+    /// <param name="verdictBuffer">Verdict buffer that receives verifier submissions.</param>
+    /// <param name="eventScope">Optional event scope used to publish transcript events.</param>
+    /// <returns>The created agent result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="chatClient" />, <paramref name="taskItem" />, <paramref name="currentFlowIssues" />, <paramref name="reportIssueStore" />, or <paramref name="verdictBuffer" /> is <see langword="null" />.</exception>
+    /// <exception cref="ArgumentException"><paramref name="promptTemplate" />, <paramref name="repositoryRootPath" />, <paramref name="ruleKey" />, or <paramref name="ruleMarkdown" /> is null, empty, or whitespace.</exception>
     private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
         string promptTemplate,

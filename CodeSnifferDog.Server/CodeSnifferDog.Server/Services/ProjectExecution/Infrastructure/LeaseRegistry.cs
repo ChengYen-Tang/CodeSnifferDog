@@ -3,10 +3,14 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Cancellatio
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 
+/// <summary>
+/// Tracks active execution leases for projects currently being processed.
+/// </summary>
 public sealed class LeaseRegistry : ILeaseRegistry
 {
     private readonly ConcurrentDictionary<Guid, Lease> _leases = [];
 
+    /// <inheritdoc />
     public Lease Register(Guid projectId, CancellationToken cancellationToken)
     {
         Lease lease = new(projectId, cancellationToken, Remove);
@@ -18,6 +22,7 @@ public sealed class LeaseRegistry : ILeaseRegistry
         throw new InvalidOperationException($"Project {projectId} is already running.");
     }
 
+    /// <inheritdoc />
     public async Task<bool> CancelAndWaitAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         if (!TryCancel(projectId, out Task? completion))
@@ -27,6 +32,7 @@ public sealed class LeaseRegistry : ILeaseRegistry
         return true;
     }
 
+    /// <inheritdoc />
     public bool TryCancel(Guid projectId, out Task? completion)
     {
         completion = null;
@@ -41,5 +47,9 @@ public sealed class LeaseRegistry : ILeaseRegistry
         return true;
     }
 
+    /// <summary>
+    /// Removes a lease after execution completes.
+    /// </summary>
+    /// <param name="projectId">Project identifier to remove.</param>
     private void Remove(Guid projectId) => _leases.TryRemove(projectId, out _);
 }

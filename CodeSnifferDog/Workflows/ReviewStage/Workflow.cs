@@ -16,6 +16,12 @@ using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
 
 namespace CodeSnifferDog.Workflows.ReviewStage;
 
+/// <summary>
+/// Orchestrates review execution for all planned task items, then groups the scheduled rule-flow results back into project results.
+/// </summary>
+/// <param name="scheduler">Scheduler that runs rule flows across planned projects and task items.</param>
+/// <param name="reviewGroupWorkflowRunner">Creates one review-group result from ordered rule-flow results.</param>
+/// <param name="agentEventBus">Optional event bus used to publish review-task group creation events.</param>
 internal sealed class Workflow(
     RuleLaneScheduler scheduler,
     Func<StoredTaskItem, IReadOnlyList<RuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> reviewGroupWorkflowRunner,
@@ -25,6 +31,14 @@ internal sealed class Workflow(
     private readonly Func<StoredTaskItem, IReadOnlyList<RuleDefinition>, IReadOnlyList<RuleFlowWorkflowResult>, Result<ReviewGroupWorkflowResult>> _reviewGroupWorkflowRunner = reviewGroupWorkflowRunner;
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
+    /// <summary>
+    /// Runs the review stage for all planned projects in one preparation result.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path that contains the reviewed code.</param>
+    /// <param name="preparationResult">Preparation result that supplies planned projects and task items.</param>
+    /// <param name="ruleDefinitions">Rule definitions that should run for every task item.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
+    /// <returns>The review-stage workflow result.</returns>
     public async Task<Result<ReviewStageWorkflowResult>> RunAsync(
         string repositoryRootPath,
         PreparationWorkflowResult preparationResult,

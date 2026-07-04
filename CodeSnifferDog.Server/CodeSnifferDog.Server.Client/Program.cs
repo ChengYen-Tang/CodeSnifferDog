@@ -2,6 +2,7 @@ using CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Client.Services.Projects.Sidebar;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 
+// Configures the Blazor WebAssembly client service graph.
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
 builder.Services.AddScoped(_ => new HttpClient

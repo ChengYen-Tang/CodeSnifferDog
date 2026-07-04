@@ -7,6 +7,9 @@ using System.Diagnostics;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure.Execution;
 
+/// <summary>
+/// Executes a claimed project by preparing artifacts, running analysis, and persisting the outcome.
+/// </summary>
 internal sealed class ClaimExecutor(
     IServiceScopeFactory serviceScopeFactory,
     IExecutionArtifactStore artifactStore,
@@ -18,6 +21,7 @@ internal sealed class ClaimExecutor(
     private readonly IStateService _StateService = StateService;
     private readonly ILogger<ClaimExecutor> _logger = logger;
 
+    /// <inheritdoc />
     public async Task ExecuteAsync(
         int workerNumber,
         Claim claim,
@@ -98,6 +102,12 @@ internal sealed class ClaimExecutor(
         }
     }
 
+    /// <summary>
+    /// Applies the cancellation policy for a project execution and persists the resulting state.
+    /// </summary>
+    /// <param name="claim">Claim that identifies the project and uploaded archive.</param>
+    /// <param name="lease">Execution lease that carries the cancellation source.</param>
+    /// <param name="durationMs">Elapsed execution time in milliseconds.</param>
     private async Task ApplyCancellationOutcomeAsync(
         Claim claim,
         Lease lease,

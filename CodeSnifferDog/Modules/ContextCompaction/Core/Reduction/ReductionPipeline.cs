@@ -6,6 +6,15 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 
+/// <summary>
+/// Runs the end-to-end compaction pipeline: threshold decision, hooks, summary generation, validation, and result building.
+/// </summary>
+/// <param name="options">Compaction settings that control thresholds and summary validation rules.</param>
+/// <param name="summaryPromptProvider">Provider for the summary prompt template.</param>
+/// <param name="summarizer">Summarizer that generates the raw summary text.</param>
+/// <param name="artifactsProvider">Optional provider that reattaches artifact messages after compaction.</param>
+/// <param name="hooks">Optional hooks that run before and after compaction.</param>
+/// <param name="cleanupHandlers">Optional cleanup handlers that run after successful compaction.</param>
 internal sealed class ReductionPipeline(
     CompactionOptions options,
     ISummaryPromptProvider summaryPromptProvider,
@@ -17,6 +26,15 @@ internal sealed class ReductionPipeline(
     private readonly CompactionHookDispatcher _hookDispatcher = new(hooks, cleanupHandlers);
     private readonly CompactionResultBuilder _resultBuilder = new(options, artifactsProvider);
 
+    /// <summary>
+    /// Compacts the supplied transcript when the selected reason or thresholds require it.
+    /// </summary>
+    /// <param name="messages">Transcript messages to compact.</param>
+    /// <param name="reason">Reason that triggered this compaction pass.</param>
+    /// <param name="cancellationToken">Cancels the compaction attempt.</param>
+    /// <returns>A pass-through result when compaction is not needed; otherwise the fully built compaction result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="messages" /> is <see langword="null" />.</exception>
+    /// <exception cref="CompactionException">Summary prompt retrieval, summary generation, or summary validation fails.</exception>
     public async Task<CompactionResult> CompactAsync(
         IEnumerable<ChatMessage> messages,
         CompactionReason reason,
@@ -61,6 +79,12 @@ internal sealed class ReductionPipeline(
         }
     }
 
+    /// <summary>
+    /// Determines whether the transcript should be compacted for the current reason.
+    /// </summary>
+    /// <param name="messages">Materialized transcript messages with stable identities.</param>
+    /// <param name="reason">Reason that triggered the compaction evaluation.</param>
+    /// <returns><see langword="true" /> for reactive compaction, or when the automatic threshold is exceeded.</returns>
     private bool ShouldCompact(
         IReadOnlyList<ChatMessage> messages,
         CompactionReason reason)

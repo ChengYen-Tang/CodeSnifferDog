@@ -11,6 +11,11 @@ using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
 
 namespace CodeSnifferDog.Workflows.RuleFlow;
 
+/// <summary>
+/// Runs the rule-review and report workflows for one task item and one rule, then classifies the combined completion state.
+/// </summary>
+/// <param name="ruleReviewWorkflowRunner">Runs the rule-review stage for one rule.</param>
+/// <param name="ruleReportWorkflowRunner">Runs the report stage for one reviewed rule flow.</param>
 public sealed class Workflow(
     Func<string, string, string, StoredTaskItem, CancellationToken, Task<Result<RuleReviewWorkflowResult>>> ruleReviewWorkflowRunner,
     Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, CancellationToken, Task<Result<ReportWorkflowResult>>> ruleReportWorkflowRunner)
@@ -18,6 +23,15 @@ public sealed class Workflow(
     private readonly Func<string, string, string, StoredTaskItem, CancellationToken, Task<Result<RuleReviewWorkflowResult>>> _ruleReviewWorkflowRunner = ruleReviewWorkflowRunner;
     private readonly Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, CancellationToken, Task<Result<ReportWorkflowResult>>> _ruleReportWorkflowRunner = ruleReportWorkflowRunner;
 
+    /// <summary>
+    /// Runs the combined rule flow for one task item and rule.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path that contains the reviewed code.</param>
+    /// <param name="ruleKey">Rule key being reviewed.</param>
+    /// <param name="ruleMarkdown">Rendered rule guidance supplied to the child workflows.</param>
+    /// <param name="taskItem">Task item being reviewed.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
+    /// <returns>The combined rule-flow result.</returns>
     public async Task<Result<RuleFlowWorkflowResult>> RunAsync(
         string repositoryRootPath,
         string ruleKey,
@@ -88,6 +102,13 @@ public sealed class Workflow(
             reportCompletionState));
     }
 
+    /// <summary>
+    /// Creates the combined rule-flow result from the completed child workflow results.
+    /// </summary>
+    /// <param name="reviewResult">Rule-review result.</param>
+    /// <param name="reportResult">Report result, when a report was produced.</param>
+    /// <param name="completionState">Combined completion state classification.</param>
+    /// <returns>The composed rule-flow result.</returns>
     private static RuleFlowWorkflowResult CreateResult(
         RuleReviewWorkflowResult reviewResult,
         ReportWorkflowResult? reportResult,

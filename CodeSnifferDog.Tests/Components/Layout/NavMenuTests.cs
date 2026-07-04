@@ -13,6 +13,22 @@ namespace CodeSnifferDog.Tests.Components.Layout;
 public sealed class NavMenuTests
 {
     [TestMethod]
+    public void BrandLink_NavigatesToGitHubRepository()
+    {
+        using Bunit.TestContext context = new();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
+        context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+
+        IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>();
+
+        AngleSharp.Dom.IElement brandLink = cut.Find(".brand-main");
+        Assert.AreEqual("a", brandLink.TagName.ToLowerInvariant());
+        Assert.AreEqual("https://github.com/ChengYen-Tang/CodeSnifferDog", brandLink.GetAttribute("href"));
+        Assert.AreEqual("_blank", brandLink.GetAttribute("target"));
+        Assert.AreEqual("noopener noreferrer", brandLink.GetAttribute("rel"));
+    }
+
+    [TestMethod]
     public void InitialSnapshot_RendersSidebarWithoutClientReload()
     {
         using Bunit.TestContext context = new();

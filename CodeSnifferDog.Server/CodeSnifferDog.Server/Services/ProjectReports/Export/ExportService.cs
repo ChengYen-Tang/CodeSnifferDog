@@ -4,14 +4,19 @@ using System.Text;
 
 namespace CodeSnifferDog.Server.Services.ProjectReports.Export;
 
+/// <summary>
+/// Creates downloadable markdown and zip exports for stored reports.
+/// </summary>
 internal sealed class ExportService : IExportService
 {
+    /// <inheritdoc />
     public ExportFile CreateMarkdown(ContentDto report) =>
         new(
             Encoding.UTF8.GetBytes(report.MarkdownContent),
             "text/markdown; charset=utf-8",
             $"{report.RuleName}.md");
 
+    /// <inheritdoc />
     public async Task<ExportFile> CreateBundleZipAsync(
         BundleDto bundle,
         CancellationToken cancellationToken = default)
