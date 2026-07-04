@@ -13,6 +13,16 @@ using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.ProjectPlan;
 
+/// <summary>
+/// Runs project planning with a planner agent, a verifier agent, retry limits, and planner-reset handling.
+/// </summary>
+/// <param name="AgentFactory">Creates the project planner agent for one repository and event scope.</param>
+/// <param name="VerifierFactory">Creates the verifier agent for one scanned project.</param>
+/// <param name="taskItemStore">Store that receives project-plan task item submissions.</param>
+/// <param name="verdictBuffer">Buffer that captures verifier verdict submissions.</param>
+/// <param name="promptAssetReader">Optional prompt reader used to load workflow prompt assets.</param>
+/// <param name="options">Optional workflow options that control retries and timeouts.</param>
+/// <param name="agentEventBus">Optional event bus used to publish agent lifecycle and transcript events.</param>
 public sealed class Workflow(
     Func<string, IAgentEventScope, AgentCreationResult> AgentFactory,
     Func<string, StoredScanProject, IAgentEventScope, AgentCreationResult> VerifierFactory,
@@ -30,6 +40,13 @@ public sealed class Workflow(
     private readonly WorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
 
+    /// <summary>
+    /// Runs the project-plan workflow for one scanned project.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path that contains the scanned project.</param>
+    /// <param name="scanProject">Scanned project that should be decomposed into task items.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
+    /// <returns>The project-plan workflow result.</returns>
     public async Task<Result<WorkflowResult>> RunAsync(
         string repositoryRootPath,
         StoredScanProject scanProject,
@@ -200,6 +217,11 @@ public sealed class Workflow(
         }
     }
 
+    /// <summary>
+    /// Captures restorable state for one project-plan workflow attempt.
+    /// </summary>
+    /// <param name="attemptId">Attempt identifier associated with the snapshot.</param>
+    /// <returns>A lease pair that can restore both the task-item store and verdict buffer.</returns>
     private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
         return new WorkflowAttemptLeasePair(

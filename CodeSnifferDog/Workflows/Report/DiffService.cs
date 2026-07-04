@@ -4,10 +4,21 @@ using CodeSnifferDog.Modules.Tools.Report;
 
 namespace CodeSnifferDog.Workflows.Report;
 
+/// <summary>
+/// Computes diffs between the last stored report snapshot and the current working report issues.
+/// </summary>
+/// <param name="reportIssueStore">Store that persists report snapshots and diffs.</param>
 internal sealed class DiffService(IIssueStore reportIssueStore)
 {
     private readonly IIssueStore _reportIssueStore = reportIssueStore;
 
+    /// <summary>
+    /// Computes the latest diff for one rule flow and stores it in the report issue store.
+    /// </summary>
+    /// <param name="ruleReportKey">Repository-wide report key used to load the previous snapshot.</param>
+    /// <param name="ruleFlowKey">Current rule-flow key used to load current issues and store the diff.</param>
+    /// <param name="cancellationToken">Cancels diff computation.</param>
+    /// <returns>The computed diff.</returns>
     public async Task<Diff> ComputeAndStoreDiffAsync(
         RuleReportKey ruleReportKey,
         RuleFlowKey ruleFlowKey,
@@ -23,6 +34,12 @@ internal sealed class DiffService(IIssueStore reportIssueStore)
         return diff;
     }
 
+    /// <summary>
+    /// Builds a diff between the previous persisted snapshot and the current issue set.
+    /// </summary>
+    /// <param name="previousSnapshot">Previous persisted report snapshot.</param>
+    /// <param name="currentIssues">Current issues produced by the report aggregator.</param>
+    /// <returns>The computed diff.</returns>
     private static Diff BuildDiff(
         IReadOnlyList<StoredIssue> previousSnapshot,
         IReadOnlyList<StoredIssue> currentIssues)
@@ -58,6 +75,12 @@ internal sealed class DiffService(IIssueStore reportIssueStore)
         };
     }
 
+    /// <summary>
+    /// Determines whether two stored issues are equivalent for report-diff purposes.
+    /// </summary>
+    /// <param name="left">First stored issue.</param>
+    /// <param name="right">Second stored issue.</param>
+    /// <returns><see langword="true" /> when both issues carry the same persisted report content.</returns>
     private static bool AreEquivalent(StoredIssue left, StoredIssue right)
         =>
         left.RuleReportIssueId == right.RuleReportIssueId &&

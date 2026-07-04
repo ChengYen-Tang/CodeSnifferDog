@@ -4,8 +4,19 @@ using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 
 namespace CodeSnifferDog.Workflows.Report;
 
+/// <summary>
+/// Renders repository report issues into the markdown artifact format stored for one rule.
+/// </summary>
 public static class RuleMarkdownReportRenderer
 {
+    /// <summary>
+    /// Renders a rule report document from one rule name and its stored issues.
+    /// </summary>
+    /// <param name="ruleName">Rule name used to title the rendered markdown file.</param>
+    /// <param name="issues">Issues that should appear in the rendered report.</param>
+    /// <returns>The rendered markdown content.</returns>
+    /// <exception cref="ArgumentException"><paramref name="ruleName" /> is null, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="issues" /> is <see langword="null" />.</exception>
     public static string Render(string ruleName, IReadOnlyList<ReportStoredIssue> issues)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleName);

@@ -8,6 +8,12 @@ using ProjectPlanWorkflowResult = CodeSnifferDog.Models.ProjectPlan.WorkflowResu
 
 namespace CodeSnifferDog.Workflows.Preparation;
 
+/// <summary>
+/// Runs preparation by scanning the repository, then planning each discovered project under the shared concurrency gate.
+/// </summary>
+/// <param name="scanWorkflowRunner">Runs the scan workflow for the repository.</param>
+/// <param name="projectPlanWorkflowRunner">Runs the project-plan workflow for one scanned project.</param>
+/// <param name="concurrencyGate">Gate that limits how many project-plan workflows run concurrently.</param>
 internal sealed class Workflow(
     Func<string, CancellationToken, Task<Result<ScanWorkflowResult>>> scanWorkflowRunner,
     Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> projectPlanWorkflowRunner,
@@ -17,6 +23,12 @@ internal sealed class Workflow(
     private readonly Func<string, StoredScanProject, CancellationToken, Task<Result<ProjectPlanWorkflowResult>>> _projectPlanWorkflowRunner = projectPlanWorkflowRunner;
     private readonly IReviewAgentConcurrencyGate _concurrencyGate = concurrencyGate;
 
+    /// <summary>
+    /// Runs the preparation workflow for one repository.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path that should be prepared for review.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
+    /// <returns>The preparation workflow result.</returns>
     public async Task<Result<PreparationWorkflowResult>> RunAsync(
         string repositoryRootPath,
         CancellationToken cancellationToken = default)
@@ -58,6 +70,15 @@ internal sealed class Workflow(
         });
     }
 
+    /// <summary>
+    /// Runs one project-plan workflow under the shared concurrency gate and stores either its ordered result or its errors.
+    /// </summary>
+    /// <param name="project">Scanned project to plan.</param>
+    /// <param name="index">Index in <paramref name="orderedResults" /> where the result should be stored.</param>
+    /// <param name="orderedResults">Ordered result buffer for successful project-plan results.</param>
+    /// <param name="errors">Shared error list that collects failed project-plan results.</param>
+    /// <param name="repositoryRootPath">Repository root path that contains the project.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
     private async Task RunProjectPlanAsync(
         StoredScanProject project,
         int index,

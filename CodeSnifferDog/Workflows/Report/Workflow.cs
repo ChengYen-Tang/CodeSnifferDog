@@ -18,6 +18,16 @@ using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Workflows.Report;
 
+/// <summary>
+/// Runs report aggregation and verification for one reviewed rule flow.
+/// </summary>
+/// <param name="reportAggregatorAgentFactory">Creates the report aggregator agent for one task item and rule.</param>
+/// <param name="reportVerifierAgentFactory">Creates the report verifier agent for one task item, rule, and current flow issues.</param>
+/// <param name="reportIssueStore">Store that persists working and promoted report issues.</param>
+/// <param name="verdictBuffer">Buffer that captures verifier verdict submissions.</param>
+/// <param name="promptAssetReader">Optional prompt reader used to load workflow prompt assets.</param>
+/// <param name="options">Optional workflow options that control retries and timeouts.</param>
+/// <param name="agentEventBus">Optional event bus used to publish agent lifecycle and transcript events.</param>
 public sealed class Workflow(
     Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> reportAggregatorAgentFactory,
     Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, IAgentEventScope, AgentCreationResult> reportVerifierAgentFactory,
@@ -39,6 +49,16 @@ public sealed class Workflow(
     private RuleFlowKey _ruleFlowKey = default!;
     private string _reportVerdictScopeKey = string.Empty;
 
+    /// <summary>
+    /// Runs the report workflow for one reviewed rule flow.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path that contains the reviewed code.</param>
+    /// <param name="ruleKey">Rule key whose report is being generated.</param>
+    /// <param name="ruleMarkdown">Rendered rule guidance supplied to the agents.</param>
+    /// <param name="taskItem">Task item whose rule flow produced the report.</param>
+    /// <param name="currentFlowIssues">Current issues produced by the rule-review flow.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
+    /// <returns>The report workflow result.</returns>
     public async Task<Result<ReportWorkflowResult>> RunAsync(
         string repositoryRootPath,
         string ruleKey,
@@ -217,11 +237,15 @@ public sealed class Workflow(
         }
     }
 
+    /// <summary>
+    /// Captures restorable state for one report workflow attempt.
+    /// </summary>
+    /// <param name="attemptId">Attempt identifier associated with the snapshot.</param>
+    /// <returns>A lease pair that can restore both the report issue store and verdict buffer.</returns>
     private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
         return new WorkflowAttemptLeasePair(
             _reportIssueStore.BeginAttempt(_ruleFlowKey, attemptId),
             _verdictBuffer.BeginAttempt(_reportVerdictScopeKey, attemptId));
     }
-
 }

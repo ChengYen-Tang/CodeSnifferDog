@@ -15,6 +15,16 @@ using RuleReviewWorkflowResult = CodeSnifferDog.Models.RuleReview.WorkflowResult
 
 namespace CodeSnifferDog.Workflows.RuleReview;
 
+/// <summary>
+/// Runs rule review with a reviewer agent, a verifier agent, retry limits, and reviewer-reset handling.
+/// </summary>
+/// <param name="AgentFactory">Creates the rule-review agent for one task item and rule.</param>
+/// <param name="VerifierFactory">Creates the verifier agent for one task item and rule.</param>
+/// <param name="issueStore">Store that receives rule-review issue submissions.</param>
+/// <param name="verdictBuffer">Buffer that captures verifier verdict submissions.</param>
+/// <param name="promptAssetReader">Optional prompt reader used to load workflow prompt assets.</param>
+/// <param name="options">Optional workflow options that control retries and timeouts.</param>
+/// <param name="agentEventBus">Optional event bus used to publish agent lifecycle and transcript events.</param>
 public sealed class Workflow(
     Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> AgentFactory,
     Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> VerifierFactory,
@@ -35,6 +45,15 @@ public sealed class Workflow(
     private RuleFlowKey _ruleFlowKey = default!;
     private string _reviewVerdictScopeKey = string.Empty;
 
+    /// <summary>
+    /// Runs the rule-review workflow for one task item and rule.
+    /// </summary>
+    /// <param name="repositoryRootPath">Repository root path that contains the reviewed code.</param>
+    /// <param name="ruleKey">Rule key being reviewed.</param>
+    /// <param name="ruleMarkdown">Rendered rule guidance supplied to the agents.</param>
+    /// <param name="taskItem">Task item being reviewed.</param>
+    /// <param name="cancellationToken">Cancels the workflow.</param>
+    /// <returns>The rule-review workflow result.</returns>
     public async Task<Result<RuleReviewWorkflowResult>> RunAsync(
         string repositoryRootPath,
         string ruleKey,
@@ -256,6 +275,11 @@ public sealed class Workflow(
         }
     }
 
+    /// <summary>
+    /// Captures restorable state for one rule-review workflow attempt.
+    /// </summary>
+    /// <param name="attemptId">Attempt identifier associated with the snapshot.</param>
+    /// <returns>A lease pair that can restore both the issue store and verdict buffer.</returns>
     private WorkflowAttemptLeasePair PrepareAttempt(Guid attemptId)
     {
         return new WorkflowAttemptLeasePair(

@@ -9,8 +9,18 @@ using RuleFlowWorkflowResult = CodeSnifferDog.Models.RuleFlow.WorkflowResult;
 
 namespace CodeSnifferDog.Workflows.ReviewGroup;
 
+/// <summary>
+/// Validates ordered rule-flow results for one task item and packages them as one review-group result.
+/// </summary>
 internal static class Workflow
 {
+    /// <summary>
+    /// Validates that rule-flow results align with the reviewed task item and rule order.
+    /// </summary>
+    /// <param name="taskItem">Task item that owns the rule flows.</param>
+    /// <param name="ruleDefinitions">Rule definitions expected for the task item.</param>
+    /// <param name="flowResults">Rule-flow results produced for the task item.</param>
+    /// <returns>The validated review-group result.</returns>
     public static Result<ReviewGroupWorkflowResult> Run(
         StoredTaskItem taskItem,
         IReadOnlyList<RuleDefinition> ruleDefinitions,
@@ -48,6 +58,12 @@ internal static class Workflow
         return Result.Ok(CreateResult(taskItem, flowResults));
     }
 
+    /// <summary>
+    /// Creates one review-group result from the validated flow results.
+    /// </summary>
+    /// <param name="taskItem">Task item that owns the rule flows.</param>
+    /// <param name="flowResults">Validated rule-flow results.</param>
+    /// <returns>The composed review-group result.</returns>
     private static ReviewGroupWorkflowResult CreateResult(
         StoredTaskItem taskItem,
         IReadOnlyList<RuleFlowWorkflowResult> flowResults)
