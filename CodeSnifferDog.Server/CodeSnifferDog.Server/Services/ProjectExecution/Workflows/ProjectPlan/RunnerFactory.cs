@@ -13,16 +13,23 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows.ProjectPlan;
 
+/// <summary>
+/// Creates the runner that executes the project-plan workflow.
+/// </summary>
 internal sealed class RunnerFactory(
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider) : IRunnerFactory
 {
+    /// <summary>
+    /// Gets the prompt asset used when project-plan agents summarize compacted history.
+    /// </summary>
     internal static string SummaryPromptAssetPath => ProjectPlanAgentPromptAssets.ProjectPlanSummaryPrompt;
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
     private readonly ILogger<RunnerFactory> _logger = loggerFactory.CreateLogger<RunnerFactory>();
 
+    /// <inheritdoc />
     public Func<string, StoredScanProject, CancellationToken, Task<Result<WorkflowResult>>> CreateRunner(
         WorkflowRuntimeContext context,
         CompactionOptions compactionOptions) =>
@@ -81,6 +88,11 @@ internal sealed class RunnerFactory(
         return result;
     }
 
+    /// <summary>
+    /// Creates workflow options for project-plan runs from the configured execution limits.
+    /// </summary>
+    /// <param name="executionOptions">Execution limits shared across review workflows.</param>
+    /// <returns>The workflow options passed to the project-plan workflow.</returns>
     internal static WorkflowOptions CreateWorkflowOptions(ExecutionOptions executionOptions) =>
         new()
         {

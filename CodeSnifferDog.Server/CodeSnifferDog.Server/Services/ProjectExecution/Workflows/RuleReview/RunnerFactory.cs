@@ -15,16 +15,23 @@ using RuleReviewWorkflowResult = CodeSnifferDog.Models.RuleReview.WorkflowResult
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleReview;
 
+/// <summary>
+/// Runs the workflow stage that reviews a rule for a single project-plan task item.
+/// </summary>
 internal sealed class RunnerFactory(
     ILoggerFactory loggerFactory,
     IServiceProvider serviceProvider) : IRunnerFactory
 {
+    /// <summary>
+    /// Gets the prompt asset used when rule-review agents summarize compacted history.
+    /// </summary>
     internal static string SummaryPromptAssetPath => RuleReviewAgentPromptAssets.RuleReviewSummaryPrompt;
 
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
     private readonly ILogger<RunnerFactory> _logger = loggerFactory.CreateLogger<RunnerFactory>();
 
+    /// <inheritdoc />
     public async Task<Result<RuleReviewWorkflowResult>> RunAsync(
         WorkflowRuntimeContext context,
         string repositoryRootPath,
@@ -81,6 +88,11 @@ internal sealed class RunnerFactory(
         return result;
     }
 
+    /// <summary>
+    /// Creates workflow options for rule-review runs from the configured execution limits.
+    /// </summary>
+    /// <param name="executionOptions">Execution limits shared across review workflows.</param>
+    /// <returns>The workflow options passed to the rule-review workflow.</returns>
     internal static RuleReviewWorkflowOptions CreateWorkflowOptions(ExecutionOptions executionOptions) =>
         new()
         {
