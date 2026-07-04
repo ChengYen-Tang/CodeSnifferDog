@@ -56,8 +56,18 @@ using RuleReviewRunnerFactoryInterface = CodeSnifferDog.Server.Services.ProjectE
 
 namespace CodeSnifferDog.Server;
 
+/// <summary>
+/// Registers the server's data, workflow, execution, and presentation services.
+/// </summary>
 internal static class ServiceCollectionExtensions
 {
+    /// <summary>
+    /// Adds all CodeSnifferDog server services to the dependency-injection container.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <param name="configuration">Application configuration used to bind options and connection strings.</param>
+    /// <param name="configureDbContext">Optional override used to customize the EF Core context registration.</param>
+    /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
     public static IServiceCollection AddCodeSnifferDogServerServices(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -74,6 +84,11 @@ internal static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers shared projection helpers used by multiple server surfaces.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
     private static IServiceCollection AddSharedProjectionServices(this IServiceCollection services)
     {
         services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
@@ -81,6 +96,13 @@ internal static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers database access and infrastructure options.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <param name="configuration">Application configuration used to bind options and connection strings.</param>
+    /// <param name="configureDbContext">Optional override used to customize the EF Core context registration.</param>
+    /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
     private static IServiceCollection AddDataServices(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -113,6 +135,11 @@ internal static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers storage, queueing, hosted execution, and runtime infrastructure services.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
     private static IServiceCollection AddProjectExecutionInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<ProjectTemporaryStoragePaths>();
@@ -131,6 +158,11 @@ internal static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers the end-to-end project review pipeline and its workflow factories.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
     private static IServiceCollection AddProjectReviewPipeline(this IServiceCollection services)
     {
         services.AddScoped<OptionsFactory>();
@@ -149,6 +181,11 @@ internal static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers project-agent status persistence, snapshots, and live notification services.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
     private static IServiceCollection AddAgentStatusServices(this IServiceCollection services)
     {
         services.AddScoped<ITimelinePersistenceService, TimelinePersistenceService>();
@@ -165,6 +202,11 @@ internal static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers upload, projection, reporting, and UI-facing project surface services.
+    /// </summary>
+    /// <param name="services">Service collection being configured.</param>
+    /// <returns>The same <paramref name="services"/> instance for chaining.</returns>
     private static IServiceCollection AddProjectSurfaceServices(this IServiceCollection services)
     {
         services.AddScoped<ILiveSubscriptionClient, NoOpLiveSubscriptionClient>();
