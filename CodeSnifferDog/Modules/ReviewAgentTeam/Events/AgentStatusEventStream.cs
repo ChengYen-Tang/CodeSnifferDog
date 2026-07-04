@@ -4,19 +4,31 @@ using CodeSnifferDog.Models.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
+/// <summary>
+/// Publishes agent status events into a synchronized observable stream.
+/// </summary>
 public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
 {
     private readonly Subject<StatusEvent> _innerSubject = new();
     private readonly ISubject<StatusEvent> _subject;
     private bool _disposed;
 
+    /// <summary>
+    /// Creates a synchronized status-event stream suitable for multi-threaded publishers.
+    /// </summary>
     public AgentStatusEventStream()
     {
         _subject = Subject.Synchronize(_innerSubject);
     }
 
+    /// <summary>
+    /// Gets the observable event stream used by subscribers.
+    /// </summary>
     internal IObservable<StatusEvent> Events => _subject;
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentException"><paramref name="groupKey" /> or <paramref name="agentKey" /> is <see langword="null" />, empty, or whitespace.</exception>
+    /// <exception cref="ObjectDisposedException">The stream has already been completed or disposed.</exception>
     public IAgentEventScope CreateScope(string groupKey, string agentKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(groupKey);
@@ -26,6 +38,8 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
         return new AgentEventScope(this, groupKey.Trim(), agentKey.Trim());
     }
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentException"><paramref name="groupKey" /> or <paramref name="displayName" /> is <see langword="null" />, empty, or whitespace.</exception>
     public ValueTask PublishGroupCreatedAsync(
         string groupKey,
         string displayName,
@@ -42,6 +56,13 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Publishes one concrete status event into the synchronized subject.
+    /// </summary>
+    /// <param name="agentEvent">Event to publish.</param>
+    /// <param name="cancellationToken">Cancels event publication before the event is pushed.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="agentEvent" /> is <see langword="null" />.</exception>
+    /// <exception cref="ObjectDisposedException">The stream has already been completed or disposed.</exception>
     private ValueTask PublishAsync(StatusEvent agentEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(agentEvent);
@@ -52,6 +73,9 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Completes the observable stream and prevents future publications.
+    /// </summary>
     public void Complete()
     {
         if (_disposed)
@@ -61,6 +85,9 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
         _subject.OnCompleted();
     }
 
+    /// <summary>
+    /// Disposes the underlying subject and prevents future publications.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -74,10 +101,14 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
     {
         private readonly AgentStatusEventStream _bus = bus;
 
+        /// <inheritdoc />
         public string GroupKey { get; } = groupKey;
 
+        /// <inheritdoc />
         public string AgentKey { get; } = agentKey;
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="displayName" />, <paramref name="systemPrompt" />, or <paramref name="initialStatus" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishCreatedAsync(
             string displayName,
             string systemPrompt,
@@ -99,6 +130,8 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="status" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishStatusChangedAsync(
             string status,
             CancellationToken cancellationToken = default)
@@ -114,6 +147,8 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="message" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishUserMessageAsync(
             string message,
             CancellationToken cancellationToken = default)
@@ -129,6 +164,8 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="message" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishAssistantMessageAsync(
             string message,
             CancellationToken cancellationToken = default)
@@ -144,6 +181,8 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="toolCallId" /> or <paramref name="toolName" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishToolCallStartedAsync(
             string toolCallId,
             string toolName,
@@ -164,6 +203,8 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="toolCallId" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishToolCallCompletedAsync(
             string toolCallId,
             string? result,
@@ -181,6 +222,7 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
             }, cancellationToken);
         }
 
+        /// <inheritdoc />
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) =>
             _bus.PublishAsync(new CompactionEvent
             {
@@ -189,6 +231,7 @@ public sealed class AgentStatusEventStream : IAgentEventBus, IDisposable
                 OccurredAtUtc = DateTimeOffset.UtcNow,
             }, cancellationToken);
 
+        /// <inheritdoc />
         public ValueTask PublishTranscriptClearedAsync(
             DateTimeOffset clearAfterUtc,
             CancellationToken cancellationToken = default) =>

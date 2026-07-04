@@ -5,8 +5,23 @@ using CodeSnifferDog.Models.ContextCompaction.Continuity;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
+/// <summary>
+/// Replaces archived non-system message spans with compact collapse projection artifacts.
+/// </summary>
 public sealed class CollapseProjectionBuilder
 {
+    /// <summary>
+    /// Builds a projected transcript by substituting committed, and optionally staged, collapse spans into the message list.
+    /// </summary>
+    /// <param name="messages">Current transcript messages before projection.</param>
+    /// <param name="collapseState">Collapse state that describes committed and staged spans.</param>
+    /// <param name="options">Compaction options associated with the projection.</param>
+    /// <param name="includeStagedSpans"><see langword="true" /> to project staged spans in addition to committed spans.</param>
+    /// <returns>The projected messages and the collapse identifiers that were injected into the transcript.</returns>
+    /// <remarks>
+    /// Projection operates only on non-system message indexes so existing system artifacts remain in place.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="messages" />, <paramref name="collapseState" />, or <paramref name="options" /> is <see langword="null" />.</exception>
     public static (IReadOnlyList<ChatMessage> Messages, IReadOnlyList<string> ProjectedCollapseIds) BuildProjection(
         IReadOnlyList<ChatMessage> messages,
         CollapseState collapseState,
@@ -86,6 +101,13 @@ public sealed class CollapseProjectionBuilder
         return (projectedMessages, projectedCollapseIds);
     }
 
+    /// <summary>
+    /// Returns the collapse spans that should be projected, ordered by their archived start index.
+    /// </summary>
+    /// <param name="collapseState">Collapse state containing committed and staged spans.</param>
+    /// <param name="_">Unused compaction options parameter retained for API stability.</param>
+    /// <param name="includeStagedSpans"><see langword="true" /> to include staged spans in the returned projection set.</param>
+    /// <returns>The ordered collapse spans to apply to the transcript.</returns>
     private static IReadOnlyList<CollapseSpan> GetProjectionSpans(
         CollapseState collapseState,
         CompactionOptions _,
@@ -102,6 +124,11 @@ public sealed class CollapseProjectionBuilder
         return [.. spans.OrderBy(static span => span.FirstArchivedMessageIndex)];
     }
 
+    /// <summary>
+    /// Creates the system projection artifact that stands in for one collapsed transcript span.
+    /// </summary>
+    /// <param name="commit">Committed or staged collapse span being projected.</param>
+    /// <returns>A system message annotated with collapse projection metadata.</returns>
     private static ChatMessage CreateProjectionMessage(CollapseSpan commit)
     {
         ChatMessage message = new(
@@ -125,6 +152,12 @@ public sealed class CollapseProjectionBuilder
         return message;
     }
 
+    /// <summary>
+    /// Resolves collapse span boundaries against the current non-system transcript so projections can survive message reindexing.
+    /// </summary>
+    /// <param name="messages">Current transcript messages.</param>
+    /// <param name="spans">Collapse spans to resolve.</param>
+    /// <returns>The collapse spans whose boundaries could be resolved against the current transcript.</returns>
     private static IReadOnlyList<ResolvedProjectionSpan> ResolveProjectionSpans(
         IReadOnlyList<ChatMessage> messages,
         IReadOnlyList<CollapseSpan> spans)
@@ -166,6 +199,14 @@ public sealed class CollapseProjectionBuilder
         return [.. resolvedSpans.OrderBy(static span => span.FirstResolvedMessageIndex)];
     }
 
+    /// <summary>
+    /// Resolves one collapse boundary by stable message identifier when possible, otherwise by fallback non-system index.
+    /// </summary>
+    /// <param name="messages">Non-system transcript entries available for resolution.</param>
+    /// <param name="messageId">Preferred stable message identifier.</param>
+    /// <param name="fallbackIndex">Fallback non-system index recorded in the collapse span.</param>
+    /// <param name="startAt">First entry position to consider while searching.</param>
+    /// <returns>The resolved non-system index, or <c>-1</c> when no match is found.</returns>
     private static int ResolveBoundaryIndex(
         IReadOnlyList<NonSystemMessageEntry> messages,
         string? messageId,
@@ -186,6 +227,11 @@ public sealed class CollapseProjectionBuilder
         return -1;
     }
 
+    /// <summary>
+    /// Reads the synthetic identity assigned to a message, if one exists.
+    /// </summary>
+    /// <param name="message">Message whose identity metadata should be inspected.</param>
+    /// <returns>The stored message identity, or <see langword="null" /> when the message has not been annotated.</returns>
     private static string? TryGetMessageIdentity(ChatMessage message)
     {
         if (message.AdditionalProperties?.TryGetValue(CompactionArtifactMetadata.MessageIdentityKey, out object? value) != true)
@@ -194,6 +240,9 @@ public sealed class CollapseProjectionBuilder
         return value as string;
     }
 
+    /// <summary>
+    /// Represents one non-system transcript entry available for collapse-boundary resolution.
+    /// </summary>
     private sealed class NonSystemMessageEntry
     {
         public required int NonSystemIndex { get; init; }
@@ -201,6 +250,9 @@ public sealed class CollapseProjectionBuilder
         public string? MessageId { get; init; }
     }
 
+    /// <summary>
+    /// Represents a collapse span whose boundaries have been resolved against the current transcript.
+    /// </summary>
     private sealed class ResolvedProjectionSpan
     {
         public required CollapseSpan Span { get; init; }

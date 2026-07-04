@@ -7,6 +7,12 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
+/// <summary>
+/// Creates agent-ready compaction options from a prompt asset and shared summarization dependencies.
+/// </summary>
+/// <param name="promptAssetReader">Prompt asset resolver used to locate the summary prompt file.</param>
+/// <param name="summarizer">Summarizer implementation that will generate compaction summaries.</param>
+/// <param name="reactiveExceptionDecider">Optional policy that decides whether reactive retries should occur after failures.</param>
 public sealed class AgentOptionsFactory(
     PromptAssetReader promptAssetReader,
     ISummarizer summarizer,
@@ -17,6 +23,17 @@ public sealed class AgentOptionsFactory(
     private readonly IReactiveExceptionDecider _reactiveExceptionDecider =
         reactiveExceptionDecider ?? new DefaultReactiveExceptionDecider();
 
+    /// <summary>
+    /// Creates a complete <see cref="AgentCompactionOptions" /> instance backed by a prompt asset on disk.
+    /// </summary>
+    /// <param name="summaryPromptAssetPath">Prompt asset path used to resolve the summary instructions file.</param>
+    /// <param name="options">Compaction settings that configure reducer thresholds and shrinking behavior.</param>
+    /// <param name="enableReactiveCompactionRetry"><see langword="true" /> to enable reactive retry flows after compaction-related failures.</param>
+    /// <param name="hooks">Optional compaction hooks that observe before and after transcript rewriting.</param>
+    /// <param name="cleanupHandlers">Optional cleanup handlers that run after successful compaction.</param>
+    /// <returns>The agent-facing compaction options wired to the resolved prompt asset.</returns>
+    /// <exception cref="ArgumentException"><paramref name="summaryPromptAssetPath" /> is <see langword="null" />, empty, or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options" /> is <see langword="null" />.</exception>
     public AgentCompactionOptions CreateFromPromptAsset(
         string summaryPromptAssetPath,
         CompactionOptions options,

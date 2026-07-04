@@ -4,8 +4,17 @@ using Microsoft.Extensions.AI;
 
 namespace CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
 
+/// <summary>
+/// Converts tool call and tool result content into agent transcript events.
+/// </summary>
 internal static class AgentToolEventPublisher
 {
+    /// <summary>
+    /// Publishes every tool-related content item found in the supplied message.
+    /// </summary>
+    /// <param name="message">Message whose tool content should be translated into transcript events.</param>
+    /// <param name="eventScope">Event scope that should receive the translated events.</param>
+    /// <param name="cancellationToken">Cancels event publication.</param>
     public static async ValueTask PublishAsync(
         ChatMessage message,
         IAgentEventScope eventScope,
@@ -29,6 +38,12 @@ internal static class AgentToolEventPublisher
         }
     }
 
+    /// <summary>
+    /// Publishes the start event for one tool call payload.
+    /// </summary>
+    /// <param name="functionCall">Tool call payload to publish.</param>
+    /// <param name="eventScope">Event scope that should receive the translated event.</param>
+    /// <param name="cancellationToken">Cancels event publication.</param>
     public static ValueTask PublishStartedAsync(
         FunctionCallContent functionCall,
         IAgentEventScope eventScope,
@@ -44,6 +59,12 @@ internal static class AgentToolEventPublisher
             cancellationToken);
     }
 
+    /// <summary>
+    /// Publishes the completion event for one tool result payload.
+    /// </summary>
+    /// <param name="functionResult">Tool result payload to publish.</param>
+    /// <param name="eventScope">Event scope that should receive the translated event.</param>
+    /// <param name="cancellationToken">Cancels event publication.</param>
     public static ValueTask PublishCompletedAsync(
         FunctionResultContent functionResult,
         IAgentEventScope eventScope,
@@ -58,6 +79,11 @@ internal static class AgentToolEventPublisher
             cancellationToken);
     }
 
+    /// <summary>
+    /// Serializes tool arguments or results into the text payload stored by transcript events.
+    /// </summary>
+    /// <param name="value">Value to serialize.</param>
+    /// <returns>The original string, a JSON payload, or <see langword="null" /> when no value is present.</returns>
     private static string? SerializePayload(object? value) =>
         value switch
         {

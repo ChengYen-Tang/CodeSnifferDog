@@ -5,8 +5,17 @@ using System.Reflection;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
 
+/// <summary>
+/// Compares chat transcripts by canonicalized content so retry logic can detect no-op compaction results.
+/// </summary>
 internal static class MessageEquivalenceComparer
 {
+    /// <summary>
+    /// Determines whether two message lists are structurally equivalent for retry purposes.
+    /// </summary>
+    /// <param name="left">First message list.</param>
+    /// <param name="right">Second message list.</param>
+    /// <returns><see langword="true" /> when both message lists serialize to the same canonical structure.</returns>
     public static bool AreEquivalent(
         IReadOnlyList<ChatMessage> left,
         IReadOnlyList<ChatMessage> right)
@@ -24,6 +33,12 @@ internal static class MessageEquivalenceComparer
         return true;
     }
 
+    /// <summary>
+    /// Compares content payload lists by canonicalized property values.
+    /// </summary>
+    /// <param name="left">First content list.</param>
+    /// <param name="right">Second content list.</param>
+    /// <returns><see langword="true" /> when the lists contain equivalent content payloads in the same order.</returns>
     private static bool ContentsAreEquivalent(IList<AIContent> left, IList<AIContent> right)
     {
         if (left.Count != right.Count)
@@ -36,11 +51,22 @@ internal static class MessageEquivalenceComparer
         return true;
     }
 
+    /// <summary>
+    /// Compares additional-properties dictionaries after canonicalization.
+    /// </summary>
+    /// <param name="left">First metadata dictionary.</param>
+    /// <param name="right">Second metadata dictionary.</param>
+    /// <returns><see langword="true" /> when the canonicalized metadata strings match.</returns>
     private static bool AdditionalPropertiesAreEquivalent(
         AdditionalPropertiesDictionary? left,
         AdditionalPropertiesDictionary? right) =>
         CanonicalizeAdditionalProperties(left) == CanonicalizeAdditionalProperties(right);
 
+    /// <summary>
+    /// Canonicalizes one AI content payload by reflecting over its readable public properties.
+    /// </summary>
+    /// <param name="content">Content payload to canonicalize.</param>
+    /// <returns>A stable string representation used for equivalence comparison.</returns>
     private static string CanonicalizeContent(AIContent content)
     {
         IEnumerable<string> entries = content.GetType()
@@ -52,6 +78,11 @@ internal static class MessageEquivalenceComparer
         return $"{content.GetType().FullName}|{string.Join("|", entries)}";
     }
 
+    /// <summary>
+    /// Canonicalizes additional-properties metadata into a stable key-sorted string.
+    /// </summary>
+    /// <param name="properties">Metadata dictionary to canonicalize.</param>
+    /// <returns>A stable string representation of the metadata.</returns>
     private static string CanonicalizeAdditionalProperties(AdditionalPropertiesDictionary? properties)
     {
         if (properties is null || properties.Count == 0)
@@ -64,6 +95,11 @@ internal static class MessageEquivalenceComparer
         return string.Join("|", entries);
     }
 
+    /// <summary>
+    /// Canonicalizes one value for structural comparison, including nested dictionaries and enumerables.
+    /// </summary>
+    /// <param name="value">Value to canonicalize.</param>
+    /// <returns>A stable string representation of <paramref name="value" />.</returns>
     private static string CanonicalizeValue(object? value)
     {
         if (value is null)

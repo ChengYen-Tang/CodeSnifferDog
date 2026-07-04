@@ -3,8 +3,16 @@ using System.Text;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 
+/// <summary>
+/// Provides coarse token estimates based on UTF-8 byte counts across supported AI content payloads.
+/// </summary>
 internal static class TokenEstimator
 {
+    /// <summary>
+    /// Estimates the token cost of a message sequence.
+    /// </summary>
+    /// <param name="messages">Messages whose text and content payloads should be counted.</param>
+    /// <returns>A coarse token estimate that never drops below one for a non-empty estimate operation.</returns>
     public static int Estimate(IReadOnlyList<ChatMessage> messages)
     {
         int byteCount = 0;
@@ -20,6 +28,11 @@ internal static class TokenEstimator
         return Math.Max(1, byteCount / 4);
     }
 
+    /// <summary>
+    /// Estimates the token cost of one AI content payload.
+    /// </summary>
+    /// <param name="content">Content payload to estimate.</param>
+    /// <returns>A coarse token estimate for the supplied content.</returns>
     public static int EstimateContent(AIContent content) =>
         Math.Max(1, EstimateContentBytes(content) / 4);
 

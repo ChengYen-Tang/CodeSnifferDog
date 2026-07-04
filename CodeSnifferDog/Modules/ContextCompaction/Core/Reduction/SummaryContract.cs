@@ -2,11 +2,19 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 
+/// <summary>
+/// Defines the prompt and validation rules for compaction summaries.
+/// </summary>
 internal static class SummaryContract
 {
     private const string SummaryOpenTag = "<summary>";
     private const string SummaryCloseTag = "</summary>";
 
+    /// <summary>
+    /// Appends the XML-like summary envelope contract to the caller-provided prompt.
+    /// </summary>
+    /// <param name="summaryPrompt">Base prompt that explains what the summary must capture.</param>
+    /// <returns>A prompt that requires the model to emit exactly one <c>&lt;summary&gt;</c> block.</returns>
     public static string BuildPrompt(string summaryPrompt) =>
         $"""
         {summaryPrompt}
@@ -19,6 +27,12 @@ internal static class SummaryContract
         - Do not output any content after the closing summary tag.
         """;
 
+    /// <summary>
+    /// Extracts and trims the contents of the required <c>&lt;summary&gt;</c> block.
+    /// </summary>
+    /// <param name="summary">Raw model output to normalize.</param>
+    /// <returns>The trimmed summary text inside the required tag pair.</returns>
+    /// <exception cref="CompactionException"><paramref name="summary" /> is empty, lacks a valid summary block, or contains an empty block.</exception>
     public static string Normalize(string summary)
     {
         if (string.IsNullOrWhiteSpace(summary))
@@ -39,6 +53,12 @@ internal static class SummaryContract
         return normalizedSummary;
     }
 
+    /// <summary>
+    /// Verifies that the normalized summary contains every required fragment configured by the caller.
+    /// </summary>
+    /// <param name="summary">Normalized summary text to validate.</param>
+    /// <param name="options">Compaction options that declare the required summary fragments.</param>
+    /// <exception cref="CompactionException"><paramref name="summary" /> is empty or omits a required fragment.</exception>
     public static void Validate(string summary, CompactionOptions options)
     {
         if (string.IsNullOrWhiteSpace(summary))

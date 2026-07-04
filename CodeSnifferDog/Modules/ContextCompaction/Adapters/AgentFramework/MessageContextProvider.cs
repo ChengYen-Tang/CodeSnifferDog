@@ -8,14 +8,25 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 
+/// <summary>
+/// Supplies request messages after applying local shrinking, proactive collapse, and optional automatic compaction.
+/// </summary>
 public sealed class MessageContextProvider : MessageAIContextProvider
 {
     private readonly CollapseController? _collapseController;
     private readonly MessageShrinker _messageShrinker;
     private readonly CompactionOptions _options;
     private readonly ChatReducer _reducer;
+    /// <summary>
+    /// Tracks automatic-compaction circuit-breaker state across invocations for the current session.
+    /// </summary>
     private readonly AutomaticSessionState _sessionState = new();
 
+    /// <summary>
+    /// Creates a context provider from agent-level compaction options.
+    /// </summary>
+    /// <param name="agentOptions">Agent compaction options that provide reducer, shrinker, and optional collapse controller dependencies.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="agentOptions" /> or <paramref name="agentOptions.Reducer" /> is <see langword="null" />.</exception>
     public MessageContextProvider(
         AgentCompactionOptions agentOptions)
     {
@@ -28,6 +39,18 @@ public sealed class MessageContextProvider : MessageAIContextProvider
         _collapseController = agentOptions.CollapseController;
     }
 
+    /// <summary>
+    /// Produces the message list that should be sent to the model for the current invocation.
+    /// </summary>
+    /// <param name="context">Invocation context that supplies request messages and session state.</param>
+    /// <param name="cancellationToken">Cancels proactive or automatic compaction work.</param>
+    /// <returns>The prepared request messages.</returns>
+    /// <remarks>
+    /// Standard mode first applies snip and micro-compaction, then optionally performs automatic compaction unless the
+    /// session circuit breaker is open. Context-collapse mode applies shrinking and proactive collapse projection instead.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="context" /> is <see langword="null" />.</exception>
+    /// <exception cref="InvalidOperationException">Context-collapse mode is enabled but no collapse controller was configured.</exception>
     protected override async ValueTask<IEnumerable<ChatMessage>> ProvideMessagesAsync(
         InvokingContext context,
         CancellationToken cancellationToken)

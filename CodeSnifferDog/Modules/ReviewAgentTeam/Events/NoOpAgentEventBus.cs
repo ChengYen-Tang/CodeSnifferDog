@@ -2,16 +2,27 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 
 namespace CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
+/// <summary>
+/// No-op event bus used when agent transcript and status events are intentionally disabled.
+/// </summary>
 internal sealed class NoOpAgentEventBus : IAgentEventBus
 {
+    /// <summary>
+    /// Gets the shared singleton no-op event bus.
+    /// </summary>
     public static NoOpAgentEventBus Instance { get; } = new();
 
     private static readonly IAgentEventScope NoOpScope = new NoOpAgentEventScope();
 
+    /// <summary>
+    /// Prevents external construction; use <see cref="Instance" />.
+    /// </summary>
     private NoOpAgentEventBus()
     {
     }
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentException"><paramref name="groupKey" /> or <paramref name="agentKey" /> is <see langword="null" />, empty, or whitespace.</exception>
     public IAgentEventScope CreateScope(string groupKey, string agentKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(groupKey);
@@ -19,6 +30,8 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
         return NoOpScope;
     }
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentException"><paramref name="groupKey" /> or <paramref name="displayName" /> is <see langword="null" />, empty, or whitespace.</exception>
     public ValueTask PublishGroupCreatedAsync(
         string groupKey,
         string displayName,
@@ -29,12 +42,19 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Shared no-op scope that validates input and suppresses all event publication.
+    /// </summary>
     private sealed class NoOpAgentEventScope : IAgentEventScope
     {
+        /// <inheritdoc />
         public string GroupKey => string.Empty;
 
+        /// <inheritdoc />
         public string AgentKey => string.Empty;
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="displayName" />, <paramref name="systemPrompt" />, or <paramref name="initialStatus" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishCreatedAsync(
             string displayName,
             string systemPrompt,
@@ -47,6 +67,8 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="status" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishStatusChangedAsync(
             string status,
             CancellationToken cancellationToken = default)
@@ -55,6 +77,8 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="message" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishUserMessageAsync(
             string message,
             CancellationToken cancellationToken = default)
@@ -63,6 +87,8 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="message" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishAssistantMessageAsync(
             string message,
             CancellationToken cancellationToken = default)
@@ -71,6 +97,8 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="toolCallId" /> or <paramref name="toolName" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishToolCallStartedAsync(
             string toolCallId,
             string toolName,
@@ -82,6 +110,8 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException"><paramref name="toolCallId" /> is <see langword="null" />, empty, or whitespace.</exception>
         public ValueTask PublishToolCallCompletedAsync(
             string toolCallId,
             string? result,
@@ -91,9 +121,11 @@ internal sealed class NoOpAgentEventBus : IAgentEventBus
             return ValueTask.CompletedTask;
         }
 
+        /// <inheritdoc />
         public ValueTask PublishCompactionAsync(CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
 
+        /// <inheritdoc />
         public ValueTask PublishTranscriptClearedAsync(
             DateTimeOffset clearAfterUtc,
             CancellationToken cancellationToken = default) =>

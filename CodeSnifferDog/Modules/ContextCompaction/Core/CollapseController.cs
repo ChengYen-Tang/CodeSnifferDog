@@ -8,6 +8,12 @@ using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
+/// <summary>
+/// Projects committed collapses into outgoing requests and manages staged collapses around proactive or reactive retries.
+/// </summary>
+/// <param name="reducer">Reducer used to create new collapse spans when thresholds are reached.</param>
+/// <param name="projectionBuilder">Optional projection builder dependency retained for compatibility.</param>
+/// <param name="sessionState">Session-scoped collapse state store.</param>
 public sealed class CollapseController(
     ChatReducer reducer,
     CollapseProjectionBuilder? projectionBuilder = null,
@@ -20,6 +26,13 @@ public sealed class CollapseController(
     private readonly CollapseSessionState _sessionState =
         sessionState ?? new CollapseSessionState();
 
+    /// <summary>
+    /// Applies committed collapse projections to the request transcript for the supplied session.
+    /// </summary>
+    /// <param name="requestMessages">Original request messages before collapse projection.</param>
+    /// <param name="session">Agent session whose committed collapse spans should be projected.</param>
+    /// <returns>The request messages with committed collapse projections substituted in.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestMessages" /> is <see langword="null" />.</exception>
     public IReadOnlyList<ChatMessage> PrepareMessages(
         IReadOnlyList<ChatMessage> requestMessages,
         AgentSession? session)
@@ -35,6 +48,14 @@ public sealed class CollapseController(
         return messages;
     }
 
+    /// <summary>
+    /// Attempts a proactive collapse when the projected transcript crosses the proactive threshold.
+    /// </summary>
+    /// <param name="requestMessages">Original request messages before projection.</param>
+    /// <param name="session">Agent session whose collapse state should be updated.</param>
+    /// <param name="cancellationToken">Cancels the proactive collapse attempt.</param>
+    /// <returns>The projected transcript, or a reprojected transcript if a staged collapse was committed immediately.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestMessages" /> is <see langword="null" />.</exception>
     public async ValueTask<IReadOnlyList<ChatMessage>> TryPrepareProactiveCollapseAsync(
         IReadOnlyList<ChatMessage> requestMessages,
         AgentSession? session,
@@ -67,6 +88,14 @@ public sealed class CollapseController(
         return PrepareMessages(requestMessages, session);
     }
 
+    /// <summary>
+    /// Creates a reactive collapse for a retry path and commits any newly staged span before reprojection.
+    /// </summary>
+    /// <param name="originalMessages">Original request messages before projection.</param>
+    /// <param name="session">Agent session whose collapse state should be updated.</param>
+    /// <param name="cancellationToken">Cancels the reactive collapse attempt.</param>
+    /// <returns>The projected transcript that should be used for the retry.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="originalMessages" /> is <see langword="null" />.</exception>
     public async ValueTask<IReadOnlyList<ChatMessage>> PrepareReactiveRetryAsync(
         IReadOnlyList<ChatMessage> originalMessages,
         AgentSession? session,
@@ -91,9 +120,20 @@ public sealed class CollapseController(
         return PrepareMessages(originalMessages, session);
     }
 
+    /// <summary>
+    /// Captures the identifiers of all currently staged collapse spans for the supplied session.
+    /// </summary>
+    /// <param name="session">Agent session whose staged collapse identifiers should be captured.</param>
+    /// <returns>The set of staged collapse identifiers.</returns>
     public HashSet<string> CaptureStagedCollapseIds(AgentSession? session) =>
         [.. _sessionState.Get(session).StagedSpans.Select(static span => span.CollapseId)];
 
+    /// <summary>
+    /// Computes the staged collapse identifiers that were added after an earlier snapshot.
+    /// </summary>
+    /// <param name="session">Agent session whose staged collapse identifiers should be compared.</param>
+    /// <param name="initialStagedCollapseIds">Previously captured staged collapse identifiers.</param>
+    /// <returns>The set difference representing newly staged collapses.</returns>
     public HashSet<string> CaptureNewStagedCollapseIds(
         AgentSession? session,
         HashSet<string> initialStagedCollapseIds) =>
@@ -103,6 +143,11 @@ public sealed class CollapseController(
             .Select(static span => span.CollapseId)
             .Where(collapseId => !initialStagedCollapseIds.Contains(collapseId))];
 
+    /// <summary>
+    /// Promotes the supplied staged collapse identifiers into committed spans.
+    /// </summary>
+    /// <param name="session">Agent session whose staged spans should be committed.</param>
+    /// <param name="collapseIds">Identifiers of the staged spans to commit.</param>
     public void CommitPendingCollapses(
         AgentSession? session,
         IEnumerable<string> collapseIds)
@@ -111,6 +156,11 @@ public sealed class CollapseController(
             _sessionState.CommitStagedSpan(session, collapseId);
     }
 
+    /// <summary>
+    /// Discards the supplied staged collapse identifiers without committing them.
+    /// </summary>
+    /// <param name="session">Agent session whose staged spans should be discarded.</param>
+    /// <param name="collapseIds">Identifiers of the staged spans to discard.</param>
     public void DiscardPendingCollapses(
         AgentSession? session,
         IEnumerable<string> collapseIds)
