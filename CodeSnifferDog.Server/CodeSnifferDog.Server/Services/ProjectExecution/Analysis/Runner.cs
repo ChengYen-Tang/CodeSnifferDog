@@ -9,6 +9,9 @@ using System.Diagnostics;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 
+/// <summary>
+/// Coordinates rule loading, agent-team execution, and completion for project analysis.
+/// </summary>
 internal sealed class Runner(
     IProjectChatClientProvider chatClientProvider,
     IReviewRuleMarkdownProvider ruleMarkdownProvider,
@@ -26,8 +29,10 @@ internal sealed class Runner(
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
     private readonly ILogger<Runner> _logger = logger;
 
+    /// <inheritdoc />
     public bool IsReady => _chatClientProvider.IsReady && _ruleMarkdownProvider.HasRules;
 
+    /// <inheritdoc />
     public async Task RunAsync(ProjectAnalysisContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -70,6 +75,10 @@ internal sealed class Runner(
             analysisResult.HasAnyFindings);
     }
 
+    /// <summary>
+    /// Validates execution options required by project analysis.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when any required execution option is invalid.</exception>
     private void ValidateOptions()
     {
         if (_options.MaxParallelAgents <= 0)
@@ -92,6 +101,11 @@ internal sealed class Runner(
 
     }
 
+    /// <summary>
+    /// Clears persisted agent status data before a new analysis run starts.
+    /// </summary>
+    /// <param name="projectId">Project identifier whose status data should be cleared.</param>
+    /// <param name="cancellationToken">Token that cancels the database operation.</param>
     private async Task ClearAgentStatusDataAsync(Guid projectId, CancellationToken cancellationToken)
     {
         await using CodeSnifferDogServerDbContext dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);

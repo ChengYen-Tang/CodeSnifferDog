@@ -11,6 +11,9 @@ using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Server.Services.ProjectExecution.Analysis;
 
+/// <summary>
+/// Runs the review-agent team and streams its status events into the status runtime.
+/// </summary>
 internal sealed class ReviewAnalysisExecutor(
     IProjectChatClientProvider chatClientProvider,
     IWorkerFactory workerFactory,
@@ -24,6 +27,7 @@ internal sealed class ReviewAnalysisExecutor(
     private readonly ExecutionOptions _options = options.Value.ExecutionOptions;
     private readonly ILogger<ReviewAnalysisExecutor> _logger = logger ?? NullLogger<ReviewAnalysisExecutor>.Instance;
 
+    /// <inheritdoc />
     public async Task<AnalysisResult> AnalyzeAsync(
         ProjectAnalysisContext context,
         IReadOnlyList<RuleDefinition> rules,
