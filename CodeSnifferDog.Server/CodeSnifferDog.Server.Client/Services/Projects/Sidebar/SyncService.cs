@@ -3,6 +3,9 @@ using System.Net.Http.Json;
 
 namespace CodeSnifferDog.Server.Client.Services.Projects.Sidebar;
 
+/// <summary>
+/// Implements sidebar synchronization, live refresh wiring, polling fallback, and project actions.
+/// </summary>
 public sealed class SyncService : IController, IAsyncDisposable
 {
     private readonly HttpClient _httpClient;
@@ -13,6 +16,12 @@ public sealed class SyncService : IController, IAsyncDisposable
     private int _trailingReloadRequested;
     private bool _started;
 
+    /// <summary>
+    /// Creates the sidebar sync service from HTTP, push-refresh, and polling-fallback dependencies.
+    /// </summary>
+    /// <param name="httpClient">HTTP client used for snapshot reloads and project actions.</param>
+    /// <param name="refreshSignalClient">Push-based refresh signal client.</param>
+    /// <param name="pollingFallback">Polling fallback used when push-based refresh is unavailable.</param>
     public SyncService(
         HttpClient httpClient,
         IRefreshSignalClient refreshSignalClient,
@@ -23,13 +32,20 @@ public sealed class SyncService : IController, IAsyncDisposable
         _pollingFallback = pollingFallback;
     }
 
+    /// <inheritdoc />
     public State Current { get; } = State.CreateEmpty();
 
+    /// <inheritdoc />
     public event Action? Changed;
 
+    /// <summary>
+    /// Forces a sidebar snapshot reload.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the refresh.</param>
     public Task RefreshAsync(CancellationToken cancellationToken = default) =>
         ReloadAsync(isInitialLoad: false, selectedProjectIdFromUri: null, cancellationToken);
 
+    /// <inheritdoc />
     public void InitializeSnapshot(ProjectSidebarSnapshotDto? snapshot, string? selectedProjectIdFromUri)
     {
         bool changed = Current.ApplySnapshot(snapshot, selectedProjectIdFromUri);
@@ -37,21 +53,25 @@ public sealed class SyncService : IController, IAsyncDisposable
         NotifyChangedIf(changed);
     }
 
+    /// <inheritdoc />
     public void SelectProject(string projectId)
     {
         NotifyChangedIf(Current.Ui.SelectProject(projectId));
     }
 
+    /// <inheritdoc />
     public void ToggleGroup(string groupKey, ProjectStatus status)
     {
         NotifyChangedIf(Current.Ui.ToggleGroup(groupKey, status));
     }
 
+    /// <inheritdoc />
     public void SyncSelectedProjectFromUri(string? selectedProjectIdFromUri)
     {
         NotifyChangedIf(Current.Ui.SyncSelectedProjectFromUri(selectedProjectIdFromUri, Current.Snapshot.Groups));
     }
 
+    /// <inheritdoc />
     public async Task<bool> DeleteProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage response = await _httpClient.DeleteAsync($"/api/projects/{projectId}", cancellationToken);
@@ -66,6 +86,7 @@ public sealed class SyncService : IController, IAsyncDisposable
         return true;
     }
 
+    /// <inheritdoc />
     public async Task<bool> CancelProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage response = await _httpClient.PostAsync($"/api/projects/{projectId}/cancel", content: null, cancellationToken);
@@ -80,6 +101,7 @@ public sealed class SyncService : IController, IAsyncDisposable
         return true;
     }
 
+    /// <inheritdoc />
     public async Task StartAsync(
         ProjectSidebarSnapshotDto? initialSnapshot = null,
         string? selectedProjectIdFromUri = null,
@@ -104,6 +126,10 @@ public sealed class SyncService : IController, IAsyncDisposable
         await InitializeLiveRefreshAsync(_refreshCancellationTokenSource.Token);
     }
 
+    /// <summary>
+    /// Starts push-based live refresh and falls back to polling when startup fails.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels live-refresh initialization.</param>
     private async Task InitializeLiveRefreshAsync(CancellationToken cancellationToken)
     {
         try
@@ -122,6 +148,10 @@ public sealed class SyncService : IController, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Starts polling fallback when it is not already active.
+    /// </summary>
+    /// <returns><see langword="true" /> when transport state changed.</returns>
     private bool StartPollingFallback()
     {
         if (_refreshCancellationTokenSource is null)
@@ -136,6 +166,10 @@ public sealed class SyncService : IController, IAsyncDisposable
         return Current.Transport.SetPollingFallbackActive(_pollingFallback.IsActive);
     }
 
+    /// <summary>
+    /// Stops polling fallback when it is currently active.
+    /// </summary>
+    /// <returns><see langword="true" /> when transport state changed.</returns>
     private bool StopPollingFallback()
     {
         if (!Current.Transport.IsPollingFallbackActive && !_pollingFallback.IsActive)
@@ -145,6 +179,12 @@ public sealed class SyncService : IController, IAsyncDisposable
         return Current.Transport.SetPollingFallbackActive(_pollingFallback.IsActive);
     }
 
+    /// <summary>
+    /// Serializes reload attempts so overlapping refresh requests collapse into at most one trailing reload.
+    /// </summary>
+    /// <param name="isInitialLoad">Whether this reload represents the first snapshot load.</param>
+    /// <param name="selectedProjectIdFromUri">Optional project identifier from the current URI.</param>
+    /// <param name="cancellationToken">Cancels the reload.</param>
     private async Task ReloadAsync(bool isInitialLoad, string? selectedProjectIdFromUri, CancellationToken cancellationToken)
     {
         if (!await _reloadLock.WaitAsync(0, cancellationToken))
@@ -174,6 +214,12 @@ public sealed class SyncService : IController, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Performs one snapshot reload and updates transport error/loading state.
+    /// </summary>
+    /// <param name="isInitialLoad">Whether this reload represents the first snapshot load.</param>
+    /// <param name="selectedProjectIdFromUri">Optional project identifier from the current URI.</param>
+    /// <param name="cancellationToken">Cancels the reload.</param>
     private async Task ReloadOnceAsync(bool isInitialLoad, string? selectedProjectIdFromUri, CancellationToken cancellationToken)
     {
         bool changed = isInitialLoad
@@ -204,11 +250,23 @@ public sealed class SyncService : IController, IAsyncDisposable
         NotifyChangedIf(changed);
     }
 
+    /// <summary>
+    /// Handles connection-state callbacks from the refresh signal client.
+    /// </summary>
+    /// <param name="isLiveConnected">Whether push-based refresh is connected.</param>
+    /// <param name="isReconnecting">Whether push-based refresh is reconnecting.</param>
+    /// <param name="liveErrorMessage">Latest live connection error message.</param>
     private void OnLiveConnectionStateChanged(bool isLiveConnected, bool isReconnecting, string? liveErrorMessage)
     {
         UpdateLiveConnectionState(isLiveConnected, isReconnecting, liveErrorMessage);
     }
 
+    /// <summary>
+    /// Updates transport state and polling fallback in response to live connection changes.
+    /// </summary>
+    /// <param name="isLiveConnected">Whether push-based refresh is connected.</param>
+    /// <param name="isReconnecting">Whether push-based refresh is reconnecting.</param>
+    /// <param name="liveErrorMessage">Latest live connection error message.</param>
     private void UpdateLiveConnectionState(bool isLiveConnected, bool isReconnecting, string? liveErrorMessage)
     {
         bool changed;
@@ -222,14 +280,22 @@ public sealed class SyncService : IController, IAsyncDisposable
         NotifyChangedIf(changed);
     }
 
+    /// <summary>
+    /// Raises <see cref="Changed" /> only when state actually changed.
+    /// </summary>
+    /// <param name="changed">Whether state changed.</param>
     private void NotifyChangedIf(bool changed)
     {
         if (changed)
             NotifyChanged();
     }
 
+    /// <summary>
+    /// Raises the <see cref="Changed" /> event.
+    /// </summary>
     private void NotifyChanged() => Changed?.Invoke();
 
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (_refreshCancellationTokenSource is not null)
