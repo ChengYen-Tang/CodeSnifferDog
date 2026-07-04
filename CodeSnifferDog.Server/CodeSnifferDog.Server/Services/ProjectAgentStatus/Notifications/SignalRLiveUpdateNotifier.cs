@@ -5,10 +5,16 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 
+/// <summary>
+/// Publishes live agent-status updates over SignalR project and project-agent channels.
+/// </summary>
+/// <param name="hubContext">SignalR hub context used to send live updates.</param>
 public sealed class SignalRLiveUpdateNotifier(IHubContext<ProjectUpdatesHub> hubContext) : ILiveUpdateNotifier
 {
     private readonly IHubContext<ProjectUpdatesHub> _hubContext = hubContext;
 
+    /// <inheritdoc />
+    /// <exception cref="ArgumentNullException"><paramref name="update" /> is <see langword="null" />.</exception>
     public Task NotifyAsync(LiveUpdateDto update, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);

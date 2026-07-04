@@ -5,12 +5,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 
+/// <summary>
+/// Loads persisted rows required to build status and history snapshots for one project.
+/// </summary>
+/// <param name="dbContextFactory">Factory used to create database contexts for read queries.</param>
 internal sealed class SnapshotQueryService(
     IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory)
     : ISnapshotQueryService
 {
     private readonly IDbContextFactory<CodeSnifferDogServerDbContext> _dbContextFactory = dbContextFactory;
 
+    /// <inheritdoc />
     public async Task<SnapshotReadModel?> GetSnapshotAsync(
         Guid projectId,
         Guid? selectedAgentId = null,
@@ -90,6 +95,7 @@ internal sealed class SnapshotQueryService(
             groupRows);
     }
 
+    /// <inheritdoc />
     public async Task<HistorySnapshotReadModel?> GetAgentHistoryAsync(
         Guid projectId,
         Guid agentId,
@@ -121,6 +127,12 @@ internal sealed class SnapshotQueryService(
             timelineEntries);
     }
 
+    /// <summary>
+    /// Resolves the selected agent identifier against the loaded agents.
+    /// </summary>
+    /// <param name="agents">Loaded agent projections.</param>
+    /// <param name="selectedAgentId">Requested selected agent identifier.</param>
+    /// <returns>The requested identifier when present; otherwise the first available agent identifier.</returns>
     private static Guid? ResolveSelectedAgentId(
         IReadOnlyList<AgentProjection> agents,
         Guid? selectedAgentId)
@@ -135,6 +147,13 @@ internal sealed class SnapshotQueryService(
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// Loads all timeline entries for one agent ordered by sequence.
+    /// </summary>
+    /// <param name="dbContext">Database context used for the query.</param>
+    /// <param name="agentId">Agent identifier whose timeline should be loaded.</param>
+    /// <param name="cancellationToken">Cancels query execution.</param>
+    /// <returns>The ordered timeline-entry projections.</returns>
     private static Task<List<TimelineEntryProjection>> LoadTimelineEntriesAsync(
         CodeSnifferDogServerDbContext dbContext,
         Guid agentId,
@@ -156,5 +175,10 @@ internal sealed class SnapshotQueryService(
                 entry.ToolResult))
             .ToListAsync(cancellationToken);
 
+    /// <summary>
+    /// Lightweight project row used when building status snapshots.
+    /// </summary>
+    /// <param name="ProjectId">Project identifier.</param>
+    /// <param name="Status">Persisted project status.</param>
     private sealed record ProjectSnapshotRow(Guid ProjectId, ProjectProcessingStatus Status);
 }

@@ -6,13 +6,19 @@ using PersistedAgentStatus = CodeSnifferDog.Server.Data.Entities.ProjectAgentSta
 
 namespace CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 
+/// <summary>
+/// Maps persisted agent-status projections to shared snapshot and live-update DTOs.
+/// </summary>
+/// <param name="projectStatusMapper">Mapper used to convert persisted project statuses.</param>
 internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper) : IProjectionMapper
 {
     private readonly IProjectStatusMapper _projectStatusMapper = projectStatusMapper;
 
+    /// <inheritdoc />
     public ProjectStatus MapProjectStatus(ProjectProcessingStatus status) =>
         _projectStatusMapper.Map(status, ProjectStatusMappingExceptionStyle.Persisted);
 
+    /// <inheritdoc />
     public RunStatus MapAgentStatus(
         PersistedAgentStatus status,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => status switch
@@ -28,6 +34,7 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         }),
     };
 
+    /// <inheritdoc />
     public TimelineEntryKind MapTimelineEntryKind(
         ProjectAgentTimelineEntryType entryType,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => entryType switch
@@ -43,6 +50,7 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         }),
     };
 
+    /// <inheritdoc />
     public GroupLiveDto MapGroup(GroupProjection group) => new()
     {
         GroupId = group.GroupId,
@@ -51,6 +59,7 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         CreatedAtUtc = group.CreatedAtUtc,
     };
 
+    /// <inheritdoc />
     public LiveDto MapAgent(
         AgentProjection agent,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => new()
@@ -64,6 +73,7 @@ internal sealed class ProjectionMapper(IProjectStatusMapper projectStatusMapper)
         CreatedAtUtc = agent.CreatedAtUtc,
     };
 
+    /// <inheritdoc />
     public TimelineEntryDto MapTimelineEntry(
         TimelineEntryProjection entry,
         ExceptionStyle exceptionStyle = ExceptionStyle.Persisted) => new()
