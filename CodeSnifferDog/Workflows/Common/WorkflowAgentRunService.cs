@@ -2,6 +2,7 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 
 namespace CodeSnifferDog.Workflows.Common;
 
@@ -35,7 +36,8 @@ internal static class WorkflowAgentRunService
         int publishedMessageCount,
         TimeSpan timeout,
         int maxConsecutiveFailures,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ILogger? logger = null)
     {
         await eventScope.PublishStatusChangedAsync(AgentStatusCatalog.RunningStatus, cancellationToken)
             .ConfigureAwait(false);
@@ -51,6 +53,17 @@ internal static class WorkflowAgentRunService
             timeout,
             maxConsecutiveFailures,
             cancellationToken).ConfigureAwait(false);
+
+        if (result.IsFailed)
+        {
+            ExceptionalError? exceptionalError = result.Errors.OfType<ExceptionalError>().FirstOrDefault();
+            logger?.LogError(
+                exceptionalError?.Exception,
+                "Agent run failed and will be marked degraded. GroupKey: {AgentGroupKey}; AgentKey: {AgentKey}; Reason: {Reason}",
+                eventScope.GroupKey,
+                eventScope.AgentKey,
+                result.Errors.FirstOrDefault()?.Message ?? result.ToString());
+        }
 
         await eventScope.PublishStatusChangedAsync(
             result.IsFailed ? AgentStatusCatalog.DegradedStatus : AgentStatusCatalog.CompletedStatus,

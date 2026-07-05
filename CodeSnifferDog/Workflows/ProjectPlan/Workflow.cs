@@ -9,6 +9,7 @@ using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.ProjectPlan;
@@ -30,7 +31,8 @@ public sealed class Workflow(
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     WorkflowOptions? options = null,
-    IAgentEventBus? agentEventBus = null)
+    IAgentEventBus? agentEventBus = null,
+    ILogger? logger = null)
 {
     private readonly Func<string, IAgentEventScope, AgentCreationResult> _projectPlanAgentFactory = AgentFactory;
     private readonly Func<string, StoredScanProject, IAgentEventScope, AgentCreationResult> _projectVerifierAgentFactory = VerifierFactory;
@@ -39,6 +41,7 @@ public sealed class Workflow(
     private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
     private readonly WorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
+    private readonly ILogger? _logger = logger;
 
     /// <summary>
     /// Runs the project-plan workflow for one scanned project.
@@ -110,7 +113,8 @@ public sealed class Workflow(
                 planPublishedMessageCount,
                 _options.AgentRunTimeout,
                 _options.MaxConsecutiveRunFailures,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                _logger).ConfigureAwait(false);
 
             if (runPlanResult.IsFailed)
                 return runPlanResult.ToResult<WorkflowResult>();
@@ -128,6 +132,13 @@ public sealed class Workflow(
 
                     if (RetryLimit.IsExceeded(projectPlanAgentResetCount, _options.MaxProjectPlanAgentResets))
                     {
+                        _logger?.LogError(
+                            "Project plan agent failed to submit task items after the allowed reset limit. GroupKey: {AgentGroupKey}; AgentKey: {AgentKey}; ProjectName: {ProjectName}; Attempts: {Attempts}; ResetCount: {ResetCount}",
+                            plannerAgentScope.GroupKey,
+                            plannerAgentScope.AgentKey,
+                            scanProject.ProjectName,
+                            planAttempts,
+                            projectPlanAgentResetCount);
                         await plannerAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                         return Result.Fail<WorkflowResult>(
                             "Project Plan Agent did not submit any task items after the allowed reset limit.");
@@ -165,7 +176,8 @@ public sealed class Workflow(
                     verifierPublishedMessageCount,
                     _options.AgentRunTimeout,
                     _options.MaxConsecutiveRunFailures,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    _logger).ConfigureAwait(false);
 
                 if (runVerifierResult.IsFailed)
                     return runVerifierResult.ToResult<WorkflowResult>();
@@ -176,6 +188,12 @@ public sealed class Workflow(
 
                     if (RetryLimit.IsReached(verifierMissingVerdictAttempts, _options.MaxMissingSubmissionAttempts))
                     {
+                        _logger?.LogError(
+                            "Project verifier agent failed to submit a verdict after the allowed attempts. GroupKey: {AgentGroupKey}; AgentKey: {AgentKey}; ProjectName: {ProjectName}; Attempts: {Attempts}",
+                            verifierAgentScope.GroupKey,
+                            verifierAgentScope.AgentKey,
+                            scanProject.ProjectName,
+                            verifierMissingVerdictAttempts);
                         await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
                         return Result.Fail<WorkflowResult>("Project Verifier Agent finished without submitting a verdict.");
                     }

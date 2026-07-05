@@ -76,7 +76,8 @@ internal sealed class RunnerFactory(
             verdictBuffer,
             context.PromptAssetReader,
             CreateWorkflowOptions(context.ExecutionOptions),
-            agentEventBus: context.AgentEventBus);
+            agentEventBus: context.AgentEventBus,
+            logger: _logger);
 
         Result<WorkflowResult> result = await workflow.RunAsync(repositoryRootPath, scanProject, cancellationToken).ConfigureAwait(false);
         _logger.LogDebug(

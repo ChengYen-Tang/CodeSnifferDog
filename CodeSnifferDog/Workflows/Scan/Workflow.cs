@@ -8,6 +8,7 @@ using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 
 namespace CodeSnifferDog.Workflows.Scan;
@@ -29,7 +30,8 @@ public sealed class Workflow(
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     ScanWorkflowOptions? options = null,
-    IAgentEventBus? agentEventBus = null)
+    IAgentEventBus? agentEventBus = null,
+    ILogger? logger = null)
 {
     private readonly Func<string, IAgentEventScope, AgentCreationResult> _scanAgentFactory = scanAgentFactory;
     private readonly Func<string, IAgentEventScope, AgentCreationResult> _scanVerifierAgentFactory = scanVerifierAgentFactory;
@@ -39,6 +41,7 @@ public sealed class Workflow(
         new(new MessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly ScanWorkflowOptions _options = options ?? new ScanWorkflowOptions();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
+    private readonly ILogger? _logger = logger;
 
     /// <summary>
     /// Runs the scan workflow for one repository.
@@ -103,7 +106,8 @@ public sealed class Workflow(
                 scanPublishedMessageCount,
                 _options.AgentRunTimeout,
                 _options.MaxConsecutiveRunFailures,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                _logger).ConfigureAwait(false);
 
             if (runScanResult.IsFailed)
                 return runScanResult.ToResult<ScanWorkflowResult>();
@@ -156,7 +160,8 @@ public sealed class Workflow(
                     verifierPublishedMessageCount,
                     _options.AgentRunTimeout,
                     _options.MaxConsecutiveRunFailures,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    _logger).ConfigureAwait(false);
 
                 if (runVerifierResult.IsFailed)
                     return runVerifierResult.ToResult<ScanWorkflowResult>();

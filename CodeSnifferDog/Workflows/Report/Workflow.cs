@@ -10,6 +10,7 @@ using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 using ReportWorkflowOptions = CodeSnifferDog.Models.Report.WorkflowOptions;
@@ -35,7 +36,8 @@ public sealed class Workflow(
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     ReportWorkflowOptions? options = null,
-    IAgentEventBus? agentEventBus = null)
+    IAgentEventBus? agentEventBus = null,
+    ILogger? logger = null)
 {
     private readonly Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
     private readonly Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, IAgentEventScope, AgentCreationResult> _reportVerifierAgentFactory = reportVerifierAgentFactory;
@@ -46,6 +48,7 @@ public sealed class Workflow(
         new(new MessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly ReportWorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
+    private readonly ILogger? _logger = logger;
     private RuleFlowKey _ruleFlowKey = default!;
     private string _reportVerdictScopeKey = string.Empty;
 
@@ -143,7 +146,8 @@ public sealed class Workflow(
                     aggregatorPublishedMessageCount,
                     _options.AgentRunTimeout,
                     _options.MaxConsecutiveRunFailures,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    _logger).ConfigureAwait(false);
 
                 if (runAggregatorResult.IsFailed)
                     return runAggregatorResult.ToResult<ReportWorkflowResult>();
@@ -169,7 +173,8 @@ public sealed class Workflow(
                         verifierPublishedMessageCount,
                         _options.AgentRunTimeout,
                         _options.MaxConsecutiveRunFailures,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken,
+                        _logger).ConfigureAwait(false);
 
                     if (runVerifierResult.IsFailed)
                         return runVerifierResult.ToResult<ReportWorkflowResult>();

@@ -8,6 +8,7 @@ using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Events;
 using StoredTaskItem = CodeSnifferDog.Models.ProjectPlan.StoredTaskItem;
 using RuleReviewWorkflowOptions = CodeSnifferDog.Models.RuleReview.WorkflowOptions;
@@ -32,7 +33,8 @@ public sealed class Workflow(
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
     RuleReviewWorkflowOptions? options = null,
-    IAgentEventBus? agentEventBus = null)
+    IAgentEventBus? agentEventBus = null,
+    ILogger? logger = null)
 {
     private readonly Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> _ruleReviewAgentFactory = AgentFactory;
     private readonly Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> _reviewVerifierAgentFactory = VerifierFactory;
@@ -42,6 +44,7 @@ public sealed class Workflow(
         new(new MessageTemplates(promptAssetReader ?? new PromptAssetReader()));
     private readonly RuleReviewWorkflowOptions _options = options ?? new();
     private readonly IAgentEventBus _agentEventBus = agentEventBus ?? NoOpAgentEventBus.Instance;
+    private readonly ILogger? _logger = logger;
     private RuleFlowKey _ruleFlowKey = default!;
     private string _reviewVerdictScopeKey = string.Empty;
 
@@ -134,7 +137,8 @@ public sealed class Workflow(
                     reviewPublishedMessageCount,
                     _options.AgentRunTimeout,
                     _options.MaxConsecutiveRunFailures,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    _logger).ConfigureAwait(false);
 
                 if (runReviewResult.IsFailed)
                     return runReviewResult.ToResult<WorkflowResult>();
@@ -211,7 +215,8 @@ public sealed class Workflow(
                         verifierPublishedMessageCount,
                         _options.AgentRunTimeout,
                         _options.MaxConsecutiveRunFailures,
-                        cancellationToken).ConfigureAwait(false);
+                        cancellationToken,
+                        _logger).ConfigureAwait(false);
 
                     if (runVerifierResult.IsFailed)
                         return runVerifierResult.ToResult<WorkflowResult>();

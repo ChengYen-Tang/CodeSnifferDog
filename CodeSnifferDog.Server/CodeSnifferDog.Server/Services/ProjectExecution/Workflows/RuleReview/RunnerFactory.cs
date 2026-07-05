@@ -74,7 +74,8 @@ internal sealed class RunnerFactory(
             verdictBuffer,
             context.PromptAssetReader,
             CreateWorkflowOptions(context.ExecutionOptions),
-            agentEventBus: context.AgentEventBus);
+            agentEventBus: context.AgentEventBus,
+            logger: _logger);
 
         Result<RuleReviewWorkflowResult> result =
             await workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken).ConfigureAwait(false);

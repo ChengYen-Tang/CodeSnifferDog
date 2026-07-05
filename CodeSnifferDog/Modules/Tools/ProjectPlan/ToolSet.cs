@@ -53,7 +53,7 @@ public sealed class ToolSet
 
     [Description("Add one task item to the current project planning result.")]
     private ValueTask<AddProjectPlanTaskItemResult> AddProjectPlanTaskItemToolAsync(
-        [Description("The scope entry files that belong to this task item. Must be a JSON array of objects. Each object must include filePath and totalLines. Example: [{\"filePath\":\"src/Foo.cs\",\"totalLines\":120}].")]
+        [Description("The scope entry files that belong to this task item. Must be a JSON array of objects. Each object must include filePath and totalLines. totalLines must be a positive integer greater than 0; count or estimate it from the file content and never use 0 for unknown. Example: [{\"filePath\":\"src/Foo.cs\",\"totalLines\":120}].")]
         IReadOnlyList<PlanFile> Files,
         CancellationToken cancellationToken) =>
         AddProjectPlanTaskItemAsync(
@@ -65,7 +65,7 @@ public sealed class ToolSet
 
     [Description("Add multiple task items to the current project planning result.")]
     private ValueTask<AddProjectPlanTaskItemsResult> AddProjectPlanTaskItemsToolAsync(
-        [Description("The task items to add to the current project planning result. Must be a JSON array of task item objects. Each task item must include Files, and Files must be an array of objects with filePath and totalLines. Example: [{\"Files\":[{\"filePath\":\"src/Foo.cs\",\"totalLines\":120}]}].")]
+        [Description("The task items to add to the current project planning result. Must be a JSON array of task item objects. Each task item must include Files, and Files must be an array of objects with filePath and totalLines. totalLines must be a positive integer greater than 0; count or estimate it from the file content and never use 0 for unknown. Example: [{\"Files\":[{\"filePath\":\"src/Foo.cs\",\"totalLines\":120}]}].")]
         IReadOnlyList<AddProjectPlanTaskItemArgs> TaskItems,
         CancellationToken cancellationToken) =>
         AddProjectPlanTaskItemsAsync(
