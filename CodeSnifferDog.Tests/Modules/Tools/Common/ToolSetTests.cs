@@ -30,7 +30,10 @@ public sealed class ToolSetTests
                 }),
             static () => "rg",
             static () => false);
-        CommonToolSet toolSet = new(service);
+        string repositoryRootPath = CreateTemporaryDirectory();
+        string targetFilePath = Path.Combine(repositoryRootPath, "sample.txt");
+        await File.WriteAllTextAsync(targetFilePath, "one" + Environment.NewLine + "two", TestContext.CancellationToken);
+        CommonToolSet toolSet = new(service, new CommonFileToolService(repositoryRootPath));
 
         CommandExecutionResult shellResult = await toolSet.RunShellCommandAsync(
             new RunShellCommandArgs
@@ -44,9 +47,18 @@ public sealed class ToolSetTests
                 Command = "alpha .",
             },
             TestContext.CancellationToken);
+        ReadFileRangeResult readResult = await toolSet.ReadFileRangeAsync(
+            new ReadFileRangeArgs
+            {
+                Path = "sample.txt",
+                OffsetLine = 2,
+                LimitLines = 1,
+            },
+            TestContext.CancellationToken);
 
         Assert.AreEqual("/bin/bash:-lc", shellResult.StandardOutput);
         Assert.AreEqual("rg:alpha .", ripgrepResult.StandardOutput);
+        Assert.AreEqual("two" + Environment.NewLine, readResult.Content);
     }
 
     [TestMethod]
@@ -120,6 +132,18 @@ public sealed class ToolSetTests
 
         Assert.Contains("use \"-n \\\"SystemPrompt\\\" .\"", ripgrepTool.Description);
         Assert.Contains("instead of \"rg -n \\\"SystemPrompt\\\" .\"", ripgrepTool.Description);
+    }
+
+    [TestMethod]
+    public void CreateTools_IncludesReadFileRangeTool()
+    {
+        string repositoryRootPath = CreateTemporaryDirectory();
+        CommonToolSet toolSet = new(repositoryRootPath);
+
+        Microsoft.Extensions.AI.AITool readFileRangeTool = toolSet.CreateTools()
+            .Single(tool => string.Equals(tool.Name, "ReadFileRange", StringComparison.Ordinal));
+
+        Assert.Contains("Read a bounded line range from one file.", readFileRangeTool.Description);
     }
 
     [TestMethod]

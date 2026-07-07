@@ -15,7 +15,7 @@ public sealed class AgentToolComposerTests
         IList<AITool> tools = composer.Compose(AppContext.BaseDirectory, [domainTool]);
 
         AssertToolNames(
-            ["Shell", "Ripgrep", "DomainTool"],
+            ["Shell", "Ripgrep", "ReadFileRange", "DomainTool"],
             tools);
     }
 
@@ -27,7 +27,7 @@ public sealed class AgentToolComposerTests
         IList<AITool> tools = composer.Compose(AppContext.BaseDirectory, []);
 
         AssertToolNames(
-            ["Shell", "Ripgrep"],
+            ["Shell", "Ripgrep", "ReadFileRange"],
             tools);
     }
 

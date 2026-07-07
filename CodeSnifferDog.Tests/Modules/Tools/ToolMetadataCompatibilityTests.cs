@@ -25,6 +25,7 @@ public sealed class ToolMetadataCompatibilityTests
             [
                 ("Shell", "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux/macOS. Pass only the command text to execute."),
                 ("Ripgrep", "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\"."),
+                ("ReadFileRange", "Read a bounded line range from one file. Use this instead of shell commands for large files."),
             ]);
     }
 
@@ -169,6 +170,15 @@ public sealed class ToolMetadataCompatibilityTests
             new Dictionary<string, string>
             {
                 ["Command"] = "Arguments after rg. Do not include rg or rg.exe. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\". Full paths are allowed when you need to inspect files outside the repository root path.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<CommonToolSet>(
+            "ReadFileRangeToolAsync",
+            "Read a bounded line range from one file. Use this instead of shell commands for large files.",
+            new Dictionary<string, string>
+            {
+                ["Path"] = "The repository-relative or absolute file path to read.",
+                ["OffsetLine"] = "The one-based first line to read.",
+                ["LimitLines"] = "The maximum number of lines to read.",
             });
     }
 

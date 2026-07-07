@@ -1,6 +1,8 @@
 using CodeSnifferDog.Models.Common.Tools;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
+using SharedTokenEstimator = CodeSnifferDog.Modules.Estimation.TokenEstimator;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
 
@@ -102,8 +104,15 @@ internal sealed class CommandProcessRunner
                 currentProcess.Kill(entireProcessTree: true);
         }, process);
 
-        Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        CommandOutputCaptureBudget outputBudget = new(CommandOutputLimiter.MaxCombinedOutputBytes);
+        Task<CommandStreamCapture> standardOutputTask = CommandStreamCapture.ReadAsync(
+            process.StandardOutput,
+            outputBudget,
+            cancellationToken);
+        Task<CommandStreamCapture> standardErrorTask = CommandStreamCapture.ReadAsync(
+            process.StandardError,
+            outputBudget,
+            cancellationToken);
 
         try
         {
@@ -116,11 +125,24 @@ internal sealed class CommandProcessRunner
             throw;
         }
 
+        CommandStreamCapture standardOutput = await standardOutputTask.ConfigureAwait(false);
+        CommandStreamCapture standardError = await standardErrorTask.ConfigureAwait(false);
+        int originalLines = standardOutput.OriginalLines + standardError.OriginalLines;
+        long originalBytes = standardOutput.OriginalBytes + standardError.OriginalBytes;
+
+        if (standardOutput.WasTruncated || standardError.WasTruncated)
+            return CommandOutputLimiter.CreateTruncatedResult(
+                process.ExitCode,
+                standardOutput.CapturedText,
+                standardError.CapturedText,
+                originalLines,
+                originalBytes);
+
         return new CommandExecutionResult
         {
             ExitCode = process.ExitCode,
-            StandardOutput = await standardOutputTask.ConfigureAwait(false),
-            StandardError = await standardErrorTask.ConfigureAwait(false),
+            StandardOutput = standardOutput.CapturedText,
+            StandardError = standardError.CapturedText,
         };
     }
 
@@ -138,6 +160,150 @@ internal sealed class CommandProcessRunner
         catch (InvalidOperationException)
         {
         }
+    }
+}
+
+/// <summary>
+/// Tracks the remaining combined output byte budget while stdout and stderr are drained concurrently.
+/// </summary>
+internal sealed class CommandOutputCaptureBudget
+{
+    /// <summary>
+    /// Synchronizes budget updates from stdout and stderr capture tasks.
+    /// </summary>
+    private readonly object _gate = new();
+
+    /// <summary>
+    /// Stores the remaining combined UTF-8 byte budget.
+    /// </summary>
+    private int _remainingBytes;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CommandOutputCaptureBudget"/> class.
+    /// </summary>
+    /// <param name="maxBytes">Maximum combined UTF-8 bytes to retain.</param>
+    public CommandOutputCaptureBudget(int maxBytes)
+    {
+        _remainingBytes = Math.Max(0, maxBytes);
+    }
+
+    /// <summary>
+    /// Captures the portion of one chunk that still fits within the shared budget.
+    /// </summary>
+    /// <param name="value">Chunk text to capture.</param>
+    /// <param name="wasTruncated">Whether any portion of the chunk was omitted.</param>
+    /// <returns>The captured chunk prefix.</returns>
+    public string CapturePrefix(string value, out bool wasTruncated)
+    {
+        lock (_gate)
+        {
+            string captured = CommandOutputLimiter.TakeUtf8Prefix(value, _remainingBytes, out int usedBytes);
+            _remainingBytes -= usedBytes;
+            wasTruncated = captured.Length < value.Length;
+            return captured;
+        }
+    }
+}
+
+/// <summary>
+/// Captures one redirected process stream while bounding retained text.
+/// </summary>
+internal sealed class CommandStreamCapture
+{
+    /// <summary>
+    /// Defines the character buffer size used while draining redirected process streams.
+    /// </summary>
+    private const int BufferSize = 4096;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CommandStreamCapture"/> class.
+    /// </summary>
+    /// <param name="capturedText">Text retained within the shared output budget.</param>
+    /// <param name="originalBytes">Original stream byte count.</param>
+    /// <param name="originalLines">Original stream line count.</param>
+    /// <param name="wasTruncated">Whether any stream text was omitted.</param>
+    private CommandStreamCapture(
+        string capturedText,
+        long originalBytes,
+        int originalLines,
+        bool wasTruncated)
+    {
+        CapturedText = capturedText;
+        OriginalBytes = originalBytes;
+        OriginalLines = originalLines;
+        WasTruncated = wasTruncated;
+    }
+
+    /// <summary>
+    /// Gets the retained stream text.
+    /// </summary>
+    public string CapturedText { get; }
+
+    /// <summary>
+    /// Gets the original stream UTF-8 byte count.
+    /// </summary>
+    public long OriginalBytes { get; }
+
+    /// <summary>
+    /// Gets the original logical stream line count.
+    /// </summary>
+    public int OriginalLines { get; }
+
+    /// <summary>
+    /// Gets whether stream text was omitted because the shared budget was exhausted.
+    /// </summary>
+    public bool WasTruncated { get; }
+
+    /// <summary>
+    /// Drains one redirected process stream while retaining only text that fits within the shared output budget.
+    /// </summary>
+    /// <param name="reader">Redirected stream reader to drain.</param>
+    /// <param name="budget">Shared combined stdout/stderr capture budget.</param>
+    /// <param name="cancellationToken">Token that cancels stream reading.</param>
+    /// <returns>The bounded stream capture result.</returns>
+    public static async Task<CommandStreamCapture> ReadAsync(
+        TextReader reader,
+        CommandOutputCaptureBudget budget,
+        CancellationToken cancellationToken)
+    {
+        char[] buffer = new char[BufferSize];
+        StringBuilder capturedTextBuilder = new();
+        long originalBytes = 0;
+        int newlineCount = 0;
+        bool hasContent = false;
+        bool endsWithNewline = false;
+        bool wasTruncated = false;
+
+        while (true)
+        {
+            int read = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false);
+
+            if (read == 0)
+                break;
+
+            string chunk = new(buffer, 0, read);
+            originalBytes += SharedTokenEstimator.GetUtf8ByteCount(chunk);
+            hasContent = true;
+            endsWithNewline = chunk[^1] == '\n';
+
+            foreach (char character in chunk)
+            {
+                if (character == '\n')
+                    newlineCount++;
+            }
+
+            string capturedChunk = budget.CapturePrefix(chunk, out bool chunkWasTruncated);
+            capturedTextBuilder.Append(capturedChunk);
+            wasTruncated |= chunkWasTruncated;
+        }
+
+        int originalLines = newlineCount + (hasContent && !endsWithNewline ? 1 : 0);
+
+        return new CommandStreamCapture(
+            capturedTextBuilder.ToString(),
+            originalBytes,
+            originalLines,
+            wasTruncated);
     }
 }
 

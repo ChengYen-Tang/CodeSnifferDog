@@ -11,11 +11,14 @@ namespace CodeSnifferDog.Modules.Tools.Common;
 public sealed class CommonToolSet
 {
     private readonly CommonCommandToolService _commandToolService;
+    private readonly CommonFileToolService _fileToolService;
 
     public CommonToolSet(string repositoryRootPath, ILoggerFactory? loggerFactory = null)
-        : this(new CommonCommandToolService(
-            repositoryRootPath,
-            loggerFactory?.CreateLogger<CommonCommandToolService>()))
+        : this(
+            new CommonCommandToolService(
+                repositoryRootPath,
+                loggerFactory?.CreateLogger<CommonCommandToolService>()),
+            new CommonFileToolService(repositoryRootPath))
     {
     }
 
@@ -24,8 +27,21 @@ public sealed class CommonToolSet
     /// </summary>
     /// <param name="commandToolService">Service that executes shell and ripgrep commands.</param>
     internal CommonToolSet(CommonCommandToolService commandToolService)
+        : this(commandToolService, new CommonFileToolService(commandToolService.RepositoryRootPath))
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CommonToolSet"/> class for tests or composed services.
+    /// </summary>
+    /// <param name="commandToolService">Service that executes shell and ripgrep commands.</param>
+    /// <param name="fileToolService">Service that reads bounded file ranges.</param>
+    internal CommonToolSet(
+        CommonCommandToolService commandToolService,
+        CommonFileToolService fileToolService)
     {
         _commandToolService = commandToolService;
+        _fileToolService = fileToolService;
     }
 
     /// <summary>
@@ -36,7 +52,8 @@ public sealed class CommonToolSet
         =>
         CommonToolFactory.CreateTools(new CommonToolCallbacks(
             RunShellCommandToolAsync,
-            RunRipgrepCommandToolAsync));
+            RunRipgrepCommandToolAsync,
+            ReadFileRangeToolAsync));
 
     [Description("Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux or macOS.")]
     private ValueTask<CommandExecutionResult> RunShellCommandToolAsync(
@@ -62,6 +79,24 @@ public sealed class CommonToolSet
             },
             cancellationToken);
 
+    [Description("Read a bounded line range from one file. Use this instead of shell commands for large files.")]
+    private ValueTask<ReadFileRangeResult> ReadFileRangeToolAsync(
+        [Description("The repository-relative or absolute file path to read.")]
+        string Path,
+        [Description("The one-based first line to read.")]
+        int OffsetLine,
+        [Description("The maximum number of lines to read.")]
+        int LimitLines,
+        CancellationToken cancellationToken) =>
+        ReadFileRangeAsync(
+            new ReadFileRangeArgs
+            {
+                Path = Path,
+                OffsetLine = OffsetLine,
+                LimitLines = LimitLines,
+            },
+            cancellationToken);
+
     /// <summary>
     /// Runs one shell command.
     /// </summary>
@@ -83,4 +118,15 @@ public sealed class CommonToolSet
         RunRipgrepCommandArgs args,
         CancellationToken cancellationToken) =>
         _commandToolService.RunRipgrepCommandAsync(args, cancellationToken);
+
+    /// <summary>
+    /// Reads a bounded file line range.
+    /// </summary>
+    /// <param name="args">Range read arguments.</param>
+    /// <param name="cancellationToken">Token that cancels file reading.</param>
+    /// <returns>The range read result.</returns>
+    public ValueTask<ReadFileRangeResult> ReadFileRangeAsync(
+        ReadFileRangeArgs args,
+        CancellationToken cancellationToken) =>
+        _fileToolService.ReadFileRangeAsync(args, cancellationToken);
 }

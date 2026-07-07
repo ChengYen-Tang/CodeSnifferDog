@@ -17,6 +17,11 @@ internal sealed class CommonCommandToolService
     private readonly Func<bool> _isWindows;
     private readonly ILogger<CommonCommandToolService>? _logger;
 
+    /// <summary>
+    /// Gets the normalized repository root path used as the command working directory.
+    /// </summary>
+    internal string RepositoryRootPath => _repositoryRootPath;
+
     public CommonCommandToolService(
         string repositoryRootPath,
         ILogger<CommonCommandToolService>? logger = null)
@@ -86,8 +91,9 @@ internal sealed class CommonCommandToolService
             ? await _argumentsRunner("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(BuildPowerShellCommand(command))], _repositoryRootPath, cancellationToken).ConfigureAwait(false)
             : await _argumentsRunner("/bin/bash", ["-lc", command], _repositoryRootPath, cancellationToken).ConfigureAwait(false);
 
-        LogCommandResult("Shell", command, result, stopwatch.ElapsedMilliseconds);
-        return result;
+        CommandExecutionResult limitedResult = CommandOutputLimiter.Limit(result);
+        LogCommandResult("Shell", command, limitedResult, stopwatch.ElapsedMilliseconds);
+        return limitedResult;
     }
 
     /// <summary>
@@ -122,8 +128,9 @@ internal sealed class CommonCommandToolService
             _repositoryRootPath,
             cancellationToken).ConfigureAwait(false);
 
-        LogCommandResult("Ripgrep", trimmedCommand, result, stopwatch.ElapsedMilliseconds);
-        return result;
+        CommandExecutionResult limitedResult = CommandOutputLimiter.Limit(result);
+        LogCommandResult("Ripgrep", trimmedCommand, limitedResult, stopwatch.ElapsedMilliseconds);
+        return limitedResult;
     }
 
     /// <summary>

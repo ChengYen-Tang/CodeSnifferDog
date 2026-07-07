@@ -80,6 +80,34 @@ public sealed class CommandToolServiceTests
     }
 
     [TestMethod]
+    public async Task RunShellCommandAsync_TruncatesCombinedOutputBeforeReturning()
+    {
+        string largeOutput = new('a', 120_000);
+        CommonCommandToolService service = CreateService(
+            argumentsRunner: (fileName, arguments, workingDirectory, cancellationToken) =>
+                ValueTask.FromResult(new CommandExecutionResult
+                {
+                    ExitCode = 0,
+                    StandardOutput = largeOutput,
+                    StandardError = "error",
+                }),
+            textRunner: FailTextRunner);
+
+        CommandExecutionResult result = await service.RunShellCommandAsync(
+            new RunShellCommandArgs
+            {
+                Command = "cat huge.log",
+            },
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.StandardOutput.Length < largeOutput.Length);
+        Assert.Contains("Warning: output truncated.", result.StandardError);
+        Assert.Contains("Original lines: 2", result.StandardError);
+        Assert.Contains("original bytes: 120005", result.StandardError);
+        Assert.Contains("Use rg, head/tail, or ranged file read.", result.StandardError);
+    }
+
+    [TestMethod]
     public async Task RunRipgrepCommandAsync_RejectsRipgrepExecutablePrefix()
     {
         CommonCommandToolService service = CreateService();
@@ -120,6 +148,33 @@ public sealed class CommandToolServiceTests
 
         Assert.AreEqual(@"Z:\Tools\rg.exe", captured.FileName);
         Assert.AreEqual("alpha \"Z:\\outside\"", captured.Arguments);
+    }
+
+    [TestMethod]
+    public async Task RunRipgrepCommandAsync_TruncatesCombinedOutputBeforeReturning()
+    {
+        string largeOutput = string.Join(Environment.NewLine, Enumerable.Range(1, 30_000).Select(static index => $"match {index}"));
+        CommonCommandToolService service = CreateService(
+            argumentsRunner: FailArgumentsRunner,
+            textRunner: (fileName, arguments, workingDirectory, cancellationToken) =>
+                ValueTask.FromResult(new CommandExecutionResult
+                {
+                    ExitCode = 0,
+                    StandardOutput = largeOutput,
+                    StandardError = "",
+                }),
+            ripgrepExecutablePathProvider: () => "rg");
+
+        CommandExecutionResult result = await service.RunRipgrepCommandAsync(
+            new RunRipgrepCommandArgs
+            {
+                Command = ".",
+            },
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.StandardOutput.Length < largeOutput.Length);
+        Assert.Contains("Warning: output truncated.", result.StandardError);
+        Assert.Contains("Original lines: 30000", result.StandardError);
     }
 
     [TestMethod]

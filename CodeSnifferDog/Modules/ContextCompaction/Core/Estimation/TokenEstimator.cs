@@ -1,5 +1,5 @@
 using Microsoft.Extensions.AI;
-using System.Text;
+using SharedTokenEstimator = CodeSnifferDog.Modules.Estimation.TokenEstimator;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 
@@ -25,7 +25,7 @@ internal static class TokenEstimator
                 byteCount += EstimateContentBytes(content);
         }
 
-        return Math.Max(1, byteCount / 4);
+        return Math.Max(1, SharedTokenEstimator.EstimateBytes(byteCount));
     }
 
     /// <summary>
@@ -34,7 +34,7 @@ internal static class TokenEstimator
     /// <param name="content">Content payload to estimate.</param>
     /// <returns>A coarse token estimate for the supplied content.</returns>
     public static int EstimateContent(AIContent content) =>
-        Math.Max(1, EstimateContentBytes(content) / 4);
+        Math.Max(1, SharedTokenEstimator.EstimateBytes(EstimateContentBytes(content)));
 
     private static int EstimateContentBytes(AIContent content) =>
         content switch
@@ -64,5 +64,5 @@ internal static class TokenEstimator
     }
 
     private static int GetStringByteCount(string? value) =>
-        string.IsNullOrEmpty(value) ? 0 : Encoding.UTF8.GetByteCount(value);
+        SharedTokenEstimator.GetUtf8ByteCount(value);
 }

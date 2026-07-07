@@ -32,9 +32,10 @@ public sealed class ToolFactoryTypedSeamTests
     {
         IList<AITool> tools = CommonToolFactory.CreateTools(new CommonToolCallbacks(
             RunShellCommandTool,
-            RunRipgrepCommandTool));
+            RunRipgrepCommandTool,
+            ReadFileRangeTool));
 
-        CollectionAssert.AreEqual(new[] { "Shell", "Ripgrep" }, tools.Select(tool => tool.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "Shell", "Ripgrep", "ReadFileRange" }, tools.Select(tool => tool.Name).ToArray());
     }
 
     [TestMethod]
@@ -51,16 +52,23 @@ public sealed class ToolFactoryTypedSeamTests
             {
                 invokedCallbacks.Add($"ripgrep:{Command}");
                 return ValueTask.FromResult(Succeeded());
+            },
+            (Path, OffsetLine, LimitLines, cancellationToken) =>
+            {
+                invokedCallbacks.Add($"read:{Path}:{OffsetLine}:{LimitLines}");
+                return ValueTask.FromResult(SucceededRead());
             }));
 
         AIFunction shellFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "Shell"));
         AIFunction ripgrepFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "Ripgrep"));
+        AIFunction readFileRangeFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "ReadFileRange"));
 
         await shellFunction.InvokeAsync(new AIFunctionArguments { ["Command"] = "Get-ChildItem" }, TestContext.CancellationToken);
         await ripgrepFunction.InvokeAsync(new AIFunctionArguments { ["Command"] = "-n \"SystemPrompt\" ." }, TestContext.CancellationToken);
+        await readFileRangeFunction.InvokeAsync(new AIFunctionArguments { ["Path"] = "Program.cs", ["OffsetLine"] = 2, ["LimitLines"] = 3 }, TestContext.CancellationToken);
 
         CollectionAssert.AreEqual(
-            new[] { "shell:Get-ChildItem", "ripgrep:-n \"SystemPrompt\" ." },
+            new[] { "shell:Get-ChildItem", "ripgrep:-n \"SystemPrompt\" .", "read:Program.cs:2:3" },
             invokedCallbacks.ToArray());
     }
 
@@ -146,6 +154,13 @@ public sealed class ToolFactoryTypedSeamTests
 
     private static ValueTask<CommandExecutionResult> RunRipgrepCommandTool(string Command, CancellationToken cancellationToken) =>
         ValueTask.FromResult(Succeeded());
+
+    private static ValueTask<ReadFileRangeResult> ReadFileRangeTool(
+        string Path,
+        int OffsetLine,
+        int LimitLines,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(SucceededRead());
 
     private static ValueTask<AddScanProjectResult> AddScanProjectTool(
         string ProjectName,
@@ -279,5 +294,20 @@ public sealed class ToolFactoryTypedSeamTests
             ExitCode = 0,
             StandardOutput = "",
             StandardError = "",
+        };
+
+    private static ReadFileRangeResult SucceededRead() =>
+        new()
+        {
+            Success = true,
+            Path = "Program.cs",
+            OffsetLine = 1,
+            LimitLines = 1,
+            StartLine = 1,
+            EndLine = 1,
+            TotalLines = 1,
+            OriginalBytes = 10,
+            Content = "class C {}",
+            Message = "Returned lines 1-1 of 1.",
         };
 }
