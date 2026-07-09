@@ -26,9 +26,10 @@ public sealed class CommandProcessRunnerTests
 
         Assert.AreEqual(0, result.ExitCode);
         Assert.IsTrue(combinedBytes <= CommandOutputLimiter.MaxCombinedOutputBytes);
-        Assert.Contains("Warning: output truncated.", result.StandardError);
+        Assert.Contains("Warning: command output was too large and was truncated.", result.StandardError);
         Assert.Contains("Original lines: 1600", result.StandardError);
-        Assert.Contains("Use rg, head/tail, or ranged file read.", result.StandardError);
+        Assert.Contains("Do not retry the same large-output command with Shell.", result.StandardError);
+        Assert.Contains("use ReadFileRange with smaller offsetLine/limitLines", result.StandardError);
     }
 
     /// <summary>

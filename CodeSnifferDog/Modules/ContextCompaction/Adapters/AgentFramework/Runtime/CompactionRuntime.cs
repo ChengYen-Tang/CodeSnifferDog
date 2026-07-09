@@ -2,6 +2,9 @@ using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction.Agents;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
 
@@ -29,6 +32,7 @@ internal static class CompactionRuntime
         CancellationToken cancellationToken)
     {
         StagedCollapseTracker collapseTracker = new(session, options);
+        ILogger logger = CreateLogger(options);
 
         try
         {
@@ -39,6 +43,12 @@ internal static class CompactionRuntime
         catch (ModelInvocationException ex) when (ReactiveRetryService.ShouldRetry(options, ex))
         {
             IReadOnlyList<ChatMessage> originalMessages = [.. messages];
+            logger.LogDebug(
+                ex,
+                "Reactive compaction retry triggered. MessageCount: {MessageCount}; EstimatedTokens: {EstimatedTokens}.",
+                originalMessages.Count,
+                TokenEstimator.Estimate(originalMessages));
+
             StagedProjectionRetryResult<AgentResponse> stagedRetry = await RuntimeRetryCoordinator
                 .TryRunStagedProjectionRetryAsync(
                     originalMessages,
@@ -48,6 +58,7 @@ internal static class CompactionRuntime
                 .ConfigureAwait(false);
             if (stagedRetry.Succeeded)
             {
+                logger.LogDebug("Reactive staged projection retry succeeded.");
                 collapseTracker.CommitNew();
                 return stagedRetry.Value!;
             }
@@ -59,16 +70,32 @@ internal static class CompactionRuntime
                 cancellationToken).ConfigureAwait(false);
 
             if (MessageEquivalenceComparer.AreEquivalent(originalMessages, compactedMessages))
+            {
+                logger.LogWarning(
+                    "Reactive deep compaction produced equivalent messages. Re-throwing original model invocation exception. MessageCount: {MessageCount}; EstimatedTokens: {EstimatedTokens}.",
+                    originalMessages.Count,
+                    TokenEstimator.Estimate(originalMessages));
+
                 throw;
+            }
+
+            logger.LogDebug(
+                "Reactive deep compaction prepared retry messages. OriginalMessageCount: {OriginalMessageCount}; MessageCount: {MessageCount}; EstimatedTokensBefore: {EstimatedTokensBefore}; EstimatedTokensAfter: {EstimatedTokensAfter}.",
+                originalMessages.Count,
+                compactedMessages.Count,
+                TokenEstimator.Estimate(originalMessages),
+                TokenEstimator.Estimate(compactedMessages));
 
             try
             {
                 AgentResponse response = await innerAgent.RunAsync(compactedMessages, session, runOptions, cancellationToken).ConfigureAwait(false);
+                logger.LogDebug("Reactive deep compaction retry succeeded.");
                 collapseTracker.CommitNew();
                 return response;
             }
             catch
             {
+                logger.LogWarning("Reactive deep compaction retry failed. Discarding staged collapse state.");
                 collapseTracker.DiscardNew();
                 throw;
             }
@@ -100,6 +127,7 @@ internal static class CompactionRuntime
     {
         StreamingUpdatePump pump = new(innerAgent, session, runOptions, cancellationToken);
         StagedCollapseTracker collapseTracker = new(session, options);
+        ILogger logger = CreateLogger(options);
 
         _ = ProcessAsync();
         return pump.ReadAllAsync();
@@ -118,6 +146,12 @@ internal static class CompactionRuntime
                 try
                 {
                     IReadOnlyList<ChatMessage> originalMessages = [.. messages];
+                    logger.LogDebug(
+                        ex,
+                        "Reactive streaming compaction retry triggered. MessageCount: {MessageCount}; EstimatedTokens: {EstimatedTokens}.",
+                        originalMessages.Count,
+                        TokenEstimator.Estimate(originalMessages));
+
                     StagedProjectionRetryResult<bool> stagedRetry = await RuntimeRetryCoordinator
                         .TryRunStagedProjectionRetryAsync(
                             originalMessages,
@@ -131,6 +165,7 @@ internal static class CompactionRuntime
                         .ConfigureAwait(false);
                     if (stagedRetry.Succeeded)
                     {
+                        logger.LogDebug("Reactive streaming staged projection retry succeeded.");
                         collapseTracker.CommitNew();
                         return;
                     }
@@ -142,15 +177,31 @@ internal static class CompactionRuntime
                         cancellationToken).ConfigureAwait(false);
 
                     if (MessageEquivalenceComparer.AreEquivalent(originalMessages, compactedMessages))
+                    {
+                        logger.LogWarning(
+                            "Reactive streaming deep compaction produced equivalent messages. Re-throwing original model invocation exception. MessageCount: {MessageCount}; EstimatedTokens: {EstimatedTokens}.",
+                            originalMessages.Count,
+                            TokenEstimator.Estimate(originalMessages));
+
                         throw;
+                    }
+
+                    logger.LogDebug(
+                        "Reactive streaming deep compaction prepared retry messages. OriginalMessageCount: {OriginalMessageCount}; MessageCount: {MessageCount}; EstimatedTokensBefore: {EstimatedTokensBefore}; EstimatedTokensAfter: {EstimatedTokensAfter}.",
+                        originalMessages.Count,
+                        compactedMessages.Count,
+                        TokenEstimator.Estimate(originalMessages),
+                        TokenEstimator.Estimate(compactedMessages));
 
                     try
                     {
                         await pump.PumpAsync(compactedMessages).ConfigureAwait(false);
+                        logger.LogDebug("Reactive streaming deep compaction retry succeeded.");
                         collapseTracker.CommitNew();
                     }
                     catch
                     {
+                        logger.LogWarning("Reactive streaming deep compaction retry failed. Discarding staged collapse state.");
                         collapseTracker.DiscardNew();
                         throw;
                     }
@@ -171,4 +222,7 @@ internal static class CompactionRuntime
             }
         }
     }
+
+    private static ILogger CreateLogger(AgentCompactionOptions options) =>
+        options.LoggerFactory?.CreateLogger(typeof(CompactionRuntime).FullName!) ?? NullLogger.Instance;
 }

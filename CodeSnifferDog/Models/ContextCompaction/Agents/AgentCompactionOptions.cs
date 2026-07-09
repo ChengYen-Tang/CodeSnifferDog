@@ -1,5 +1,6 @@
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
+using Microsoft.Extensions.Logging;
 
 namespace CodeSnifferDog.Models.ContextCompaction.Agents;
 
@@ -33,4 +34,9 @@ public sealed class AgentCompactionOptions
     /// </summary>
     public IReactiveExceptionDecider ReactiveExceptionDecider { get; init; } =
         new DefaultReactiveExceptionDecider();
+
+    /// <summary>
+    /// Gets the optional logger factory used by compaction adapters.
+    /// </summary>
+    public ILoggerFactory? LoggerFactory { get; init; }
 }

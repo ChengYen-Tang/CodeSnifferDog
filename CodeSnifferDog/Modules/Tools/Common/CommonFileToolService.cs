@@ -40,7 +40,7 @@ internal sealed class CommonFileToolService
     /// <param name="args">Range read arguments.</param>
     /// <param name="cancellationToken">Token that cancels file reading.</param>
     /// <returns>The range read result.</returns>
-    public async ValueTask<ReadFileRangeResult> ReadFileRangeAsync(
+    public async ValueTask<CommandExecutionResult> ReadFileRangeAsync(
         ReadFileRangeArgs args,
         CancellationToken cancellationToken)
     {
@@ -61,10 +61,7 @@ internal sealed class CommonFileToolService
         FileInfo fileInfo = new(filePath);
         StringBuilder contentBuilder = new();
         int totalLines = 0;
-        int startLine = 0;
-        int endLine = 0;
         int contentBytes = 0;
-        bool reachedEndOfFile = false;
         long exclusiveEndLine = (long)args.OffsetLine + args.LimitLines;
 
         await using FileStream stream = File.OpenRead(filePath);
@@ -75,10 +72,7 @@ internal sealed class CommonFileToolService
             string? line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
 
             if (line is null)
-            {
-                reachedEndOfFile = true;
                 break;
-            }
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -91,47 +85,23 @@ internal sealed class CommonFileToolService
 
             if (contentBytes + lineBytes > MaxReadFileRangeBytes)
             {
-                return new ReadFileRangeResult
-                {
-                    Success = false,
-                    Path = filePath,
-                    OffsetLine = args.OffsetLine,
-                    LimitLines = args.LimitLines,
-                    StartLine = 0,
-                    EndLine = 0,
-                    TotalLines = 0,
-                    OriginalBytes = fileInfo.Length,
-                    Content = string.Empty,
-                    Message = $"Requested file range is too large to return safely. Original lines: at least {totalLines}, original bytes: {fileInfo.Length}. Use ReadFileRange with a smaller offsetLine/limitLines.",
-                };
+                return Error(
+                    $"Requested file range is too large to return safely. Original lines: at least {totalLines}, original bytes: {fileInfo.Length}. Use ReadFileRange with a smaller offsetLine/limitLines.");
             }
-
-            if (startLine == 0)
-                startLine = totalLines;
 
             contentBuilder.AppendLine(line);
             contentBytes += lineBytes;
-            endLine = totalLines;
 
             if (totalLines + 1 >= exclusiveEndLine)
                 break;
         }
 
         string content = contentBuilder.ToString();
-        return new ReadFileRangeResult
+        return new CommandExecutionResult
         {
-            Success = true,
-            Path = filePath,
-            OffsetLine = args.OffsetLine,
-            LimitLines = args.LimitLines,
-            StartLine = startLine,
-            EndLine = endLine,
-            TotalLines = reachedEndOfFile ? totalLines : 0,
-            OriginalBytes = fileInfo.Length,
-            Content = content,
-            Message = startLine == 0
-                ? "Requested range returned no lines."
-                : $"Returned lines {startLine}-{endLine}.",
+            ExitCode = 0,
+            StandardOutput = content,
+            StandardError = string.Empty,
         };
     }
 
@@ -157,19 +127,15 @@ internal sealed class CommonFileToolService
     /// <param name="path">Resolved file path.</param>
     /// <param name="message">Failure message returned to the caller.</param>
     /// <returns>The failed range-read result.</returns>
-    private static ReadFileRangeResult Error(ReadFileRangeArgs args, string path, string message) =>
+    private static CommandExecutionResult Error(ReadFileRangeArgs args, string path, string message) =>
+        Error(message);
+
+    private static CommandExecutionResult Error(string message) =>
         new()
         {
-            Success = false,
-            Path = path,
-            OffsetLine = args.OffsetLine,
-            LimitLines = args.LimitLines,
-            StartLine = 0,
-            EndLine = 0,
-            TotalLines = 0,
-            OriginalBytes = 0,
-            Content = string.Empty,
-            Message = message,
+            ExitCode = 1,
+            StandardOutput = string.Empty,
+            StandardError = message,
         };
 
     /// <summary>

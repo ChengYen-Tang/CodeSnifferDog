@@ -4,6 +4,7 @@ using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Models.ContextCompaction.Agents;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using Microsoft.Extensions.Logging;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core;
 
@@ -31,6 +32,7 @@ public sealed class AgentOptionsFactory(
     /// <param name="enableReactiveCompactionRetry"><see langword="true" /> to enable reactive retry flows after compaction-related failures.</param>
     /// <param name="hooks">Optional compaction hooks that observe before and after transcript rewriting.</param>
     /// <param name="cleanupHandlers">Optional cleanup handlers that run after successful compaction.</param>
+    /// <param name="loggerFactory">Optional logger factory used by agent-framework compaction adapters.</param>
     /// <returns>The agent-facing compaction options wired to the resolved prompt asset.</returns>
     /// <exception cref="ArgumentException"><paramref name="summaryPromptAssetPath" /> is <see langword="null" />, empty, or whitespace.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="options" /> is <see langword="null" />.</exception>
@@ -39,7 +41,8 @@ public sealed class AgentOptionsFactory(
         CompactionOptions options,
         bool enableReactiveCompactionRetry = true,
         IEnumerable<IHook>? hooks = null,
-        IEnumerable<ICleanupHandler>? cleanupHandlers = null)
+        IEnumerable<ICleanupHandler>? cleanupHandlers = null,
+        ILoggerFactory? loggerFactory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(summaryPromptAssetPath);
         ArgumentNullException.ThrowIfNull(options);
@@ -61,6 +64,7 @@ public sealed class AgentOptionsFactory(
             MessageShrinker = new MessageShrinker(),
             EnableReactiveCompactionRetry = enableReactiveCompactionRetry,
             ReactiveExceptionDecider = _reactiveExceptionDecider,
+            LoggerFactory = loggerFactory,
         };
     }
 }

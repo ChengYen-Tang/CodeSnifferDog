@@ -7,7 +7,7 @@ namespace CodeSnifferDog.Tests.Agents;
 public sealed class AgentToolComposerTests
 {
     [TestMethod]
-    public void Compose_PutsCommonToolsBeforeDomainTools()
+    public void Compose_PutsDomainToolsBeforeCommonTools()
     {
         AgentToolComposer composer = new();
         AITool domainTool = AIFunctionFactory.Create(() => true, "DomainTool", "Domain tool.", serializerOptions: null);
@@ -15,7 +15,7 @@ public sealed class AgentToolComposerTests
         IList<AITool> tools = composer.Compose(AppContext.BaseDirectory, [domainTool]);
 
         AssertToolNames(
-            ["Shell", "Ripgrep", "ReadFileRange", "DomainTool"],
+            ["DomainTool", "ReadFileRange", "Ripgrep", "Shell"],
             tools);
     }
 
@@ -27,7 +27,7 @@ public sealed class AgentToolComposerTests
         IList<AITool> tools = composer.Compose(AppContext.BaseDirectory, []);
 
         AssertToolNames(
-            ["Shell", "Ripgrep", "ReadFileRange"],
+            ["ReadFileRange", "Ripgrep", "Shell"],
             tools);
     }
 
@@ -37,7 +37,7 @@ public sealed class AgentToolComposerTests
         AgentToolComposer composer = new();
         AITool domainTool = AIFunctionFactory.Create(() => true, "DomainTool", "Domain description.", serializerOptions: null);
 
-        AITool composedDomainTool = composer.Compose(AppContext.BaseDirectory, [domainTool]).Last();
+        AITool composedDomainTool = composer.Compose(AppContext.BaseDirectory, [domainTool]).First();
 
         Assert.AreEqual("DomainTool", composedDomainTool.Name);
         Assert.AreEqual("Domain description.", composedDomainTool.Description);

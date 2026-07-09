@@ -34,5 +34,6 @@ internal static class RunnerCompactionOptions
                 new AgentCompactionEventHook(
                     eventScope,
                     loggerFactory.CreateLogger<AgentCompactionEventHook>()),
-            ]);
+            ],
+            loggerFactory: loggerFactory);
 }

@@ -12,7 +12,7 @@ internal static class CommandOutputLimiter
     /// <summary>
     /// Defines the maximum combined stdout/stderr payload returned to the model.
     /// </summary>
-    public const int MaxCombinedOutputTokens = 25_000;
+    public const int MaxCombinedOutputTokens = 12_000;
 
     /// <summary>
     /// Gets the UTF-8 byte budget corresponding to <see cref="MaxCombinedOutputTokens"/>.
@@ -62,7 +62,7 @@ internal static class CommandOutputLimiter
         long originalBytes)
     {
         string warning =
-            $"Warning: output truncated. Original lines: {originalLines}, original bytes: {originalBytes}. Use rg, head/tail, or ranged file read.";
+            $"Warning: command output was too large and was truncated. Original lines: {originalLines}, original bytes: {originalBytes}. Do not retry the same large-output command with Shell. Do not use unbounded recursive directory listings such as Get-ChildItem -Recurse. Use Ripgrep to narrow files, symbols, or line numbers, or use bounded file listings with explicit filters/limits. Then use ReadFileRange with smaller offsetLine/limitLines to read file content. The file-reading tool is ReadFileRange.";
         int remainingBytes = Math.Max(
             0,
             MaxCombinedOutputBytes -

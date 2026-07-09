@@ -101,10 +101,11 @@ public sealed class CommandToolServiceTests
             TestContext.CancellationToken);
 
         Assert.IsTrue(result.StandardOutput.Length < largeOutput.Length);
-        Assert.Contains("Warning: output truncated.", result.StandardError);
+        Assert.Contains("Warning: command output was too large and was truncated.", result.StandardError);
         Assert.Contains("Original lines: 2", result.StandardError);
         Assert.Contains("original bytes: 120005", result.StandardError);
-        Assert.Contains("Use rg, head/tail, or ranged file read.", result.StandardError);
+        Assert.Contains("Do not retry the same large-output command with Shell.", result.StandardError);
+        Assert.Contains("use ReadFileRange with smaller offsetLine/limitLines", result.StandardError);
     }
 
     [TestMethod]
@@ -173,7 +174,7 @@ public sealed class CommandToolServiceTests
             TestContext.CancellationToken);
 
         Assert.IsTrue(result.StandardOutput.Length < largeOutput.Length);
-        Assert.Contains("Warning: output truncated.", result.StandardError);
+        Assert.Contains("Warning: command output was too large and was truncated.", result.StandardError);
         Assert.Contains("Original lines: 30000", result.StandardError);
     }
 

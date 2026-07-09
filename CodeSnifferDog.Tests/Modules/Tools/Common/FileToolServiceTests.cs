@@ -19,7 +19,7 @@ public sealed class FileToolServiceTests
             TestContext.CancellationToken);
         CommonFileToolService service = new(repositoryRootPath);
 
-        ReadFileRangeResult result = await service.ReadFileRangeAsync(
+        CommandExecutionResult result = await service.ReadFileRangeAsync(
             new ReadFileRangeArgs
             {
                 Path = "sample.txt",
@@ -28,13 +28,9 @@ public sealed class FileToolServiceTests
             },
             TestContext.CancellationToken);
 
-        Assert.IsTrue(result.Success);
-        Assert.AreEqual(Path.GetFullPath(filePath), result.Path);
-        Assert.AreEqual(2, result.StartLine);
-        Assert.AreEqual(3, result.EndLine);
-        Assert.AreEqual(0, result.TotalLines);
-        Assert.AreEqual("two" + Environment.NewLine + "three" + Environment.NewLine, result.Content);
-        Assert.Contains("Returned lines 2-3.", result.Message);
+        Assert.AreEqual(0, result.ExitCode);
+        Assert.AreEqual(string.Empty, result.StandardError);
+        Assert.AreEqual("two" + Environment.NewLine + "three" + Environment.NewLine, result.StandardOutput);
     }
 
     [TestMethod]
@@ -46,7 +42,7 @@ public sealed class FileToolServiceTests
         await File.WriteAllLinesAsync(filePath, lines, TestContext.CancellationToken);
         CommonFileToolService service = new(repositoryRootPath);
 
-        ReadFileRangeResult result = await service.ReadFileRangeAsync(
+        CommandExecutionResult result = await service.ReadFileRangeAsync(
             new ReadFileRangeArgs
             {
                 Path = "large.txt",
@@ -55,13 +51,11 @@ public sealed class FileToolServiceTests
             },
             TestContext.CancellationToken);
 
-        Assert.IsFalse(result.Success);
-        Assert.AreEqual("", result.Content);
-        Assert.AreEqual(0, result.TotalLines);
-        Assert.IsTrue(result.OriginalBytes > 0);
-        Assert.Contains("Requested file range is too large to return safely.", result.Message);
-        Assert.Contains("Original lines: at least", result.Message);
-        Assert.Contains("Use ReadFileRange with a smaller offsetLine/limitLines.", result.Message);
+        Assert.AreEqual(1, result.ExitCode);
+        Assert.AreEqual(string.Empty, result.StandardOutput);
+        Assert.Contains("Requested file range is too large to return safely.", result.StandardError);
+        Assert.Contains("Original lines: at least", result.StandardError);
+        Assert.Contains("Use ReadFileRange with a smaller offsetLine/limitLines.", result.StandardError);
     }
 
     [TestMethod]
@@ -70,7 +64,7 @@ public sealed class FileToolServiceTests
         string repositoryRootPath = CreateTemporaryDirectory();
         CommonFileToolService service = new(repositoryRootPath);
 
-        ReadFileRangeResult result = await service.ReadFileRangeAsync(
+        CommandExecutionResult result = await service.ReadFileRangeAsync(
             new ReadFileRangeArgs
             {
                 Path = "missing.txt",
@@ -79,9 +73,9 @@ public sealed class FileToolServiceTests
             },
             TestContext.CancellationToken);
 
-        Assert.IsFalse(result.Success);
-        Assert.AreEqual("", result.Content);
-        Assert.Contains("File not found:", result.Message);
+        Assert.AreEqual(1, result.ExitCode);
+        Assert.AreEqual(string.Empty, result.StandardOutput);
+        Assert.Contains("File not found:", result.StandardError);
     }
 
     [TestMethod]
@@ -96,7 +90,7 @@ public sealed class FileToolServiceTests
             TestContext.CancellationToken);
         CommonFileToolService service = new(repositoryRootPath);
 
-        ReadFileRangeResult result = await service.ReadFileRangeAsync(
+        CommandExecutionResult result = await service.ReadFileRangeAsync(
             new ReadFileRangeArgs
             {
                 Path = externalFilePath,
@@ -105,9 +99,9 @@ public sealed class FileToolServiceTests
             },
             TestContext.CancellationToken);
 
-        Assert.IsTrue(result.Success);
-        Assert.AreEqual(Path.GetFullPath(externalFilePath), result.Path);
-        Assert.AreEqual("external two" + Environment.NewLine, result.Content);
+        Assert.AreEqual(0, result.ExitCode);
+        Assert.AreEqual(string.Empty, result.StandardError);
+        Assert.AreEqual("external two" + Environment.NewLine, result.StandardOutput);
     }
 
     /// <summary>

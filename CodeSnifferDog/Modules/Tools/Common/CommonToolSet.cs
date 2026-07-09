@@ -6,7 +6,7 @@ using System.ComponentModel;
 namespace CodeSnifferDog.Modules.Tools.Common;
 
 /// <summary>
-/// Builds the tool set that exposes shell and ripgrep commands.
+/// Builds the tool set that exposes bounded file reads, ripgrep search, and shell commands.
 /// </summary>
 public sealed class CommonToolSet
 {
@@ -55,9 +55,9 @@ public sealed class CommonToolSet
             RunRipgrepCommandToolAsync,
             ReadFileRangeToolAsync));
 
-    [Description("Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux or macOS.")]
+    [Description("Run one shell command in the repository root path. Shell is for narrow operational commands only. Do not use Shell to read file content, run unbounded recursive directory listings such as Get-ChildItem -Recurse, or produce large output. Use Ripgrep to search or list files narrowly, and use ReadFileRange to read files.")]
     private ValueTask<CommandExecutionResult> RunShellCommandToolAsync(
-        [Description("The shell command text to execute inside the repository root path.")]
+        [Description("The shell command text to execute inside the repository root path. Keep output small. Do not use Get-Content, type, cat, or unbounded Get-ChildItem -Recurse output for file reading or discovery; use Ripgrep to narrow discovery and ReadFileRange to read files.")]
         string Command,
         CancellationToken cancellationToken) =>
         RunShellCommandAsync(
@@ -79,23 +79,25 @@ public sealed class CommonToolSet
             },
             cancellationToken);
 
-    [Description("Read a bounded line range from one file. Use this instead of shell commands for large files.")]
-    private ValueTask<ReadFileRangeResult> ReadFileRangeToolAsync(
+    [Description("Read a bounded line range from one file. Use ReadFileRange, not Shell, for file content. For large files, read smaller ranges with offsetLine/limitLines. The tool name is ReadFileRange, not ReadFile.")]
+    private async ValueTask<CommandExecutionResult> ReadFileRangeToolAsync(
         [Description("The repository-relative or absolute file path to read.")]
         string Path,
         [Description("The one-based first line to read.")]
         int OffsetLine,
-        [Description("The maximum number of lines to read.")]
+        [Description("The maximum number of lines to read. Use smaller values when the result is too large.")]
         int LimitLines,
-        CancellationToken cancellationToken) =>
-        ReadFileRangeAsync(
+        CancellationToken cancellationToken)
+    {
+        return await ReadFileRangeAsync(
             new ReadFileRangeArgs
             {
                 Path = Path,
                 OffsetLine = OffsetLine,
                 LimitLines = LimitLines,
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Runs one shell command.
@@ -125,7 +127,7 @@ public sealed class CommonToolSet
     /// <param name="args">Range read arguments.</param>
     /// <param name="cancellationToken">Token that cancels file reading.</param>
     /// <returns>The range read result.</returns>
-    public ValueTask<ReadFileRangeResult> ReadFileRangeAsync(
+    public ValueTask<CommandExecutionResult> ReadFileRangeAsync(
         ReadFileRangeArgs args,
         CancellationToken cancellationToken) =>
         _fileToolService.ReadFileRangeAsync(args, cancellationToken);

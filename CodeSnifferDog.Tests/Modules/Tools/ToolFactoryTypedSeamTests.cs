@@ -35,7 +35,7 @@ public sealed class ToolFactoryTypedSeamTests
             RunRipgrepCommandTool,
             ReadFileRangeTool));
 
-        CollectionAssert.AreEqual(new[] { "Shell", "Ripgrep", "ReadFileRange" }, tools.Select(tool => tool.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "ReadFileRange", "Ripgrep", "Shell" }, tools.Select(tool => tool.Name).ToArray());
     }
 
     [TestMethod]
@@ -155,7 +155,7 @@ public sealed class ToolFactoryTypedSeamTests
     private static ValueTask<CommandExecutionResult> RunRipgrepCommandTool(string Command, CancellationToken cancellationToken) =>
         ValueTask.FromResult(Succeeded());
 
-    private static ValueTask<ReadFileRangeResult> ReadFileRangeTool(
+    private static ValueTask<CommandExecutionResult> ReadFileRangeTool(
         string Path,
         int OffsetLine,
         int LimitLines,
@@ -296,18 +296,11 @@ public sealed class ToolFactoryTypedSeamTests
             StandardError = "",
         };
 
-    private static ReadFileRangeResult SucceededRead() =>
+    private static CommandExecutionResult SucceededRead() =>
         new()
         {
-            Success = true,
-            Path = "Program.cs",
-            OffsetLine = 1,
-            LimitLines = 1,
-            StartLine = 1,
-            EndLine = 1,
-            TotalLines = 1,
-            OriginalBytes = 10,
-            Content = "class C {}",
-            Message = "Returned lines 1-1 of 1.",
+            ExitCode = 0,
+            StandardOutput = "class C {}",
+            StandardError = "",
         };
 }

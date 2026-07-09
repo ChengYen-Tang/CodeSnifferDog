@@ -26,6 +26,6 @@ internal sealed class AgentToolComposer(ILoggerFactory? loggerFactory = null)
         ArgumentNullException.ThrowIfNull(domainTools);
 
         CommonToolSet commonToolSet = new(repositoryRootPath, _loggerFactory);
-        return [.. commonToolSet.CreateTools(), .. domainTools];
+        return [.. domainTools, .. commonToolSet.CreateTools()];
     }
 }

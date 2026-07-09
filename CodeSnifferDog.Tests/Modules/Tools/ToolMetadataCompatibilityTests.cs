@@ -23,9 +23,9 @@ public sealed class ToolMetadataCompatibilityTests
         ToolMetadataAssertions.AssertToolMetadata(
             toolSet.CreateTools(),
             [
-                ("Shell", "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux/macOS. Pass only the command text to execute."),
+                ("ReadFileRange", "Read a bounded line range from one file. Use ReadFileRange, not Shell, for file content. For large files, read smaller ranges with offsetLine/limitLines. The tool name is ReadFileRange, not ReadFile."),
                 ("Ripgrep", "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\"."),
-                ("ReadFileRange", "Read a bounded line range from one file. Use this instead of shell commands for large files."),
+                ("Shell", "Run one shell command in the repository root path. Shell is for narrow operational commands only. Do not use Shell to read file content, run unbounded recursive directory listings such as Get-ChildItem -Recurse, or produce large output. Use Ripgrep to search or list files narrowly, and use ReadFileRange to read files."),
             ]);
     }
 
@@ -159,10 +159,10 @@ public sealed class ToolMetadataCompatibilityTests
     {
         ToolMetadataAssertions.AssertAdapterDescription<CommonToolSet>(
             "RunShellCommandToolAsync",
-            "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux or macOS.",
+            "Run one shell command in the repository root path. Shell is for narrow operational commands only. Do not use Shell to read file content, run unbounded recursive directory listings such as Get-ChildItem -Recurse, or produce large output. Use Ripgrep to search or list files narrowly, and use ReadFileRange to read files.",
             new Dictionary<string, string>
             {
-                ["Command"] = "The shell command text to execute inside the repository root path.",
+                ["Command"] = "The shell command text to execute inside the repository root path. Keep output small. Do not use Get-Content, type, cat, or unbounded Get-ChildItem -Recurse output for file reading or discovery; use Ripgrep to narrow discovery and ReadFileRange to read files.",
             });
         ToolMetadataAssertions.AssertAdapterDescription<CommonToolSet>(
             "RunRipgrepCommandToolAsync",
@@ -173,12 +173,12 @@ public sealed class ToolMetadataCompatibilityTests
             });
         ToolMetadataAssertions.AssertAdapterDescription<CommonToolSet>(
             "ReadFileRangeToolAsync",
-            "Read a bounded line range from one file. Use this instead of shell commands for large files.",
+            "Read a bounded line range from one file. Use ReadFileRange, not Shell, for file content. For large files, read smaller ranges with offsetLine/limitLines. The tool name is ReadFileRange, not ReadFile.",
             new Dictionary<string, string>
             {
                 ["Path"] = "The repository-relative or absolute file path to read.",
                 ["OffsetLine"] = "The one-based first line to read.",
-                ["LimitLines"] = "The maximum number of lines to read.",
+                ["LimitLines"] = "The maximum number of lines to read. Use smaller values when the result is too large.",
             });
     }
 

@@ -17,9 +17,9 @@ internal static class CommonToolFactory
         =>
     [
         AIFunctionFactory.Create(
-            callbacks.RunShellCommandTool,
-            "Shell",
-            "Run one shell command in the repository root path. Use PowerShell on Windows and bash on Linux/macOS. Pass only the command text to execute.",
+            callbacks.ReadFileRangeTool,
+            "ReadFileRange",
+            "Read a bounded line range from one file. Use ReadFileRange, not Shell, for file content. For large files, read smaller ranges with offsetLine/limitLines. The tool name is ReadFileRange, not ReadFile.",
             serializerOptions: null),
         AIFunctionFactory.Create(
             callbacks.RunRipgrepCommandTool,
@@ -27,9 +27,9 @@ internal static class CommonToolFactory
             "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\".",
             serializerOptions: null),
         AIFunctionFactory.Create(
-            callbacks.ReadFileRangeTool,
-            "ReadFileRange",
-            "Read a bounded line range from one file. Use this instead of shell commands for large files.",
+            callbacks.RunShellCommandTool,
+            "Shell",
+            "Run one shell command in the repository root path. Shell is for narrow operational commands only. Do not use Shell to read file content, run unbounded recursive directory listings such as Get-ChildItem -Recurse, or produce large output. Use Ripgrep to search or list files narrowly, and use ReadFileRange to read files.",
             serializerOptions: null),
     ];
 }
@@ -62,7 +62,7 @@ internal delegate ValueTask<CommandExecutionResult> RunRipgrepCommandToolCallbac
 /// <summary>
 /// Represents the callback used to read a bounded file range.
 /// </summary>
-internal delegate ValueTask<ReadFileRangeResult> ReadFileRangeToolCallback(
+internal delegate ValueTask<CommandExecutionResult> ReadFileRangeToolCallback(
     string Path,
     int OffsetLine,
     int LimitLines,
