@@ -114,6 +114,18 @@ public sealed class AgentFactoryPromptContractTests
     }
 
     [TestMethod]
+    public void ProjectPlanPrompts_UseConsistentLargeSingleFilePolicy()
+    {
+        string plannerPrompt = _promptAssetReader.ReadRequiredPrompt(ProjectPlanAgentPromptAssets.ProjectPlanAgentPrompt);
+        string verifierPrompt = _promptAssetReader.ReadRequiredPrompt(ProjectPlanAgentPromptAssets.ProjectVerifierAgentPrompt);
+
+        Assert.Contains("Task items represent whole files only.", plannerPrompt);
+        Assert.Contains("it must become a single-file task item", plannerPrompt);
+        Assert.Contains("Task items represent whole files, so do not require the planner to split a file into line ranges.", verifierPrompt);
+        Assert.Contains("Do not reject a plan merely because later review will need multiple bounded `ReadFileRange` calls", verifierPrompt);
+    }
+
+    [TestMethod]
     public void RuleReviewAgent_RendersRuleReviewPlaceholders()
     {
         StoredTaskItem taskItem = CreateTaskItem();

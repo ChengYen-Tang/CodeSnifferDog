@@ -34,10 +34,14 @@ In the first version, prefer keeping each task item within both of these limits 
 - no more than 2000 total lines
 
 If either limit would be exceeded, prefer splitting into multiple task items.
-If a single file already exceeds the total-line limit, that file may become a single-file task item.
+These limits are task-grouping targets, not source-file validity limits or single-tool-call limits.
+Task items represent whole files only. Do not invent line-range task items or omit a file merely because it is large.
+
+If a single file already exceeds the total-line limit, it must become a single-file task item unless it belongs with a clearly required paired file.
+Later review can inspect a large file through multiple bounded `ReadFileRange` calls.
 Prefer smaller task items over overly large ones.
 
-For C/C++ style projects, if a header file and its implementation file clearly belong together, keep them in the same task item whenever practical.
+For C/C++ style projects, if a header file and its implementation file clearly belong together, keep them in the same task item whenever practical, even when the pair exceeds the normal limits.
 This pairing rule has higher priority than the normal file-count or total-line limits.
 
 Use the provided tools as your only mechanism for maintaining project plan results:
