@@ -34,7 +34,18 @@ public static class AgentBuilderExtensions
             throw new InvalidOperationException("ContextCollapse mode requires an CollapseController.");
 
         builder.UseAIContextProviders(new MessageContextProvider(options));
+        return builder.UseOperationalContextCompactionRuntime(options);
+    }
 
+    /// <summary>Adds only reactive context-limit retry middleware.</summary>
+    public static AIAgentBuilder UseOperationalContextCompactionRuntime(
+        this AIAgentBuilder builder,
+        AgentCompactionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options.Reducer);
+        ArgumentNullException.ThrowIfNull(options.ReactiveExceptionDecider);
         return builder.Use(
             (messages, session, runOptions, innerAgent, cancellationToken) =>
                 CompactionRuntime.RunAsync(messages, session, runOptions, innerAgent, options, cancellationToken),

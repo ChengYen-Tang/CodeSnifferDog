@@ -73,6 +73,8 @@ internal static class AgentRunGuard
                 attemptRunStartedAtUtc = DateTimeOffset.UtcNow;
                 AgentResponse response = await AgentRunAttemptContext.RunAsync(
                     attemptId,
+                    eventScope.GroupKey,
+                    eventScope.AgentKey,
                     () => agent.RunAsync(
                         messages,
                         session: null,

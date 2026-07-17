@@ -40,7 +40,16 @@ internal sealed class AgentBuilderService(
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Description);
         ArgumentNullException.ThrowIfNull(request.Tools);
 
-        AIAgent agent = request.ChatClient.AsAIAgent(
+        IChatClient chatClient = request.ChatClient;
+        if (_compactionOptions.Reducer.Options.Mode == CompactionMode.Standard)
+        {
+            chatClient = new FunctionInvokingChatClient(
+                new CompactingChatClient(request.ChatClient, _compactionOptions, _loggerFactory),
+                _loggerFactory,
+                _serviceProvider);
+        }
+
+        AIAgent agent = chatClient.AsAIAgent(
             request.SystemPrompt,
             request.Name,
             request.Description,
@@ -48,10 +57,15 @@ internal sealed class AgentBuilderService(
             _loggerFactory,
             _serviceProvider);
 
+        AIAgentBuilder agentBuilder = new(agent);
+        if (_compactionOptions.Reducer.Options.Mode == CompactionMode.Standard)
+            agentBuilder.UseOperationalContextCompactionRuntime(_compactionOptions);
+        else
+            agentBuilder.UseOperationalContextCompaction(_compactionOptions);
+
         return new AgentCreationResult
         {
-            Agent = new AIAgentBuilder(agent)
-                .UseOperationalContextCompaction(_compactionOptions)
+            Agent = agentBuilder
                 .UseAgentTranscriptEventsIfAvailable(request.EventScope)
                 .Build(_serviceProvider),
             SystemPrompt = request.SystemPrompt,
