@@ -10,7 +10,7 @@ Your summary must include:
 - What `ScanProject` is being planned or verified
 - Whether this is planning or planning verification work
 
-2. Work completed
+2. Completed work
 - Which files or areas of the project were already inspected
 - Which task items were already created, removed, regrouped, or kept
 - Which splitting decisions were already made

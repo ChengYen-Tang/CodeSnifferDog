@@ -50,7 +50,8 @@ internal sealed class ReductionPipeline(
         await _hookDispatcher.RunBeforeCompactionAsync(materializedMessages, reason, cancellationToken).ConfigureAwait(false);
 
         string summaryPrompt = SummaryContract.BuildPrompt(
-            await summaryPromptProvider.GetPromptAsync(cancellationToken).ConfigureAwait(false));
+            await summaryPromptProvider.GetPromptAsync(cancellationToken).ConfigureAwait(false),
+            options.RequiredSummaryFragments);
 
         if (string.IsNullOrWhiteSpace(summaryPrompt))
             throw new CompactionException("Operational context compaction summary prompt provider returned empty content.");

@@ -10,7 +10,7 @@ Your summary must include:
 - What rule is being aggregated or verified
 - Whether this is aggregation work or report verification work
 
-2. Work completed
+2. Completed work
 - What current flow issues were already considered
 - Which repository-level issues were created, updated, deleted, merged, or kept separate
 - Which dedupe or merge decisions were already made

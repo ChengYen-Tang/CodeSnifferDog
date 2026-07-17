@@ -10,7 +10,7 @@ Your summary must include:
 - What repository is being scanned
 - Whether this is scan or scan verification work
 
-2. Work completed
+2. Completed work
 - Which repository areas were already inspected
 - Which project units were already identified
 - Which scan results were added, removed, or kept

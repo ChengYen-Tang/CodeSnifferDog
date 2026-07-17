@@ -11,7 +11,7 @@ Your summary must include:
 - What scope entry files were given
 - Whether this is review work or review verification work
 
-2. Work completed
+2. Completed work
 - Which scope entry files were already inspected
 - Which follow-up files were already inspected
 - Which review strategy paths were already tried

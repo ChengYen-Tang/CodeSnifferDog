@@ -116,6 +116,33 @@ public sealed class ChatReducerTests
         Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("Return text only.", StringComparison.Ordinal));
         Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("Do not call tools.", StringComparison.Ordinal));
         Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("<summary>...</summary>", StringComparison.Ordinal));
+        Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("Use the following section headings exactly as written:", StringComparison.Ordinal));
+        Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("  - Current objective", StringComparison.Ordinal));
+        Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("  - Completed work", StringComparison.Ordinal));
+        Assert.IsTrue(summarizer.LastSummaryPrompt.Contains("  - Next steps", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void SummaryPromptAssets_UseTheValidatedSectionHeadings()
+    {
+        string promptDirectory = Path.Combine(AppContext.BaseDirectory, "prompts", "compaction");
+        string[] promptFiles =
+        [
+            "scan-summary.md",
+            "project-plan-summary.md",
+            "rule-review-summary.md",
+            "report-summary.md",
+        ];
+
+        foreach (string promptFile in promptFiles)
+        {
+            string prompt = File.ReadAllText(Path.Combine(promptDirectory, promptFile));
+
+            StringAssert.Contains(prompt, "1. Current objective");
+            StringAssert.Contains(prompt, "2. Completed work");
+            StringAssert.Contains(prompt, "5. Next steps");
+            Assert.IsFalse(prompt.Contains("Work completed", StringComparison.Ordinal));
+        }
     }
 
     [TestMethod]

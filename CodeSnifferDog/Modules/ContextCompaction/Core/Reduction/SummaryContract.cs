@@ -15,17 +15,31 @@ internal static class SummaryContract
     /// </summary>
     /// <param name="summaryPrompt">Base prompt that explains what the summary must capture.</param>
     /// <returns>A prompt that requires the model to emit exactly one <c>&lt;summary&gt;</c> block.</returns>
-    public static string BuildPrompt(string summaryPrompt) =>
-        $"""
-        {summaryPrompt}
+    public static string BuildPrompt(
+        string summaryPrompt,
+        IReadOnlyList<string> requiredFragments)
+    {
+        ArgumentNullException.ThrowIfNull(requiredFragments);
 
-        Summary contract:
-        - Return text only.
-        - Do not call tools.
-        - Put your final answer inside a single {SummaryOpenTag}...{SummaryCloseTag} block.
-        - The summary must retain enough continuity for the next agent turn to continue safely.
-        - Do not output any content after the closing summary tag.
-        """;
+        string requiredHeadings = string.Join(
+            Environment.NewLine,
+            requiredFragments
+                .Where(static fragment => !string.IsNullOrWhiteSpace(fragment))
+                .Select(static fragment => $"  - {fragment}"));
+
+        return $"""
+            {summaryPrompt}
+
+            Summary contract:
+            - Return text only.
+            - Do not call tools.
+            - Put your final answer inside a single {SummaryOpenTag}...{SummaryCloseTag} block.
+            - Use the following section headings exactly as written:
+            {requiredHeadings}
+            - The summary must retain enough continuity for the next agent turn to continue safely.
+            - Do not output any content after the closing summary tag.
+            """;
+    }
 
     /// <summary>
     /// Extracts and trims the contents of the required <c>&lt;summary&gt;</c> block.

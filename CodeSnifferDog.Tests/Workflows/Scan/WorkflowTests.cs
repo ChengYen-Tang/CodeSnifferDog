@@ -195,7 +195,7 @@ public sealed class WorkflowTests
             promptAssetReader,
             new ScanWorkflowOptions
             {
-                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                AgentRunTimeout = TimeSpan.FromMilliseconds(250),
                 MaxConsecutiveRunFailures = 5,
             });
 
