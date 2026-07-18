@@ -59,7 +59,7 @@ public sealed class StateServiceTests
         StateService service = CreateService(services);
 
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => service.PublishStatusUpdateAsync(Guid.NewGuid(), (ProjectProcessingStatus)999, CancellationToken.None));
+            () => service.PublishStatusUpdateAsync(Guid.CreateVersion7(), (ProjectProcessingStatus)999, CancellationToken.None));
 
         Assert.AreEqual("Unsupported project status '999'.", exception.Message);
     }
@@ -78,7 +78,7 @@ public sealed class StateServiceTests
         InMemoryDatabaseRoot databaseRoot = new();
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
-            options.UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot));
+            options.UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"), databaseRoot));
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
         services.AddSingleton<ILiveUpdateNotifier>(liveUpdateNotifier);
         services.AddSingleton<IProjectStatusMapper, ProjectStatusMapper>();
@@ -87,7 +87,7 @@ public sealed class StateServiceTests
 
     private static async Task<Guid> SeedProjectAsync(ServiceProvider services, ProjectProcessingStatus status)
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         await using CodeSnifferDogServerDbContext dbContext = await services
             .GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>()
             .CreateDbContextAsync();

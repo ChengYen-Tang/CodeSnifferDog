@@ -110,7 +110,7 @@ public sealed class SnapshotServiceTests
     public async Task GetSnapshotAsync_UsesProjectionMapperForSidebarProjects()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         await using (CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
         {
             dbContext.Projects.Add(CreateProject(
@@ -134,7 +134,7 @@ public sealed class SnapshotServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);

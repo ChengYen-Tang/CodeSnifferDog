@@ -80,7 +80,7 @@ public sealed class ClaimerTests
         InMemoryDatabaseRoot databaseRoot = new();
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
-            options.UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot));
+            options.UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"), databaseRoot));
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
         services.AddSingleton<ILiveUpdateNotifier>(liveUpdateNotifier);
         return services.BuildServiceProvider();
@@ -88,7 +88,7 @@ public sealed class ClaimerTests
 
     private static async Task<Guid> SeedQueuedProjectAsync(ServiceProvider services, DateTimeOffset queueTimestampUtc)
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         await using CodeSnifferDogServerDbContext dbContext = await services
             .GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>()
             .CreateDbContextAsync();

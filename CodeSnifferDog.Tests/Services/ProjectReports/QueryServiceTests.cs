@@ -16,9 +16,9 @@ public sealed class QueryServiceTests
     public async Task GetProjectReportsAsync_ReturnsProjectAndReportsSortedByRuleName()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
-        Guid reportAId = Guid.NewGuid();
-        Guid reportBId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid reportAId = Guid.CreateVersion7();
+        Guid reportBId = Guid.CreateVersion7();
         await SeedProjectAsync(dbContextFactory, projectId);
         await SeedReportAsync(dbContextFactory, projectId, reportBId, "rule-b", "rule b", "# Rule B");
         await SeedReportAsync(dbContextFactory, projectId, reportAId, "rule-a", "Rule A", "# Rule A");
@@ -39,7 +39,7 @@ public sealed class QueryServiceTests
     public async Task GetProjectReportsAsync_WhenProjectHasNoReports_ReturnsEmptyReports()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         await SeedProjectAsync(dbContextFactory, projectId);
         QueryService service = new(dbContextFactory);
 
@@ -55,7 +55,7 @@ public sealed class QueryServiceTests
     {
         QueryService service = new(CreateDbContextFactory());
 
-        ProjectProjection? projection = await service.GetProjectReportsAsync(Guid.NewGuid(), TestContext.CancellationToken);
+        ProjectProjection? projection = await service.GetProjectReportsAsync(Guid.CreateVersion7(), TestContext.CancellationToken);
 
         Assert.IsNull(projection);
     }
@@ -64,13 +64,13 @@ public sealed class QueryServiceTests
     public async Task GetProjectReportAsync_MatchesProjectIdAndReportId()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
-        Guid otherProjectId = Guid.NewGuid();
-        Guid reportId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid otherProjectId = Guid.CreateVersion7();
+        Guid reportId = Guid.CreateVersion7();
         await SeedProjectAsync(dbContextFactory, projectId);
         await SeedProjectAsync(dbContextFactory, otherProjectId);
         await SeedReportAsync(dbContextFactory, projectId, reportId, "rule-a", "Rule A", "# Rule A");
-        await SeedReportAsync(dbContextFactory, otherProjectId, Guid.NewGuid(), "rule-other", "Rule Other", "# Other");
+        await SeedReportAsync(dbContextFactory, otherProjectId, Guid.CreateVersion7(), "rule-other", "Rule Other", "# Other");
         QueryService service = new(dbContextFactory);
 
         RuleReportProjection? report = await service.GetProjectReportAsync(
@@ -93,7 +93,7 @@ public sealed class QueryServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);

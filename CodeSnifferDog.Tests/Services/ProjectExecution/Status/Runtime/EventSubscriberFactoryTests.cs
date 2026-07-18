@@ -18,7 +18,7 @@ public sealed class EventSubscriberFactoryTests
     [TestMethod]
     public async Task Create_UsesRuntimeFactoryHandler()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TrackingEventHandler handler = new();
         TestRuntimeFactory runtimeFactory = new(handler);
         EventSubscriberFactory factory = new(runtimeFactory);
@@ -43,7 +43,7 @@ public sealed class EventSubscriberFactoryTests
         using AgentStatusEventStream eventStream = new();
 
         await using EventSubscriber subscriber =
-            factory.Create(Guid.NewGuid(), eventStream.Events);
+            factory.Create(Guid.CreateVersion7(), eventStream.Events);
 
         await eventStream.PublishGroupCreatedAsync("group-1", "Group 1", TestContext.CancellationToken);
         await eventStream.PublishGroupCreatedAsync("group-2", "Group 2", TestContext.CancellationToken);

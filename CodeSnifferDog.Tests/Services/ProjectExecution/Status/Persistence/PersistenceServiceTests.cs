@@ -37,7 +37,7 @@ public sealed class PersistenceServiceTests
     [TestMethod]
     public async Task AppendTimelineEntry_DelegatesTimelineMutationAndPublishesAfterSave()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         CollectingLiveUpdateNotifier notifier = new();
         FakeTimelinePersistenceService timelinePersistenceService = new();
         using ServiceProvider services = CreateServices();
@@ -70,7 +70,7 @@ public sealed class PersistenceServiceTests
     [TestMethod]
     public async Task RemoveTranscriptEntries_WhenTimelineServiceReturnsNull_DoesNotNotify()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         CollectingLiveUpdateNotifier notifier = new();
         FakeTimelinePersistenceService timelinePersistenceService = new()
         {
@@ -105,7 +105,7 @@ public sealed class PersistenceServiceTests
     {
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
-            options.UseInMemoryDatabase(Guid.NewGuid().ToString("N"), new InMemoryDatabaseRoot()));
+            options.UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"), new InMemoryDatabaseRoot()));
         return services.BuildServiceProvider();
     }
 
@@ -116,7 +116,7 @@ public sealed class PersistenceServiceTests
         await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
         ProjectAgentGroupRecord group = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectId = projectId,
             RuntimeKey = "group",
             DisplayName = "Group",
@@ -125,7 +125,7 @@ public sealed class PersistenceServiceTests
         dbContext.ProjectAgentGroups.Add(group);
         dbContext.ProjectAgents.Add(new ProjectAgentRecord
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentGroupId = group.Id,
             RuntimeKey = "agent",
             DisplayName = "Agent",
@@ -154,7 +154,7 @@ public sealed class PersistenceServiceTests
         public bool RemoveTranscriptCalled { get; private set; }
 
         public TimelineRemovalMutationResult? RemovalResult { get; init; } =
-            new(Guid.NewGuid(), [Guid.NewGuid()], DateTimeOffset.UtcNow);
+            new(Guid.CreateVersion7(), [Guid.CreateVersion7()], DateTimeOffset.UtcNow);
 
         public Task<TimelineEntryMutationResult> AppendTimelineEntryAsync(
             CodeSnifferDogServerDbContext dbContext,
@@ -167,7 +167,7 @@ public sealed class PersistenceServiceTests
             EntryTypes.Add(entryType);
             ProjectAgentTimelineEntryRecord entry = new()
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentId,
                 Sequence = 1,
                 EntryType = entryType,

@@ -24,7 +24,7 @@ public sealed class CompletionServiceTests
     [TestMethod]
     public async Task CompleteAnalysisAsync_NoFindingsAndDegradedFlow_ThrowsAndClearsReports()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         await SeedProjectAsync(services, projectId, seedExistingReport: true);
         CompletionService service = CreateService(services);
@@ -51,7 +51,7 @@ public sealed class CompletionServiceTests
     [TestMethod]
     public async Task CompleteAnalysisAsync_FindingsExist_CompletesAndPersistsReports()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         await SeedProjectAsync(services, projectId, seedExistingReport: false);
         CompletionService service = CreateService(services);
@@ -77,7 +77,7 @@ public sealed class CompletionServiceTests
     [TestMethod]
     public async Task CompleteAnalysisAsync_FailedRerunAfterPreviousReports_ClearsReports()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         await SeedProjectAsync(services, projectId, seedExistingReport: true);
         CompletionService service = CreateService(services);
@@ -104,7 +104,7 @@ public sealed class CompletionServiceTests
     [TestMethod]
     public async Task CompleteAnalysisAsync_ReportRuleKeyHasNoRuleNameMapping_Throws()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         await SeedProjectAsync(services, projectId, seedExistingReport: false);
         CompletionService service = CreateService(services);
@@ -140,7 +140,7 @@ public sealed class CompletionServiceTests
     private static ServiceProvider CreateServices()
     {
         InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
+        string databaseName = Guid.CreateVersion7().ToString("N");
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
@@ -174,7 +174,7 @@ public sealed class CompletionServiceTests
         {
             dbContext.ProjectRuleReports.Add(new ProjectRuleReportRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectId = projectId,
                 RuleKey = "rule-a",
                 RuleKeyHash = "HASH-A",

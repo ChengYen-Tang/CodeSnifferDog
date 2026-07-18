@@ -18,7 +18,7 @@ public sealed class QueryServiceRelationalTests
         using CodeSnifferDogServerDbContext dbContext = new(options);
 
         string sql = QueryService
-            .CreateProjectReportsQuery(dbContext, Guid.NewGuid())
+            .CreateProjectReportsQuery(dbContext, Guid.CreateVersion7())
             .ToQueryString();
 
         StringAssert.Contains(sql, "LEFT JOIN");

@@ -23,7 +23,7 @@ public sealed class InMemoryIssueStoreTests
         await store.AddAsync(firstFlow, CreateIssue("Program.cs"), CancellationToken.None);
         await store.AddAsync(secondFlow, CreateIssue("Cache.cs"), CancellationToken.None);
 
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
         IAgentAttemptLease lease = store.BeginAttempt(firstFlow, attemptId);
 
         await AgentRunAttemptContext.RunAsync(attemptId, async () =>
@@ -64,7 +64,7 @@ public sealed class InMemoryIssueStoreTests
         InMemoryIssueStore store = new();
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(TestRepositoryPaths.RootPath, "performance");
         RuleFlowKey flow = RuleScopeKeyFactory.CreateRuleFlowKey(TestRepositoryPaths.RootPath, "task-item-1", "performance");
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
 
         await store.InitializeWorkingReportAsync(ruleReportKey, "performance", flow, CancellationToken.None);
         await store.AddAsync(flow, CreateIssue("Program.cs"), CancellationToken.None);

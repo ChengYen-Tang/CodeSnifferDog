@@ -39,7 +39,7 @@ public sealed class CompactingChatClientTests
             .ToArray();
 
         ChatResponse response = await AgentRunAttemptContext.RunAsync(
-            Guid.NewGuid(),
+            Guid.CreateVersion7(),
             () => client.GetResponseAsync(history, new ChatOptions { Tools = [tool] }));
 
         Assert.AreEqual("done", response.Text);

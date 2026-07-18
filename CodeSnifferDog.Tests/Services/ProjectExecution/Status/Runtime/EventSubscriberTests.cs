@@ -61,7 +61,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task ToolCallEvents_MergeIntoSingleToolTimelineEntry()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -107,7 +107,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task ToolCallCompletedEvent_WithoutStart_CreatesSingleToolTimelineEntry()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -151,7 +151,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task CreatedEvent_PersistsFinalRenderedSystemPrompt()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -201,7 +201,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task ToolCallStartedEvent_Replayed_UpdatesExistingToolTimelineEntry()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -245,7 +245,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task ToolCallCompletedThenStarted_MergesIntoSingleToolTimelineEntry()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -290,7 +290,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task MessageEvents_PersistInputAndOutputTimelineEntries()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -337,7 +337,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task TranscriptClearedEvent_RemovesAttemptTranscriptEntries_ButPreservesInputs()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -388,7 +388,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task CompactionEvent_PersistsCompactionTimelineEntry()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -434,7 +434,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task LiveUpdates_PublishGroupAgentStatusAndTimelineProjectionEvents()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -489,7 +489,7 @@ public sealed class EventSubscriberTests
     [TestMethod]
     public async Task ToolProjectionLiveUpdates_UseSameTimelineEntryIdAcrossUpserts()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -530,7 +530,7 @@ public sealed class EventSubscriberTests
     private static ServiceProvider CreateServices()
     {
         InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
+        string databaseName = Guid.CreateVersion7().ToString("N");
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));

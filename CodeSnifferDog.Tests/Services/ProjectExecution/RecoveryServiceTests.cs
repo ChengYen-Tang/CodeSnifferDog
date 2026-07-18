@@ -84,7 +84,7 @@ public sealed class RecoveryServiceTests
         InMemoryDatabaseRoot databaseRoot = new();
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
-            options.UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot));
+            options.UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"), databaseRoot));
         services.AddScoped<IProjectChangePublisher>(_ => projectChangePublisher);
         return services.BuildServiceProvider();
     }
@@ -98,7 +98,7 @@ public sealed class RecoveryServiceTests
 
     private static async Task<Guid> SeedReviewingProjectAsync(ServiceProvider services)
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         await using CodeSnifferDogServerDbContext dbContext = await services
             .GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>()
             .CreateDbContextAsync();

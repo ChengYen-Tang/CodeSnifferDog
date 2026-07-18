@@ -29,7 +29,7 @@ public sealed class RuntimeFactoryTests
     [TestMethod]
     public async Task Create_RuntimeHandlerPersistsEventsAndPublishesLiveUpdates()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         CollectingLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(liveUpdateNotifier);
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
@@ -78,7 +78,7 @@ public sealed class RuntimeFactoryTests
     [TestMethod]
     public async Task Create_RuntimeUsesInjectedProjectionMapper()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         CollectingLiveUpdateNotifier liveUpdateNotifier = new();
         TrackingProjectionMapper projectionMapper = new();
         using ServiceProvider services = CreateServices(liveUpdateNotifier);
@@ -116,7 +116,7 @@ public sealed class RuntimeFactoryTests
     [TestMethod]
     public void Create_UsesRuntimeComponentsFactory()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         CapturingRuntimeComponentsFactory componentsFactory = new();
         RuntimeFactory factory = new(componentsFactory);
 
@@ -130,7 +130,7 @@ public sealed class RuntimeFactoryTests
         CollectingLiveUpdateNotifier liveUpdateNotifier)
     {
         InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
+        string databaseName = Guid.CreateVersion7().ToString("N");
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));

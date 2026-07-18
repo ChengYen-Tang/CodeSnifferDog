@@ -17,7 +17,7 @@ public sealed class DeletionServiceTests
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         ProjectTemporaryStoragePaths storagePaths = new();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         string uploadedZipPath = storagePaths.ResolveUploadedZipPath(projectId);
         string extractedProjectPath = storagePaths.ResolveExtractedProjectPath(projectId);
         storagePaths.EnsureStorageDirectories();
@@ -46,7 +46,7 @@ public sealed class DeletionServiceTests
     {
         DeletionService service = new(CreateDbContextFactory(), new ProjectTemporaryStoragePaths());
 
-        bool deleted = await service.DeleteAsync(Guid.NewGuid(), TestContext.CancellationToken);
+        bool deleted = await service.DeleteAsync(Guid.CreateVersion7(), TestContext.CancellationToken);
 
         Assert.IsFalse(deleted);
     }
@@ -55,7 +55,7 @@ public sealed class DeletionServiceTests
     public async Task DeleteAsync_WhenProjectIsReviewing_ThrowsOriginalException()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         await SeedProjectAsync(dbContextFactory, projectId, "uploads/reviewing.zip", ProjectProcessingStatus.Reviewing);
         DeletionService service = new(dbContextFactory, new ProjectTemporaryStoragePaths());
 
@@ -90,7 +90,7 @@ public sealed class DeletionServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);

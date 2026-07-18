@@ -17,7 +17,7 @@ public sealed class ExportServiceTests
 
         ExportFile file = service.CreateMarkdown(new ContentDto
         {
-            ReportId = Guid.NewGuid(),
+            ReportId = Guid.CreateVersion7(),
             RuleName = "Rule A",
             MarkdownContent = "# Rule A\n\nContent",
         });
@@ -40,13 +40,13 @@ public sealed class ExportServiceTests
                 [
                     new()
                     {
-                        ReportId = Guid.NewGuid(),
+                        ReportId = Guid.CreateVersion7(),
                         RuleName = "Rule A",
                         MarkdownContent = "# Rule A",
                     },
                     new()
                     {
-                        ReportId = Guid.NewGuid(),
+                        ReportId = Guid.CreateVersion7(),
                         RuleName = "Rule B",
                         MarkdownContent = "# Rule B",
                     },

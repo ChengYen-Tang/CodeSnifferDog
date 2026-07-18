@@ -26,6 +26,21 @@ When verifying, check whether:
 - obviously valid project units do not appear to be missing
 - obviously invalid project units do not appear to be included
 - the listed `ProjectType` and `Reason` are reasonable enough for the next stage
+- submitted units are mutually exclusive: no solution/workspace container is
+  submitted alongside its contained projects, and no directory module overlaps
+  a submitted project-file scope
+- backup, copied, generated, archived, or historical duplicates are excluded
+  unless their `Reason` gives concrete evidence that they are an independent,
+  actively maintained codebase requiring separate planning; for a retained
+  suspicious candidate, that evidence names both its comparison target and a
+  repository-verifiable distinction
+
+Treat solution, workspace, and manifest files as discovery containers rather
+than planning units when their independently plannable child projects are
+listed. Reject a result that includes both the container and any of those
+children. Reject a result that contains overlapping ancestor/descendant project
+paths, or a suspicious duplicate with no evidence that it is independently
+maintained.
 
 Approve only when the current scan result is acceptable as-is.
 Reject when more work is required.

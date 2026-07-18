@@ -20,7 +20,7 @@ public sealed class InMemoryTaskItemStore : ITaskItemStore
         ArgumentNullException.ThrowIfNull(taskItem);
         StoredTaskItem storedTaskItem = TaskItemStateStore.CreateStoredTaskItem(
             taskItem,
-            Guid.NewGuid().ToString("N"));
+            Guid.CreateVersion7().ToString("N"));
 
         lock (_syncRoot)
         {

@@ -73,7 +73,7 @@ public sealed class ServiceTests
     [TestMethod]
     public async Task CancelAsync_DoesNotPublishProjectChanges_BeforeExecutionCompletesCancellation()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
         dbContext.Projects.Add(new ProjectRecord
@@ -113,7 +113,7 @@ public sealed class ServiceTests
             projectChangePublisher,
             deletionService: deletionService,
             queueLock: queueLock);
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
 
         bool deleted = await service.DeleteAsync(projectId, TestContext.CancellationToken);
 
@@ -134,7 +134,7 @@ public sealed class ServiceTests
             projectChangePublisher,
             deletionService: deletionService);
 
-        bool deleted = await service.DeleteAsync(Guid.NewGuid(), TestContext.CancellationToken);
+        bool deleted = await service.DeleteAsync(Guid.CreateVersion7(), TestContext.CancellationToken);
 
         Assert.IsFalse(deleted);
         Assert.AreEqual(0, projectChangePublisher.PublishCallCount);
@@ -168,7 +168,7 @@ public sealed class ServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);
@@ -241,7 +241,7 @@ public sealed class ServiceTests
     {
         public ProjectUploadResult Result { get; } = new()
         {
-            ProjectId = Guid.NewGuid(),
+            ProjectId = Guid.CreateVersion7(),
             OriginalFileName = "repo.zip",
             Status = CodeSnifferDog.Server.Shared.Projects.ProjectStatus.Queued,
             FileSizeBytes = 123,

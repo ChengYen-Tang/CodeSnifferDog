@@ -1,6 +1,7 @@
 using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Transcript;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 
@@ -45,6 +46,11 @@ internal sealed class ReductionPipeline(
         List<ChatMessage> materializedMessages = [.. messages];
         CompactionResultBuilder.EnsureMessageIdentities(materializedMessages);
         if (!ShouldCompact(materializedMessages, reason))
+            return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
+
+        // A provider cannot accept a summary request or compacted context that splits a function call from its results.
+        // Defer compaction until the function-invocation loop has appended the complete result sequence.
+        if (!ToolCallTranscript.IsComplete(materializedMessages))
             return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
 
         await _hookDispatcher.RunBeforeCompactionAsync(materializedMessages, reason, cancellationToken).ConfigureAwait(false);

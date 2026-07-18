@@ -16,9 +16,9 @@ public sealed class LiveUpdateFactoryTests
     public void CreateUpdates_MapsPersistedRecordsToLiveUpdateDtos()
     {
         LiveUpdateFactory factory = new(CreateMapper());
-        Guid projectId = Guid.NewGuid();
-        Guid groupId = Guid.NewGuid();
-        Guid agentId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
         DateTimeOffset now = DateTimeOffset.UtcNow;
         ProjectAgentGroupRecord group = new()
         {
@@ -40,7 +40,7 @@ public sealed class LiveUpdateFactoryTests
         };
         ProjectAgentTimelineEntryRecord entry = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentId = agentId,
             Sequence = 3,
             EntryType = ProjectAgentTimelineEntryType.Tool,

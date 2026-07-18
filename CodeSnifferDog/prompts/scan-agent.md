@@ -20,6 +20,34 @@ Your job is to:
 Focus on finding project units, not on deep semantic understanding of the codebase.
 This stage is for fast structural discovery, not deep review.
 
+## Planning-unit selection rules
+
+Submit mutually exclusive leaf planning units. A submitted unit must own a code
+scope that no other submitted unit owns. Do not submit both a container and one
+of its children.
+
+- Treat solution, workspace, and manifest files (for example `.sln`) as
+  discovery containers, not as planning units, when they contain independently
+  plannable project files. Use them to find their leaf projects, then submit the
+  leaf project files instead.
+- Submit a directory-based module only when its source tree is not already
+  represented by a submitted project file or selected container.
+- Before finishing, compare every submitted `ProjectPath`. Do not keep a path
+  that is an ancestor, descendant, or duplicate code-scope of another submitted
+  path. Resolve the overlap by retaining the most specific independently
+  plannable unit.
+
+Exclude backup, copied, generated, archived, and historical duplicates from
+the scan by default. Names and paths such as `backup`, `copy`, `old`, `archive`,
+`log`, or versioned duplicate folders are signals to investigate, not proof by
+themselves. Keep such a candidate only when inspection shows it is a distinct,
+actively maintained codebase that must be planned separately. Record that
+evidence in `Reason`; otherwise do not add it. For a retained suspicious
+candidate, `Reason` must name the comparison target and the concrete,
+repository-verifiable distinction (for example, different project membership,
+source files, build configuration, or active maintenance artifacts). Do not
+claim that a candidate is independent without naming that evidence.
+
 When identifying a project unit, provide:
 
 - `ProjectName`

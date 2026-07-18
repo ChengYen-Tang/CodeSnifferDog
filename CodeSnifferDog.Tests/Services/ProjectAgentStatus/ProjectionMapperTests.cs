@@ -50,10 +50,10 @@ public sealed class ProjectionMapperTests
     public void MapDtos_MapsPersistedRecordsToSharedDtos()
     {
         ProjectionMapper mapper = CreateMapper();
-        Guid groupId = Guid.NewGuid();
-        Guid agentId = Guid.NewGuid();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        Guid timelineEntryId = Guid.NewGuid();
+        Guid timelineEntryId = Guid.CreateVersion7();
         GroupProjection group = new(groupId, "group", "Group", now);
         AgentProjection agent = new(
             agentId,

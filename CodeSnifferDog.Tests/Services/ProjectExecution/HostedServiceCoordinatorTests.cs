@@ -43,7 +43,7 @@ public sealed class HostedServiceCoordinatorTests
         List<string> calls = [];
         TestRecoveryService recoveryService = new(calls);
         TestReadinessGate readinessGate = new(calls, new Result(true, null));
-        using Lease lease = new(Guid.NewGuid(), CancellationToken.None, static _ => { });
+        using Lease lease = new(Guid.CreateVersion7(), CancellationToken.None, static _ => { });
         Claim claim = new(lease.ProjectId, "uploads/repo.zip", lease);
         using CancellationTokenSource stopSource = new();
         TestQueueClaimer queueClaimer = new(calls, claim);

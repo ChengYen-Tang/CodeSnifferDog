@@ -12,7 +12,7 @@ public sealed class VerdictBufferTests
     {
         ReviewVerdictBuffer buffer = new();
         string scopeKey = "review-scope";
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
 
         buffer.Submit(scopeKey, approved: true, message: "original");
         IAgentAttemptLease lease = buffer.BeginAttempt(scopeKey, attemptId);
@@ -44,7 +44,7 @@ public sealed class VerdictBufferTests
         ReviewVerdictBuffer buffer = new();
         string firstScope = "first-scope";
         string secondScope = "second-scope";
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
 
         buffer.Submit(firstScope, approved: true, message: "first original");
         buffer.Submit(secondScope, approved: true, message: "second original");
@@ -68,7 +68,7 @@ public sealed class VerdictBufferTests
     {
         ReviewVerdictBuffer buffer = new();
         string scopeKey = "review-scope";
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
 
         buffer.Submit(scopeKey, approved: true, message: "original");
         IAgentAttemptLease lease = buffer.BeginAttempt(scopeKey, attemptId);

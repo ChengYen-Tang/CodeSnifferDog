@@ -63,7 +63,7 @@ public sealed class ReviewAnalysisExecutorTests
     [TestMethod]
     public async Task AnalyzeAsync_WorkerThrows_DisposesWorkerAndFlushesAgentStatusEvents()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestWorker worker = new(CreateAnalysisResult())
         {
             Exception = new InvalidOperationException("worker failed."),
@@ -93,7 +93,7 @@ public sealed class ReviewAnalysisExecutorTests
     [TestMethod]
     public async Task AnalyzeAsync_WorkerFactoryThrows_FlushesAgentStatusEvents()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestWorker worker = new(CreateAnalysisResult());
         TestWorkerFactory workerFactory = new(worker)
         {
@@ -131,7 +131,7 @@ public sealed class ReviewAnalysisExecutorTests
         IEventSubscriberFactory? subscriberFactory = null)
     {
         InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
+        string databaseName = Guid.CreateVersion7().ToString("N");
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));
@@ -169,7 +169,7 @@ public sealed class ReviewAnalysisExecutorTests
     private static ProjectAnalysisContext CreateContext() =>
         new()
         {
-            ProjectId = Guid.NewGuid(),
+            ProjectId = Guid.CreateVersion7(),
             RepositoryRootPath = TestRepositoryPaths.RootPath,
         };
 

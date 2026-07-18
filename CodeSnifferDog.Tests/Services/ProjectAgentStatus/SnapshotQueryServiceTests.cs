@@ -18,7 +18,7 @@ public sealed class SnapshotQueryServiceTests
         SnapshotQueryService service = new(CreateDbContextFactory());
 
         SnapshotReadModel? snapshot = await service.GetSnapshotAsync(
-            Guid.NewGuid(),
+            Guid.CreateVersion7(),
             selectedAgentId: null,
             TestContext.CancellationToken);
 
@@ -29,14 +29,14 @@ public sealed class SnapshotQueryServiceTests
     public async Task GetSnapshotAsync_ResolvesSelectedAgentAndOrdersTimeline()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
-        Guid agentId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
         await SeedProjectTreeAsync(dbContextFactory, projectId, agentId);
         SnapshotQueryService service = new(dbContextFactory);
 
         SnapshotReadModel? snapshot = await service.GetSnapshotAsync(
             projectId,
-            selectedAgentId: Guid.NewGuid(),
+            selectedAgentId: Guid.CreateVersion7(),
             TestContext.CancellationToken);
 
         Assert.IsNotNull(snapshot);
@@ -52,9 +52,9 @@ public sealed class SnapshotQueryServiceTests
     public async Task GetAgentHistoryAsync_RequiresAgentToBelongToProject()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
-        Guid otherProjectId = Guid.NewGuid();
-        Guid agentId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid otherProjectId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
         await SeedProjectTreeAsync(dbContextFactory, projectId, agentId);
         SnapshotQueryService service = new(dbContextFactory);
 
@@ -69,7 +69,7 @@ public sealed class SnapshotQueryServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);
@@ -83,7 +83,7 @@ public sealed class SnapshotQueryServiceTests
         await using CodeSnifferDogServerDbContext dbContext =
             await dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-        Guid groupId = Guid.NewGuid();
+        Guid groupId = Guid.CreateVersion7();
         dbContext.Projects.Add(new ProjectRecord
         {
             Id = projectId,
@@ -116,7 +116,7 @@ public sealed class SnapshotQueryServiceTests
         dbContext.ProjectAgentTimelineEntries.AddRange(
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentId,
                 Sequence = 2,
                 EntryType = ProjectAgentTimelineEntryType.Output,
@@ -125,7 +125,7 @@ public sealed class SnapshotQueryServiceTests
             },
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentId,
                 Sequence = 1,
                 EntryType = ProjectAgentTimelineEntryType.Output,

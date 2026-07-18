@@ -55,7 +55,7 @@ internal static class AgentRunGuard
 
         for (int attempt = 1; maxConsecutiveFailures == 0 || attempt <= maxConsecutiveFailures; attempt++)
         {
-            Guid attemptId = Guid.NewGuid();
+            Guid attemptId = Guid.CreateVersion7();
             TSnapshot snapshot = prepareAttempt(attemptId);
             DateTimeOffset attemptRunStartedAtUtc = DateTimeOffset.MinValue;
 

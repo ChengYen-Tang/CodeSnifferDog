@@ -214,6 +214,82 @@ public sealed class ChatReducerTests
     }
 
     [TestMethod]
+    public async Task CompactReactiveAsync_PreservesTheEntireFinalParallelToolGroup()
+    {
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        ChatReducer reducer = CreateReducer(
+            summarizer,
+            modelContextWindowTokens: 20_000,
+            preservedTailMinMessages: 1,
+            preservedTailMinTokens: 1,
+            preservedTailMaxTokens: 10_000);
+
+        CompactionResult result = await reducer.CompactReactiveAsync(
+            [
+                new ChatMessage(ChatRole.User, "user-1"),
+                new ChatMessage(ChatRole.Assistant,
+                [
+                    new FunctionCallContent("call-a", "ToolA", new Dictionary<string, object?>()),
+                    new FunctionCallContent("call-b", "ToolB", new Dictionary<string, object?>()),
+                ]),
+                new ChatMessage(ChatRole.Tool, [new FunctionResultContent("call-a", "result-a")]),
+                new ChatMessage(ChatRole.Tool, [new FunctionResultContent("call-b", "result-b")]),
+            ],
+            TestContext.CancellationToken);
+
+        Assert.HasCount(3, result.MessagesToKeep);
+        Assert.IsTrue(result.MessagesToKeep[0].Contents.OfType<FunctionCallContent>().Any());
+        CollectionAssert.AreEquivalent(
+            new[] { "call-a", "call-b" },
+            result.MessagesToKeep
+                .SelectMany(static message => message.Contents.OfType<FunctionResultContent>())
+                .Select(static result => result.CallId)
+                .ToArray());
+    }
+
+    [TestMethod]
+    public async Task CompactReactiveAsync_DefersCompactionUntilTheFinalToolGroupIsComplete()
+    {
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        ChatReducer reducer = CreateReducer(summarizer, modelContextWindowTokens: 20_000);
+        ChatMessage[] messages =
+        [
+            new(ChatRole.User, "user-1"),
+            new(ChatRole.Assistant,
+            [
+                new TextContent("I will inspect the project."),
+                new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?>()),
+            ]),
+        ];
+
+        CompactionResult result = await reducer.CompactReactiveAsync(messages, TestContext.CancellationToken);
+
+        Assert.IsFalse(result.WasCompacted);
+        Assert.AreEqual(0, summarizer.CallCount);
+        CollectionAssert.AreEqual(messages, result.MessagesToKeep.ToArray());
+    }
+
+    [TestMethod]
+    public async Task CompactReactiveAsync_DefersCompactionWhenMessagesInterruptAToolGroup()
+    {
+        RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");
+        ChatReducer reducer = CreateReducer(summarizer, modelContextWindowTokens: 20_000);
+        ChatMessage[] messages =
+        [
+            new(ChatRole.User, "user-1"),
+            new(ChatRole.Assistant, [new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?>())]),
+            new(ChatRole.Assistant, "I am still working."),
+            new(ChatRole.Tool, [new FunctionResultContent("call-1", "result-1")]),
+        ];
+
+        CompactionResult result = await reducer.CompactReactiveAsync(messages, TestContext.CancellationToken);
+
+        Assert.IsFalse(result.WasCompacted);
+        Assert.AreEqual(0, summarizer.CallCount);
+        CollectionAssert.AreEqual(messages, result.MessagesToKeep.ToArray());
+    }
+
+    [TestMethod]
     public async Task ReduceAsync_UsesPreCallEstimatedTokens_ForAutomaticThreshold()
     {
         RecordingSummarizer summarizer = new("<summary>Current objective\nCompleted work\nNext steps</summary>");

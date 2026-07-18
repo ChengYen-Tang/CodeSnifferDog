@@ -13,7 +13,7 @@ public sealed class CommandToolServiceTests
     [TestMethod]
     public void Constructor_Throws_WhenRepositoryRootPathDoesNotExist()
     {
-        string missingPath = Path.Combine(Path.GetTempPath(), "CodeSnifferDog.Tests", Guid.NewGuid().ToString("N"));
+        string missingPath = Path.Combine(Path.GetTempPath(), "CodeSnifferDog.Tests", Guid.CreateVersion7().ToString("N"));
 
         Assert.ThrowsExactly<DirectoryNotFoundException>(() => new CommonCommandToolService(missingPath));
     }
@@ -226,7 +226,7 @@ public sealed class CommandToolServiceTests
 
     private static string CreateTemporaryDirectory()
     {
-        string path = Path.Combine(Path.GetTempPath(), "CodeSnifferDog.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(Path.GetTempPath(), "CodeSnifferDog.Tests", Guid.CreateVersion7().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
     }

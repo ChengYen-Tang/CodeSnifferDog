@@ -34,7 +34,7 @@ public sealed class QueryServiceTests
         QueryService service = new(dbContextFactory, new ProjectStatusMapper());
 
         SnapshotReadModel snapshot = await service.GetSnapshotAsync(
-            selectedProjectId: Guid.NewGuid(),
+            selectedProjectId: Guid.CreateVersion7(),
             TestContext.CancellationToken);
 
         CollectionAssert.AreEqual(
@@ -63,7 +63,7 @@ public sealed class QueryServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);

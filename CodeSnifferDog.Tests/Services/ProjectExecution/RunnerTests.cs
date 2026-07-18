@@ -23,7 +23,7 @@ public sealed class RunnerTests
     [TestMethod]
     public async Task RunAsync_LoadsRules_RunsExecutor_AndCompletesAnalysis()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestReviewAnalysisExecutor analysisExecutor = new(CreateAnalysisResult());
         TestAnalysisCompletionService completionService = new();
         Runner runner = CreateRunner(analysisExecutor, completionService, out _, out FixedRuleMarkdownProvider ruleMarkdownProvider);
@@ -47,7 +47,7 @@ public sealed class RunnerTests
     [TestMethod]
     public async Task RunAsync_ClearsExistingAgentStatusData_BeforeRunningExecutor()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestReviewAnalysisExecutor analysisExecutor = new(CreateAnalysisResult());
         TestAnalysisCompletionService completionService = new();
         Runner runner = CreateRunner(analysisExecutor, completionService, out IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory, out _);
@@ -87,7 +87,7 @@ public sealed class RunnerTests
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             runner.RunAsync(new ProjectAnalysisContext
             {
-                ProjectId = Guid.NewGuid(),
+                ProjectId = Guid.CreateVersion7(),
                 RepositoryRootPath = TestRepositoryPaths.RootPath,
             }, TestContext.CancellationToken));
 
@@ -104,7 +104,7 @@ public sealed class RunnerTests
         InMemoryDatabaseRoot databaseRoot = new();
         DbContextOptions<CodeSnifferDogServerDbContext> dbContextOptions =
             new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString("N"), databaseRoot)
+                .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"), databaseRoot)
                 .Options;
         dbContextFactory = new TestDbContextFactory(dbContextOptions);
         ruleMarkdownProvider = new FixedRuleMarkdownProvider();
@@ -144,7 +144,7 @@ public sealed class RunnerTests
         await using CodeSnifferDogServerDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
         dbContext.ProjectAgentGroups.Add(new ProjectAgentGroupRecord
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectId = projectId,
             RuntimeKey = "group-a",
             DisplayName = "Group A",

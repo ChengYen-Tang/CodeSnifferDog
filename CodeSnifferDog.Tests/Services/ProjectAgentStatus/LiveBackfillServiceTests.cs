@@ -21,10 +21,10 @@ public sealed class LiveBackfillServiceTests
     [TestMethod]
     public async Task GetBackfillAsync_ReplaysProjectTreeAndOnlyMissingTimelineTail()
     {
-        Guid projectId = Guid.NewGuid();
-        Guid groupId = Guid.NewGuid();
-        Guid agentAId = Guid.NewGuid();
-        Guid agentBId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentAId = Guid.CreateVersion7();
+        Guid agentBId = Guid.CreateVersion7();
 
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
@@ -81,10 +81,10 @@ public sealed class LiveBackfillServiceTests
     [TestMethod]
     public async Task GetBackfillAsync_UnsupportedAgentStatusThrowsBackfillCompatibleException()
     {
-        Guid projectId = Guid.NewGuid();
-        Guid groupId = Guid.NewGuid();
-        Guid agentAId = Guid.NewGuid();
-        Guid agentBId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentAId = Guid.CreateVersion7();
+        Guid agentBId = Guid.CreateVersion7();
 
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
@@ -171,7 +171,7 @@ public sealed class LiveBackfillServiceTests
         dbContext.ProjectAgentTimelineEntries.AddRange(
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentAId,
                 Sequence = 1,
                 EntryType = ProjectAgentTimelineEntryType.Output,
@@ -180,7 +180,7 @@ public sealed class LiveBackfillServiceTests
             },
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentAId,
                 Sequence = 2,
                 EntryType = ProjectAgentTimelineEntryType.Output,
@@ -189,7 +189,7 @@ public sealed class LiveBackfillServiceTests
             },
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentBId,
                 Sequence = 1,
                 EntryType = ProjectAgentTimelineEntryType.Tool,
@@ -206,7 +206,7 @@ public sealed class LiveBackfillServiceTests
     private static ServiceProvider CreateServices()
     {
         InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
+        string databaseName = Guid.CreateVersion7().ToString("N");
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));

@@ -1,5 +1,6 @@
 using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Transcript;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 using CodeSnifferDog.Models.ContextCompaction.Continuity;
@@ -183,6 +184,7 @@ internal sealed class CompactionResultBuilder(
 
     /// <summary>
     /// Selects the youngest non-system suffix that satisfies the configured preserved-tail minimums without exceeding the max-token cutoff.
+    /// The suffix start is expanded when needed so a function call and its result are never split apart.
     /// </summary>
     /// <param name="nonSystemMessages">Non-system messages in original transcript order.</param>
     /// <returns>The non-system messages that should remain active after compaction.</returns>
@@ -191,7 +193,7 @@ internal sealed class CompactionResultBuilder(
         if (nonSystemMessages.Count == 0)
             return [];
 
-        List<ChatMessage> keptMessages = [];
+        int firstSelectedMessageIndex = nonSystemMessages.Count;
         int totalTokens = 0;
         int messageCount = 0;
 
@@ -200,10 +202,10 @@ internal sealed class CompactionResultBuilder(
             ChatMessage message = nonSystemMessages[index];
             int messageTokens = TokenEstimator.Estimate([message]);
 
-            if (keptMessages.Count > 0 && totalTokens >= options.PreservedTailMaxTokens)
+            if (messageCount > 0 && totalTokens >= options.PreservedTailMaxTokens)
                 break;
 
-            keptMessages.Insert(0, message);
+            firstSelectedMessageIndex = index;
             totalTokens += messageTokens;
             messageCount++;
 
@@ -215,7 +217,8 @@ internal sealed class CompactionResultBuilder(
                 break;
         }
 
-        return keptMessages;
+        int safeStartIndex = ToolCallTranscript.GetSafeTailStartIndex(nonSystemMessages, firstSelectedMessageIndex);
+        return [.. nonSystemMessages.Skip(safeStartIndex)];
     }
 
     /// <summary>
@@ -291,7 +294,7 @@ internal sealed class CompactionResultBuilder(
             !string.IsNullOrWhiteSpace(existingId))
             return existingId;
 
-        string generatedId = $"{index:D8}:{message.Role}:{Guid.NewGuid():N}";
+        string generatedId = $"{index:D8}:{message.Role}:{Guid.CreateVersion7():N}";
         message.AdditionalProperties[CompactionArtifactMetadata.MessageIdentityKey] = generatedId;
         return generatedId;
     }

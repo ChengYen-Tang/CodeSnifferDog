@@ -16,7 +16,7 @@ public sealed class BackfillQueryServiceTests
     public async Task GetBackfillAsync_WhenProjectIsMissing_ReturnsEmptyReadModel()
     {
         BackfillQueryService service = new(CreateDbContextFactory());
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
 
         BackfillReadModel result = await service.GetBackfillAsync(
             new LiveSubscriptionRequestDto
@@ -37,9 +37,9 @@ public sealed class BackfillQueryServiceTests
     public async Task GetBackfillAsync_ReturnsOrderedProjectTreeAndRequestedTimelineTail()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
-        Guid groupId = Guid.NewGuid();
-        Guid agentId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
         await SeedProjectTreeAsync(dbContextFactory, projectId, groupId, agentId);
         BackfillQueryService service = new(dbContextFactory);
 
@@ -64,12 +64,12 @@ public sealed class BackfillQueryServiceTests
     public async Task GetBackfillAsync_WhenRequestedAgentBelongsToDifferentProject_ReturnsEmptyTimelineTail()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
-        Guid groupId = Guid.NewGuid();
-        Guid agentId = Guid.NewGuid();
-        Guid otherProjectId = Guid.NewGuid();
-        Guid otherGroupId = Guid.NewGuid();
-        Guid otherAgentId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
+        Guid otherProjectId = Guid.CreateVersion7();
+        Guid otherGroupId = Guid.CreateVersion7();
+        Guid otherAgentId = Guid.CreateVersion7();
         await SeedProjectTreeAsync(dbContextFactory, projectId, groupId, agentId);
         await SeedProjectTreeAsync(dbContextFactory, otherProjectId, otherGroupId, otherAgentId);
         BackfillQueryService service = new(dbContextFactory);
@@ -92,7 +92,7 @@ public sealed class BackfillQueryServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);
@@ -139,7 +139,7 @@ public sealed class BackfillQueryServiceTests
         dbContext.ProjectAgentTimelineEntries.AddRange(
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentId,
                 Sequence = 1,
                 EntryType = ProjectAgentTimelineEntryType.Output,
@@ -148,7 +148,7 @@ public sealed class BackfillQueryServiceTests
             },
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = agentId,
                 Sequence = 2,
                 EntryType = ProjectAgentTimelineEntryType.Output,

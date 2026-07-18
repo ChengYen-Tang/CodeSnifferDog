@@ -20,7 +20,7 @@ public sealed class InMemoryScanProjectStore : IScanProjectStore
         ArgumentNullException.ThrowIfNull(project);
         StoredScanProject storedProject = ScanProjectStateStore.CreateStoredProject(
             project,
-            Guid.NewGuid().ToString("N"));
+            Guid.CreateVersion7().ToString("N"));
 
         lock (_syncRoot)
         {

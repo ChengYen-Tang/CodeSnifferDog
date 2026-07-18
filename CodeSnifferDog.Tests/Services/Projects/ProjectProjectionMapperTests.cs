@@ -37,7 +37,7 @@ public sealed class ProjectProjectionMapperTests
     {
         ProjectProjectionMapper mapper = CreateMapper();
         ProjectSummaryProjection project = new(
-            Guid.NewGuid(),
+            Guid.CreateVersion7(),
             "repo.zip",
             ProjectProcessingStatus.Failed,
             FileSizeBytes: 123,
@@ -67,7 +67,7 @@ public sealed class ProjectProjectionMapperTests
     {
         ProjectProjectionMapper mapper = CreateMapper();
         ProjectListItemProjection project = new(
-            Guid.NewGuid(),
+            Guid.CreateVersion7(),
             "repo.zip",
             ProjectProcessingStatus.Completed,
             new DateTimeOffset(2026, 5, 15, 8, 0, 0, TimeSpan.Zero));
@@ -85,7 +85,7 @@ public sealed class ProjectProjectionMapperTests
     {
         ProjectProjectionMapper mapper = CreateMapper();
         ProjectProjection project = new(
-            Guid.NewGuid(),
+            Guid.CreateVersion7(),
             "repo.zip",
             ProjectProcessingStatus.Reviewing,
             new DateTimeOffset(2026, 5, 15, 8, 0, 0, TimeSpan.Zero),

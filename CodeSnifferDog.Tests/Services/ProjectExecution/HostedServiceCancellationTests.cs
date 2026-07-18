@@ -29,7 +29,7 @@ public sealed class HostedServiceCancellationTests
     [TestMethod]
     public async Task RunClaimedProjectAsync_UserCancel_UpdatesDatabaseToCanceled_AndPublishesChange()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestProjectChangePublisher projectChangePublisher = new();
         TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new CancelAwareAnalysisRunner());
@@ -58,7 +58,7 @@ public sealed class HostedServiceCancellationTests
     [TestMethod]
     public async Task RunClaimedProjectAsync_HostShutdown_PreservesReviewingState_AndDoesNotPublishChange()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestProjectChangePublisher projectChangePublisher = new();
         TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new CancelAwareAnalysisRunner());
@@ -87,7 +87,7 @@ public sealed class HostedServiceCancellationTests
     [TestMethod]
     public async Task RunClaimedProjectAsync_Success_PublishesCompletedStatusUpdate()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestProjectChangePublisher projectChangePublisher = new();
         TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new SuccessfulAnalysisRunner());
@@ -110,7 +110,7 @@ public sealed class HostedServiceCancellationTests
     [TestMethod]
     public async Task RunClaimedProjectAsync_Failure_PublishesFailedStatusUpdate()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestProjectChangePublisher projectChangePublisher = new();
         TestLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider services = CreateServices(projectChangePublisher, liveUpdateNotifier, new FailingAnalysisRunner());
@@ -133,7 +133,7 @@ public sealed class HostedServiceCancellationTests
     [TestMethod]
     public async Task RunClaimedProjectAsync_WhenProjectIsNoLongerReviewing_CleansArtifactsAndDoesNotRunAnalysis()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         TestProjectChangePublisher projectChangePublisher = new();
         TestLiveUpdateNotifier liveUpdateNotifier = new();
         TrackingAnalysisRunner analysisRunner = new();
@@ -175,7 +175,7 @@ public sealed class HostedServiceCancellationTests
         IProjectAnalysisRunner analysisRunner)
     {
         InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
+        string databaseName = Guid.CreateVersion7().ToString("N");
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));

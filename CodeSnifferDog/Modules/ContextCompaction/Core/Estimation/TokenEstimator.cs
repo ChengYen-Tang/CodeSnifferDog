@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 using SharedTokenEstimator = CodeSnifferDog.Modules.Estimation.TokenEstimator;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
@@ -8,6 +9,8 @@ namespace CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 /// </summary>
 internal static class TokenEstimator
 {
+    private static readonly JsonSerializerOptions StructuredPayloadSerializerOptions = new(JsonSerializerDefaults.Web);
+
     /// <summary>
     /// Estimates the token cost of a message sequence.
     /// </summary>
@@ -44,7 +47,7 @@ internal static class TokenEstimator
             DataContent data => data.Data.Length + GetStringByteCount(data.MediaType) + GetStringByteCount(data.Name),
             UriContent uri => GetStringByteCount(uri.Uri?.OriginalString) + GetStringByteCount(uri.MediaType),
             FunctionCallContent call => GetStringByteCount(call.CallId) + GetStringByteCount(call.Name) + EstimateArgumentsBytes(call.Arguments),
-            FunctionResultContent result => GetStringByteCount(result.CallId) + GetStringByteCount(result.Result?.ToString()),
+            FunctionResultContent result => GetStringByteCount(result.CallId) + GetStructuredValueByteCount(result.Result),
             ErrorContent error => GetStringByteCount(error.Message) + GetStringByteCount(error.ErrorCode) + GetStringByteCount(error.Details),
             HostedFileContent file => GetStringByteCount(file.FileId) + GetStringByteCount(file.MediaType) + GetStringByteCount(file.Name),
             _ => 0,
@@ -58,9 +61,45 @@ internal static class TokenEstimator
         int total = 0;
 
         foreach ((string key, object? value) in arguments)
-            total += GetStringByteCount(key) + GetStringByteCount(value?.ToString());
+            total += GetStringByteCount(key) + GetStructuredValueByteCount(value);
 
         return total;
+    }
+
+    /// <summary>
+    /// Measures a tool value without losing collection or object content through <see cref="object.ToString"/>.
+    /// </summary>
+    /// <param name="value">The argument or result value carried by a tool message.</param>
+    /// <returns>The estimated UTF-8 byte count of the value as it would be represented structurally.</returns>
+    private static int GetStructuredValueByteCount(object? value)
+    {
+        if (value is null)
+            return 0;
+
+        if (value is string text)
+            return GetStringByteCount(text);
+
+        if (value is JsonElement jsonElement)
+            return GetStringByteCount(jsonElement.GetRawText());
+
+        if (value is JsonDocument jsonDocument)
+            return GetStringByteCount(jsonDocument.RootElement.GetRawText());
+
+        try
+        {
+            return JsonSerializer.SerializeToUtf8Bytes(
+                value,
+                value.GetType(),
+                StructuredPayloadSerializerOptions).Length;
+        }
+        catch (JsonException)
+        {
+            return GetStringByteCount(value.ToString());
+        }
+        catch (NotSupportedException)
+        {
+            return GetStringByteCount(value.ToString());
+        }
     }
 
     private static int GetStringByteCount(string? value) =>

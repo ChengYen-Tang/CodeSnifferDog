@@ -36,7 +36,7 @@ internal sealed class ScopedAttemptWriteGuard<TKey>
     {
         ArgumentNullException.ThrowIfNull(restore);
 
-        Guid staleWriteBlockerAttemptId = Guid.NewGuid();
+        Guid staleWriteBlockerAttemptId = Guid.CreateVersion7();
         _activeAttemptIds[key] = attemptId;
 
         return new AgentAttemptLease(() =>

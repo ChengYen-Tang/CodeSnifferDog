@@ -97,7 +97,7 @@ public sealed class AgentTimelineEntryViewTests
         string? toolArguments = null,
         string? toolResult = null) => new()
         {
-            TimelineEntryId = Guid.NewGuid(),
+            TimelineEntryId = Guid.CreateVersion7(),
             AgentId = Guid.Parse("92000000-0000-0000-0000-000000000001"),
             Sequence = 1,
             EntryKind = kind,

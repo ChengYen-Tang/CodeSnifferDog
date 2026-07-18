@@ -88,7 +88,7 @@ public sealed class ServiceCollectionExtensionsTests
         CollectingLiveUpdateNotifier liveUpdateNotifier = new();
         using ServiceProvider serviceProvider = CreateServiceProvider(liveUpdateNotifier);
         using IServiceScope scope = serviceProvider.CreateScope();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         IEventSubscriberFactory subscriberFactory =
             scope.ServiceProvider.GetRequiredService<IEventSubscriberFactory>();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
@@ -238,7 +238,7 @@ public sealed class ServiceCollectionExtensionsTests
         services.AddSignalR();
         services.AddCodeSnifferDogServerServices(
             CreateConfiguration(),
-            options => options.UseInMemoryDatabase(Guid.NewGuid().ToString("N")));
+            options => options.UseInMemoryDatabase(Guid.CreateVersion7().ToString("N")));
 
         if (liveUpdateNotifier is not null)
             services.AddSingleton<ILiveUpdateNotifier>(liveUpdateNotifier);

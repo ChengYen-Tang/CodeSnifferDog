@@ -65,7 +65,7 @@ public sealed class CommandProcessRunnerTests
     /// <returns>The created directory path.</returns>
     private static string CreateTemporaryDirectory()
     {
-        string path = Path.Combine(Path.GetTempPath(), "CodeSnifferDog.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(Path.GetTempPath(), "CodeSnifferDog.Tests", Guid.CreateVersion7().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
     }

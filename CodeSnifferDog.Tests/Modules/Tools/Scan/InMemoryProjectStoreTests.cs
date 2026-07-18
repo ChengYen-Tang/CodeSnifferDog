@@ -12,7 +12,7 @@ public sealed class InMemoryProjectStoreTests
     {
         InMemoryScanProjectStore store = new();
         await store.AddAsync(CreateProject("repo"), CancellationToken.None);
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
         IAgentAttemptLease lease = store.BeginAttempt(attemptId);
 
         await AgentRunAttemptContext.RunAsync(attemptId, async () =>
@@ -33,7 +33,7 @@ public sealed class InMemoryProjectStoreTests
     {
         InMemoryScanProjectStore store = new();
         await store.AddAsync(CreateProject("repo"), CancellationToken.None);
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
         IAgentAttemptLease lease = store.BeginAttempt(attemptId);
 
         lease.Restore();
@@ -51,7 +51,7 @@ public sealed class InMemoryProjectStoreTests
     {
         InMemoryScanProjectStore store = new();
         StoredScanProject project = await store.AddAsync(CreateProject("repo"), CancellationToken.None);
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
         IAgentAttemptLease lease = store.BeginAttempt(attemptId);
         lease.Restore();
 

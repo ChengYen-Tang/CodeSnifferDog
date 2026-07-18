@@ -26,7 +26,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(issue);
         StoredIssue generatedIssue = RuleIssueStoreMapper.CreateReviewIssue(
             normalizedIssue,
-            Guid.NewGuid().ToString("N"));
+            Guid.CreateVersion7().ToString("N"));
 
         lock (_syncRoot)
         {

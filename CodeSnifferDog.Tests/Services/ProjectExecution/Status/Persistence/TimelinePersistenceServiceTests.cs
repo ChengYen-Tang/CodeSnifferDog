@@ -189,22 +189,22 @@ public sealed class TimelinePersistenceServiceTests
 
     private static CodeSnifferDogServerDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options);
 
     private static async Task<Guid> SeedAgentAsync(CodeSnifferDogServerDbContext dbContext)
     {
         ProjectAgentGroupRecord group = new()
         {
-            Id = Guid.NewGuid(),
-            ProjectId = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
+            ProjectId = Guid.CreateVersion7(),
             RuntimeKey = "group",
             DisplayName = "Group",
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
         ProjectAgentRecord agent = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentGroupId = group.Id,
             RuntimeKey = "agent",
             DisplayName = "Agent",
@@ -227,7 +227,7 @@ public sealed class TimelinePersistenceServiceTests
     {
         ProjectAgentTimelineEntryRecord entry = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentId = agentId,
             Sequence = sequence,
             EntryType = entryType,

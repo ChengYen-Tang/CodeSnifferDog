@@ -15,7 +15,7 @@ public sealed class ExecutionArtifactStoreTests
     {
         ProjectTemporaryStoragePaths storagePaths = CreateStoragePaths();
         ExecutionArtifactStore store = CreateStore(storagePaths);
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         string storedZipRelativePath = storagePaths.ResolveUploadedZipRelativePath(projectId);
         string uploadedZipPath = storagePaths.ResolveStoredZipPath(storedZipRelativePath);
         CreateZip(uploadedZipPath, "Program.cs", "class Program {}");
@@ -32,7 +32,7 @@ public sealed class ExecutionArtifactStoreTests
     {
         ProjectTemporaryStoragePaths storagePaths = CreateStoragePaths();
         ExecutionArtifactStore store = CreateStore(storagePaths);
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         string extractedPath = storagePaths.ResolveExtractedProjectPath(projectId);
         Directory.CreateDirectory(extractedPath);
 
@@ -48,7 +48,7 @@ public sealed class ExecutionArtifactStoreTests
     {
         ProjectTemporaryStoragePaths storagePaths = CreateStoragePaths();
         ExecutionArtifactStore store = CreateStore(storagePaths);
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
 
         Assert.ThrowsExactly<FileNotFoundException>(() => store.PrepareRepository(CreateClaim(
             projectId,
@@ -60,7 +60,7 @@ public sealed class ExecutionArtifactStoreTests
     {
         ProjectTemporaryStoragePaths storagePaths = CreateStoragePaths();
         ExecutionArtifactStore store = CreateStore(storagePaths);
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
 
         store.TryDeleteUploadedZipFile(storagePaths.ResolveUploadedZipRelativePath(projectId), projectId);
         store.TryDeleteExtractedProjectDirectory(projectId);
@@ -81,7 +81,7 @@ public sealed class ExecutionArtifactStoreTests
 
     private static void CreateZip(string zipPath, string entryName, string content)
     {
-        string sourceDirectory = Path.Combine(Path.GetTempPath(), $"codesnifferdog-zip-{Guid.NewGuid():N}");
+        string sourceDirectory = Path.Combine(Path.GetTempPath(), $"codesnifferdog-zip-{Guid.CreateVersion7():N}");
         Directory.CreateDirectory(sourceDirectory);
         try
         {

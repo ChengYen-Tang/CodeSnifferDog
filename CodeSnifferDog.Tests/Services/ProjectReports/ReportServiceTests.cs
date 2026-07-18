@@ -20,7 +20,7 @@ public sealed class ReportServiceTests
     public async Task ReplaceProjectReportsAsync_ReplacesReportsAndComputesStableHash()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         await SeedProjectAsync(dbContextFactory, projectId, seedReports: true);
         ReportService service = CreateService(dbContextFactory, new StubQueryService());
 
@@ -60,7 +60,7 @@ public sealed class ReportServiceTests
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         ReportService service = CreateService(dbContextFactory, new StubQueryService());
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
 
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.ReplaceProjectReportsAsync(projectId, [], TestContext.CancellationToken));
@@ -72,7 +72,7 @@ public sealed class ReportServiceTests
     public async Task GetProjectReportListAsync_UsesQueryServiceAndMapper()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         ProjectProjection projectProjection = CreateProjectProjection();
         StubQueryService queryService = new(projectProjection);
         TrackingProjectionMapper mapper = new();
@@ -95,7 +95,7 @@ public sealed class ReportServiceTests
     public async Task GetProjectReportBundleAsync_UsesQueryServiceAndMapper()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         ProjectProjection projectProjection = CreateProjectProjection();
         StubQueryService queryService = new(projectProjection);
         TrackingProjectionMapper mapper = new();
@@ -118,8 +118,8 @@ public sealed class ReportServiceTests
     public async Task GetProjectReportAsync_UsesQueryServiceAndMapper()
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
-        Guid projectId = Guid.NewGuid();
-        Guid reportId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
+        Guid reportId = Guid.CreateVersion7();
         RuleReportProjection reportProjection = new(reportId, "Rule A", "# Rule A");
         StubQueryService queryService = new(reportProjection: reportProjection);
         TrackingProjectionMapper mapper = new();
@@ -148,7 +148,7 @@ public sealed class ReportServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);
@@ -175,7 +175,7 @@ public sealed class ReportServiceTests
         });
 
         if (seedReports)
-            dbContext.ProjectRuleReports.Add(CreateReport(projectId, Guid.NewGuid(), "old-rule", "Old Rule", "# Old"));
+            dbContext.ProjectRuleReports.Add(CreateReport(projectId, Guid.CreateVersion7(), "old-rule", "Old Rule", "# Old"));
 
         await dbContext.SaveChangesAsync(TestContext.CancellationToken);
     }
@@ -204,7 +204,7 @@ public sealed class ReportServiceTests
     }
 
     private static ProjectProjection CreateProjectProjection() =>
-        new("repo.zip", [new RuleReportProjection(Guid.NewGuid(), "Rule A", "# Rule A")]);
+        new("repo.zip", [new RuleReportProjection(Guid.CreateVersion7(), "Rule A", "# Rule A")]);
 
     private sealed class StubQueryService(
         ProjectProjection? projectProjection = null,

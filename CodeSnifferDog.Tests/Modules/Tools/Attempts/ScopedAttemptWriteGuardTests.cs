@@ -18,7 +18,7 @@ public sealed class ScopedAttemptWriteGuardTests
     public async Task CanWrite_AllowsWrites_WhenCurrentAttemptMatches()
     {
         ScopedAttemptWriteGuard<string> guard = new();
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
 
         guard.BeginAttempt("scope", attemptId, () => { });
 
@@ -33,7 +33,7 @@ public sealed class ScopedAttemptWriteGuardTests
     public async Task Restore_BlocksLateWritesFromStaleAttempt()
     {
         ScopedAttemptWriteGuard<string> guard = new();
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
         IAgentAttemptLease lease = guard.BeginAttempt("scope", attemptId, () => { });
 
         lease.Restore();
@@ -49,7 +49,7 @@ public sealed class ScopedAttemptWriteGuardTests
     public async Task ActiveAttempts_DoNotBlockOtherKeys()
     {
         ScopedAttemptWriteGuard<string> guard = new();
-        Guid attemptId = Guid.NewGuid();
+        Guid attemptId = Guid.CreateVersion7();
 
         guard.BeginAttempt("first", attemptId, () => { });
 

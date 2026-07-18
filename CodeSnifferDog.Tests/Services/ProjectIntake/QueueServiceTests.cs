@@ -21,7 +21,7 @@ public sealed class QueueServiceTests
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         QueueService service = CreateService(dbContextFactory);
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         DateTimeOffset nowUtc = new(2026, 5, 15, 8, 0, 0, TimeSpan.Zero);
 
         ProjectUploadResult result = await service.QueueAsync(
@@ -62,7 +62,7 @@ public sealed class QueueServiceTests
 
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => service.QueueAsync(
-                new Request(Guid.NewGuid(), "repo.zip", 123, "uploads/repo.zip", DateTimeOffset.UtcNow),
+                new Request(Guid.CreateVersion7(), "repo.zip", 123, "uploads/repo.zip", DateTimeOffset.UtcNow),
                 TestContext.CancellationToken));
 
         Assert.AreEqual("The project queue is full.", exception.Message);
@@ -79,7 +79,7 @@ public sealed class QueueServiceTests
     private static IDbContextFactory<CodeSnifferDogServerDbContext> CreateDbContextFactory()
     {
         DbContextOptions<CodeSnifferDogServerDbContext> options = new DbContextOptionsBuilder<CodeSnifferDogServerDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .UseInMemoryDatabase(Guid.CreateVersion7().ToString("N"))
             .Options;
 
         return new PooledDbContextFactory<CodeSnifferDogServerDbContext>(options);
@@ -87,7 +87,7 @@ public sealed class QueueServiceTests
 
     private static ProjectRecord CreateQueuedProject() => new()
     {
-        Id = Guid.NewGuid(),
+        Id = Guid.CreateVersion7(),
         OriginalFileName = "queued.zip",
         StoredZipRelativePath = "uploads/queued.zip",
         Status = ProjectProcessingStatus.Queued,

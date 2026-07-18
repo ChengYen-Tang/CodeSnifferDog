@@ -10,7 +10,7 @@ public sealed class PolicyTests
     public void Resolve_ReturnsUserCanceledOutcome_WhenUserRequestedCancellation()
     {
         using CancellationTokenSource hostStoppingTokenSource = new();
-        using Lease lease = new(Guid.NewGuid(), hostStoppingTokenSource.Token, static _ => { });
+        using Lease lease = new(Guid.CreateVersion7(), hostStoppingTokenSource.Token, static _ => { });
 
         bool canceled = lease.TryCancel(Source.UserRequest);
         Outcome outcome = Policy.Resolve(lease);
@@ -26,7 +26,7 @@ public sealed class PolicyTests
     public void Resolve_ReturnsPreserveForRecoveryOutcome_WhenHostStoppingTriggersCancellation()
     {
         using CancellationTokenSource hostStoppingTokenSource = new();
-        using Lease lease = new(Guid.NewGuid(), hostStoppingTokenSource.Token, static _ => { });
+        using Lease lease = new(Guid.CreateVersion7(), hostStoppingTokenSource.Token, static _ => { });
 
         hostStoppingTokenSource.Cancel();
         Outcome outcome = Policy.Resolve(lease);
@@ -41,7 +41,7 @@ public sealed class PolicyTests
     public void HostShutdown_DoesNotOverride_UserRequestedCancellation()
     {
         using CancellationTokenSource hostStoppingTokenSource = new();
-        using Lease lease = new(Guid.NewGuid(), hostStoppingTokenSource.Token, static _ => { });
+        using Lease lease = new(Guid.CreateVersion7(), hostStoppingTokenSource.Token, static _ => { });
 
         bool firstCanceled = lease.TryCancel(Source.UserRequest);
         hostStoppingTokenSource.Cancel();

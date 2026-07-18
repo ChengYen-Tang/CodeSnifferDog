@@ -9,8 +9,8 @@ public sealed class ProjectionMapperTests
     public void MapBundle_MapsProjectAndReportFieldsWithoutSorting()
     {
         ProjectionMapper mapper = new();
-        RuleReportProjection reportB = new(Guid.NewGuid(), "Rule B", "# B");
-        RuleReportProjection reportA = new(Guid.NewGuid(), "Rule A", "# A");
+        RuleReportProjection reportB = new(Guid.CreateVersion7(), "Rule B", "# B");
+        RuleReportProjection reportA = new(Guid.CreateVersion7(), "Rule A", "# A");
 
         var dto = mapper.MapBundle(new ProjectProjection("repo.zip", [reportB, reportA]));
 
@@ -25,7 +25,7 @@ public sealed class ProjectionMapperTests
     public void MapList_MapsProjectAndReportFieldsWithoutSorting()
     {
         ProjectionMapper mapper = new();
-        RuleReportProjection report = new(Guid.NewGuid(), "Rule A", "# A");
+        RuleReportProjection report = new(Guid.CreateVersion7(), "Rule A", "# A");
 
         var dto = mapper.MapList(new ProjectProjection("repo.zip", [report]));
 
@@ -38,7 +38,7 @@ public sealed class ProjectionMapperTests
     public void MapContent_MapsReportFields()
     {
         ProjectionMapper mapper = new();
-        RuleReportProjection report = new(Guid.NewGuid(), "Rule A", "# A");
+        RuleReportProjection report = new(Guid.CreateVersion7(), "Rule A", "# A");
 
         var dto = mapper.MapContent(report);
 

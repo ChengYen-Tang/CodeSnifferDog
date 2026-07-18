@@ -14,7 +14,7 @@ public sealed class UploadServiceTests
     public async Task StoreAsync_StoresZipAndReturnsArtifact()
     {
         UploadService service = CreateService();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         FormFile zipFile = CreateFormFile("repo.zip", "content");
 
         Artifact artifact = await service.StoreAsync(projectId, zipFile, TestContext.CancellationToken);
@@ -34,7 +34,7 @@ public sealed class UploadServiceTests
         FormFile zipFile = CreateFormFile("repo.zip", string.Empty);
 
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => service.StoreAsync(Guid.NewGuid(), zipFile, TestContext.CancellationToken));
+            () => service.StoreAsync(Guid.CreateVersion7(), zipFile, TestContext.CancellationToken));
 
         Assert.AreEqual("The uploaded zip file is empty.", exception.Message);
     }
@@ -46,7 +46,7 @@ public sealed class UploadServiceTests
         FormFile zipFile = CreateFormFile("repo.txt", "content");
 
         InvalidOperationException exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
-            () => service.StoreAsync(Guid.NewGuid(), zipFile, TestContext.CancellationToken));
+            () => service.StoreAsync(Guid.CreateVersion7(), zipFile, TestContext.CancellationToken));
 
         Assert.AreEqual("Only .zip uploads are supported.", exception.Message);
     }
@@ -55,7 +55,7 @@ public sealed class UploadServiceTests
     public async Task StoreAsync_WhenCopyFails_DeletesPartialFile()
     {
         UploadService service = CreateService();
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         ProjectTemporaryStoragePaths storagePaths = new();
         string storedFilePath = storagePaths.ResolveUploadedZipPath(projectId);
 

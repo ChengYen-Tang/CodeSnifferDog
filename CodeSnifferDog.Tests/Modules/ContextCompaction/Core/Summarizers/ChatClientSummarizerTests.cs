@@ -10,7 +10,7 @@ public sealed class ChatClientSummarizerTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
-    public async Task SummarizeAsync_TrimsTrailingToolOnlyMessages_BeforeSummaryCall()
+    public async Task SummarizeAsync_RetainsCompletedTrailingToolGroups_BeforeSummaryCall()
     {
         RecordingChatClient chatClient = new();
         ChatClientSummarizer summarizer = new(chatClient);
@@ -18,8 +18,11 @@ public sealed class ChatClientSummarizerTests
         await summarizer.SummarizeAsync(
             [
                 new ChatMessage(ChatRole.User, "user-1"),
-                new ChatMessage(ChatRole.Assistant, "assistant-1"),
-                new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?>())]),
+                new ChatMessage(ChatRole.Assistant,
+                [
+                    new TextContent("I will inspect the project."),
+                    new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?>()),
+                ]),
                 new ChatMessage(ChatRole.Tool, [new FunctionResultContent("call-1", "ok")]),
             ],
             "summarize now",
@@ -29,10 +32,39 @@ public sealed class ChatClientSummarizerTests
             },
             TestContext.CancellationToken);
 
-        Assert.HasCount(3, chatClient.LastMessages);
+        Assert.HasCount(4, chatClient.LastMessages);
         Assert.AreEqual("user-1", chatClient.LastMessages[0].Text);
-        Assert.AreEqual("assistant-1", chatClient.LastMessages[1].Text);
-        Assert.AreEqual("summarize now", chatClient.LastMessages[2].Text);
+        Assert.AreEqual("I will inspect the project.", chatClient.LastMessages[1].Text);
+        Assert.IsTrue(chatClient.LastMessages[1].Contents.OfType<FunctionCallContent>().Any());
+        Assert.IsTrue(chatClient.LastMessages[2].Contents.OfType<FunctionResultContent>().Any());
+        Assert.AreEqual("summarize now", chatClient.LastMessages[3].Text);
+    }
+
+    [TestMethod]
+    public async Task SummarizeAsync_ExcludesIncompleteTrailingToolGroup_BeforeSummaryCall()
+    {
+        RecordingChatClient chatClient = new();
+        ChatClientSummarizer summarizer = new(chatClient);
+
+        await summarizer.SummarizeAsync(
+            [
+                new ChatMessage(ChatRole.User, "user-1"),
+                new ChatMessage(ChatRole.Assistant,
+                [
+                    new TextContent("I will inspect the project."),
+                    new FunctionCallContent("call-1", "ToolA", new Dictionary<string, object?>()),
+                ]),
+            ],
+            "summarize now",
+            new CompactionOptions
+            {
+                ModelContextWindowTokens = 100,
+            },
+            TestContext.CancellationToken);
+
+        Assert.HasCount(2, chatClient.LastMessages);
+        Assert.AreEqual("user-1", chatClient.LastMessages[0].Text);
+        Assert.AreEqual("summarize now", chatClient.LastMessages[1].Text);
     }
 
     [TestMethod]

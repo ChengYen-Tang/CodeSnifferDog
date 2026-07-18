@@ -55,7 +55,7 @@ internal sealed class ReportService(
 
             ProjectRuleReportRecord reportRecord = new()
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectId = projectId,
                 RuleKey = ruleKey,
                 RuleKeyHash = ComputeStableHash(ruleKey),

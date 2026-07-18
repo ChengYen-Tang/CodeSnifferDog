@@ -38,7 +38,7 @@ public sealed class MarkdownRendererTests
     private static StoredIssue CreateIssue(string severity, string fileOrFunction, string issueType) =>
         new()
         {
-            RuleReportIssueId = Guid.NewGuid().ToString("N"),
+            RuleReportIssueId = Guid.CreateVersion7().ToString("N"),
             IssueType = issueType,
             Severity = severity,
             FileOrFunction = fileOrFunction,

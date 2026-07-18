@@ -52,7 +52,7 @@ public sealed class InMemoryIssueStore : IIssueStore
         NormalizedRuleIssue normalizedIssue = RuleIssueNormalizer.NormalizeToContract(issue);
         ReportStoredIssue generatedIssue = RuleIssueStoreMapper.CreateReportIssue(
             normalizedIssue,
-            Guid.NewGuid().ToString("N"));
+            Guid.CreateVersion7().ToString("N"));
 
         lock (_syncRoot)
         {

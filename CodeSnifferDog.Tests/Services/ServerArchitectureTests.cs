@@ -508,7 +508,7 @@ public sealed class ServerArchitectureTests
         services.AddSignalR();
         services.AddCodeSnifferDogServerServices(
             CreateConfiguration(),
-            options => options.UseInMemoryDatabase(Guid.NewGuid().ToString("N")));
+            options => options.UseInMemoryDatabase(Guid.CreateVersion7().ToString("N")));
         return services;
     }
 

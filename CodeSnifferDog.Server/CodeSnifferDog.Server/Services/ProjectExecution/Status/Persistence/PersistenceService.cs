@@ -45,7 +45,7 @@ internal sealed class PersistenceService(
 
         ProjectAgentGroupRecord group = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectId = _projectId,
             RuntimeKey = agentEvent.GroupKey,
             DisplayName = agentEvent.DisplayName,
@@ -90,7 +90,7 @@ internal sealed class PersistenceService(
 
         ProjectAgentRecord agent = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentGroupId = group.Id,
             RuntimeKey = agentEvent.AgentKey,
             DisplayName = agentEvent.DisplayName,

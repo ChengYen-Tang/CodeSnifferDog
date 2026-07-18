@@ -22,7 +22,7 @@ internal sealed class TimelinePersistenceService : ITimelinePersistenceService
     {
         ProjectAgentTimelineEntryRecord entry = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentId = agentId,
             Sequence = await GetNextSequenceAsync(dbContext, agentId, cancellationToken).ConfigureAwait(false),
             EntryType = entryType,
@@ -125,7 +125,7 @@ internal sealed class TimelinePersistenceService : ITimelinePersistenceService
 
         ProjectAgentTimelineEntryRecord entry = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentId = agentId,
             Sequence = await GetNextSequenceAsync(dbContext, agentId, cancellationToken).ConfigureAwait(false),
             EntryType = ProjectAgentTimelineEntryType.Tool,

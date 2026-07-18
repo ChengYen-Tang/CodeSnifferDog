@@ -47,7 +47,7 @@ internal sealed class ProjectIntakeService(
     /// <inheritdoc />
     public async Task<ProjectUploadResult> UploadAsync(IFormFile zipFile, CancellationToken cancellationToken = default)
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
         Artifact artifact = await _projectUploadService
             .StoreAsync(projectId, zipFile, cancellationToken)

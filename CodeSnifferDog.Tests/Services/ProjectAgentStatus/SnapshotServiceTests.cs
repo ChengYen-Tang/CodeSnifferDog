@@ -25,7 +25,7 @@ public sealed class SnapshotServiceTests
         ISnapshotService service = services.GetRequiredService<ISnapshotService>();
 
         StatusSnapshotDto? snapshot = await service.GetSnapshotAsync(
-            Guid.NewGuid(),
+            Guid.CreateVersion7(),
             selectedAgentId: null,
             TestContext.CancellationToken);
 
@@ -35,7 +35,7 @@ public sealed class SnapshotServiceTests
     [TestMethod]
     public async Task GetSnapshotAsync_MapsProjectTreeAndSortsByConfiguredRules()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -85,7 +85,7 @@ public sealed class SnapshotServiceTests
     [TestMethod]
     public async Task GetAgentHistoryAsync_ReturnsFullTimelineForRequestedAgent()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -115,7 +115,7 @@ public sealed class SnapshotServiceTests
     [TestMethod]
     public async Task GetSnapshotAsync_UnsupportedAgentStatusThrowsSnapshotCompatibleException()
     {
-        Guid projectId = Guid.NewGuid();
+        Guid projectId = Guid.CreateVersion7();
         using ServiceProvider services = CreateServices();
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
             services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
@@ -157,7 +157,7 @@ public sealed class SnapshotServiceTests
 
         ProjectAgentGroupRecord zuluGroup = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectId = projectId,
             RuntimeKey = "group-zulu",
             DisplayName = "Zulu Group",
@@ -166,7 +166,7 @@ public sealed class SnapshotServiceTests
 
         ProjectAgentGroupRecord alphaGroup = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectId = projectId,
             RuntimeKey = "group-alpha",
             DisplayName = "Alpha Group",
@@ -175,7 +175,7 @@ public sealed class SnapshotServiceTests
 
         ProjectAgentRecord betaAgent = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentGroupId = alphaGroup.Id,
             RuntimeKey = "agent-beta",
             DisplayName = "Beta Agent",
@@ -186,7 +186,7 @@ public sealed class SnapshotServiceTests
 
         ProjectAgentRecord alphaAgent = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentGroupId = alphaGroup.Id,
             RuntimeKey = "agent-alpha",
             DisplayName = "Alpha Agent",
@@ -197,7 +197,7 @@ public sealed class SnapshotServiceTests
 
         ProjectAgentRecord zuluAgent = new()
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             ProjectAgentGroupId = zuluGroup.Id,
             RuntimeKey = "agent-zulu",
             DisplayName = "Zulu Agent",
@@ -212,7 +212,7 @@ public sealed class SnapshotServiceTests
         dbContext.ProjectAgentTimelineEntries.AddRange(
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = alphaAgent.Id,
                 Sequence = 3,
                 EntryType = ProjectAgentTimelineEntryType.Compaction,
@@ -221,7 +221,7 @@ public sealed class SnapshotServiceTests
             },
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = alphaAgent.Id,
                 Sequence = 1,
                 EntryType = ProjectAgentTimelineEntryType.Output,
@@ -230,7 +230,7 @@ public sealed class SnapshotServiceTests
             },
             new ProjectAgentTimelineEntryRecord
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.CreateVersion7(),
                 ProjectAgentId = alphaAgent.Id,
                 Sequence = 2,
                 EntryType = ProjectAgentTimelineEntryType.Tool,
@@ -247,7 +247,7 @@ public sealed class SnapshotServiceTests
     private static ServiceProvider CreateServices()
     {
         InMemoryDatabaseRoot databaseRoot = new();
-        string databaseName = Guid.NewGuid().ToString("N");
+        string databaseName = Guid.CreateVersion7().ToString("N");
         ServiceCollection services = [];
         services.AddPooledDbContextFactory<CodeSnifferDogServerDbContext>(options =>
             options.UseInMemoryDatabase(databaseName, databaseRoot));

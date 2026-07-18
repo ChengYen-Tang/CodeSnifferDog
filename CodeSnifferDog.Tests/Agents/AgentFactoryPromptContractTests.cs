@@ -72,6 +72,21 @@ public sealed class AgentFactoryPromptContractTests
     }
 
     [TestMethod]
+    public void ScanPrompts_RequireNonOverlappingUnitsAndDuplicateExclusion()
+    {
+        string scannerPrompt = _promptAssetReader.ReadRequiredPrompt(ScanAgentPromptAssets.ScanAgentPrompt);
+        string verifierPrompt = _promptAssetReader.ReadRequiredPrompt(ScanAgentPromptAssets.ScanVerifierAgentPrompt);
+
+        Assert.Contains("Submit mutually exclusive leaf planning units.", scannerPrompt);
+        Assert.Contains("Exclude backup, copied, generated, archived, and historical duplicates", scannerPrompt);
+        Assert.Contains("`Reason` must name the comparison target", scannerPrompt);
+        Assert.Contains("submitted units are mutually exclusive", verifierPrompt);
+        Assert.Contains("backup, copied, generated, archived, or historical duplicates are excluded", verifierPrompt);
+        Assert.Contains("comparison target and a", verifierPrompt);
+        Assert.Contains("repository-verifiable distinction", verifierPrompt);
+    }
+
+    [TestMethod]
     public void ProjectPlanAgent_RendersRepositoryRootPlaceholder()
     {
         AgentCreationResult result = new ProjectPlanAgentFactory(CreateCompactionOptions()).Create(
