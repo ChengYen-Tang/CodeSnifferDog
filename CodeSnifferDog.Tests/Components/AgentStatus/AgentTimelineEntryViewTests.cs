@@ -73,10 +73,10 @@ public sealed class AgentTimelineEntryViewTests
 
         IRenderedComponent<AgentTimelineEntryView> cut = RenderEntry(
             context,
-            CreateEntry(TimelineEntryKind.Compaction, "Transcript compacted"));
+            CreateEntry(TimelineEntryKind.Compaction, message: null));
 
         Assert.AreEqual(1, cut.FindAll(".agent-compaction-notice").Count);
-        StringAssert.Contains(cut.Markup, "Transcript compacted");
+        StringAssert.Contains(cut.Markup, "Context compacted");
         Assert.IsEmpty(cut.FindAll(".agent-message"));
     }
 
