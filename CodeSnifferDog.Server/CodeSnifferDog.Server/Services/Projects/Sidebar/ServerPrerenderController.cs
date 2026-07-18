@@ -23,13 +23,6 @@ public sealed class ServerPrerenderController : IController
     }
 
     /// <inheritdoc />
-    public void SelectProject(string projectId)
-    {
-        Current.Ui.SelectProject(projectId);
-        NotifyChanged();
-    }
-
-    /// <inheritdoc />
     public void ToggleGroup(string groupKey, ProjectStatus status)
     {
         Current.Ui.ToggleGroup(groupKey, status);

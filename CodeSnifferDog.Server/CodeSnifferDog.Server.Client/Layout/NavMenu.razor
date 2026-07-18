@@ -32,33 +32,42 @@
         }
     }
 
-    private void OnSidebarStateChanged()
+    private async void OnSidebarStateChanged()
     {
-        _ = InvokeAsync(() =>
+        try
         {
-            RefreshSidebarProjection();
-            StateHasChanged();
-        });
+            await InvokeAsync(() =>
+            {
+                RefreshSidebarProjection();
+                StateHasChanged();
+            });
+        }
+        catch (Exception exception)
+        {
+            await DispatchExceptionAsync(exception);
+        }
     }
 
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
-        _ = InvokeAsync(() =>
+        try
         {
-            SidebarSyncService.SyncSelectedProjectFromUri(ExtractProjectIdFromUri());
-            RefreshSidebarProjection();
-            StateHasChanged();
-        });
+            await InvokeAsync(() =>
+            {
+                SidebarSyncService.SyncSelectedProjectFromUri(ExtractProjectIdFromUri());
+                RefreshSidebarProjection();
+                StateHasChanged();
+            });
+        }
+        catch (Exception exception)
+        {
+            await DispatchExceptionAsync(exception);
+        }
     }
 
     private void ToggleGroup(ProjectGroup group)
     {
         SidebarSyncService.ToggleGroup(group.GroupKey, group.Status);
-    }
-
-    private void SelectProject(string projectId)
-    {
-        SidebarSyncService.SelectProject(projectId);
     }
 
     private async Task ExecuteActionAsync(ProjectItem item, ProjectAction action)
@@ -166,10 +175,10 @@
                         @foreach (var item in group.Items)
                         {
                             <div class="project-link @(item.ProjectId == _state.Ui.SelectedProjectId ? "active" : null)" @key="item.ProjectId">
-                                <button type="button" class="project-main" @onclick="() => SelectProject(item.ProjectId)">
+                                <div class="project-main">
                                     <span class="project-name">@item.Name</span>
                                     <span class="project-meta">@item.Meta</span>
-                                </button>
+                                </div>
 
                                 <div class="project-actions">
                                     @foreach (var action in item.Actions)

@@ -893,6 +893,27 @@ a {
     box-shadow: inset 0 0 0 1px #bed0f7, 0 0.35rem 1rem rgba(78, 115, 223, 0.08);
 }
 
+.report-file-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0;
+    border: 0;
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.report-file-select:hover,
+.report-file-select:focus-visible {
+    color: inherit;
+}
+
 .report-file-icon {
     flex: 0 0 auto;
     min-width: 2.3rem;
@@ -924,6 +945,26 @@ a {
 .report-file-meta {
     color: #7a8499;
     font-size: 0.88rem;
+}
+
+.report-file-download {
+    flex: 0 0 auto;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 0.55rem;
+    color: #34517d;
+    text-decoration: none;
+}
+
+.report-file-download:hover,
+.report-file-download:focus-visible {
+    border-color: #b9cdf8;
+    background: rgba(255, 255, 255, 0.78);
+    color: #1f55c8;
 }
 
 .reports-preview-column {

@@ -45,7 +45,7 @@ public sealed class State(
                 isPollingFallbackActive: true));
 
     /// <summary>
-    /// Applies a replacement snapshot and reconciles UI selection against the URI.
+    /// Applies a replacement snapshot and reconciles the URI-derived selection against its available projects.
     /// </summary>
     /// <param name="snapshot">Replacement sidebar snapshot.</param>
     /// <param name="selectedProjectIdFromUri">Optional project identifier from the current URI.</param>
@@ -137,35 +137,8 @@ public sealed class UiState(string? selectedProjectId, Dictionary<string, bool> 
         if (SelectedProjectId is not null && validProjectIds.Contains(SelectedProjectId))
             return HasChanged(previousSelectedProjectId, previousExpansionStates);
 
-        if (snapshot?.SelectedProjectId is Guid selectedProjectIdFromSnapshot)
-        {
-            string selectedProjectIdText = selectedProjectIdFromSnapshot.ToString();
-            if (validProjectIds.Contains(selectedProjectIdText))
-            {
-                SelectedProjectId = selectedProjectIdText;
-                return HasChanged(previousSelectedProjectId, previousExpansionStates);
-            }
-        }
-
-        SelectedProjectId = groups
-            .SelectMany(group => group.Projects.OrderBy(project => project.SortOrder))
-            .Select(project => project.ProjectId.ToString())
-            .FirstOrDefault();
+        SelectedProjectId = null;
         return HasChanged(previousSelectedProjectId, previousExpansionStates);
-    }
-
-    /// <summary>
-    /// Selects one project in the UI.
-    /// </summary>
-    /// <param name="projectId">Project identifier to select.</param>
-    /// <returns><see langword="true" /> when the selection changed.</returns>
-    public bool SelectProject(string projectId)
-    {
-        if (string.Equals(SelectedProjectId, projectId, StringComparison.Ordinal))
-            return false;
-
-        SelectedProjectId = projectId;
-        return true;
     }
 
     /// <summary>
@@ -176,17 +149,15 @@ public sealed class UiState(string? selectedProjectId, Dictionary<string, bool> 
     /// <returns><see langword="true" /> when the selection changed.</returns>
     public bool SyncSelectedProjectFromUri(string? selectedProjectIdFromUri, IReadOnlyList<ProjectSidebarGroupDto> groups)
     {
-        if (selectedProjectIdFromUri is null)
-            return false;
-
-        bool projectExists = groups
+        bool projectExists = selectedProjectIdFromUri is not null && groups
             .SelectMany(group => group.Projects)
             .Any(project => string.Equals(project.ProjectId.ToString(), selectedProjectIdFromUri, StringComparison.Ordinal));
 
-        if (!projectExists || string.Equals(SelectedProjectId, selectedProjectIdFromUri, StringComparison.Ordinal))
+        string? nextSelectedProjectId = projectExists ? selectedProjectIdFromUri : null;
+        if (string.Equals(SelectedProjectId, nextSelectedProjectId, StringComparison.Ordinal))
             return false;
 
-        SelectedProjectId = selectedProjectIdFromUri;
+        SelectedProjectId = nextSelectedProjectId;
         return true;
     }
 

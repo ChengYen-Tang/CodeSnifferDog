@@ -54,12 +54,6 @@ public sealed class SyncService : IController, IAsyncDisposable
     }
 
     /// <inheritdoc />
-    public void SelectProject(string projectId)
-    {
-        NotifyChangedIf(Current.Ui.SelectProject(projectId));
-    }
-
-    /// <inheritdoc />
     public void ToggleGroup(string groupKey, ProjectStatus status)
     {
         NotifyChangedIf(Current.Ui.ToggleGroup(groupKey, status));

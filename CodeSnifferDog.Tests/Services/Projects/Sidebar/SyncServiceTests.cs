@@ -9,7 +9,7 @@ namespace CodeSnifferDog.Tests.Services.Projects;
 public sealed class SyncServiceTests
 {
     [TestMethod]
-    public async Task EquivalentSnapshotAndSameSelection_DoNotNotifyChangedAsync()
+    public async Task EquivalentSnapshotAndSameRouteSelection_DoNotNotifyChangedAsync()
     {
         RecordingSidebarHttpMessageHandler handler = new();
         FakeRefreshSignalClient refreshSignalClient = new();
@@ -22,14 +22,34 @@ public sealed class SyncServiceTests
 
         service.InitializeSnapshot(snapshot, selectedProjectIdFromUri: null);
         service.InitializeSnapshot(CreateSnapshot("repo-before.zip", generatedMinute: 1), selectedProjectIdFromUri: null);
-        service.InitializeSnapshot(CreateSnapshot(
-            "repo-before.zip",
-            selectedProjectId: Guid.Parse("70000000-0000-0000-0000-000000000799")), selectedProjectIdFromUri: null);
-        service.SelectProject(snapshot.SelectedProjectId!.Value.ToString());
-        service.SyncSelectedProjectFromUri(null);
-        service.SyncSelectedProjectFromUri(snapshot.SelectedProjectId.Value.ToString());
+        service.InitializeSnapshot(CreateSnapshot("repo-before.zip"), selectedProjectIdFromUri: null);
+        service.SyncSelectedProjectFromUri("70000000-0000-0000-0000-000000000701");
+        service.SyncSelectedProjectFromUri("70000000-0000-0000-0000-000000000701");
 
-        Assert.AreEqual(1, changedCount);
+        Assert.AreEqual(2, changedCount);
+    }
+
+    [TestMethod]
+    public async Task SidebarSelection_IsDerivedFromTheRouteAndClearsWithoutProjectUuidAsync()
+    {
+        RecordingSidebarHttpMessageHandler handler = new();
+        FakeRefreshSignalClient refreshSignalClient = new();
+        FakePollingFallback pollingFallback = new();
+        ProjectSidebarSnapshotDto snapshot = CreateSnapshot("repo.zip");
+
+        await using SyncService service = CreateService(handler, refreshSignalClient, pollingFallback);
+
+        service.InitializeSnapshot(snapshot, selectedProjectIdFromUri: null);
+
+        Assert.IsNull(service.Current.Ui.SelectedProjectId);
+
+        service.SyncSelectedProjectFromUri("70000000-0000-0000-0000-000000000701");
+
+        Assert.AreEqual("70000000-0000-0000-0000-000000000701", service.Current.Ui.SelectedProjectId);
+
+        service.SyncSelectedProjectFromUri(null);
+
+        Assert.IsNull(service.Current.Ui.SelectedProjectId);
     }
 
     [TestMethod]

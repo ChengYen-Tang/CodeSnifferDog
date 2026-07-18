@@ -102,11 +102,13 @@ public sealed class NavMenuTests
             StringAssert.Contains(cut.Markup, "repo-a.zip");
             StringAssert.Contains(cut.Markup, "Reviewing");
             Assert.IsEmpty(cut.FindAll(".sidebar-status-message"));
+            Assert.AreEqual("div", cut.Find(".project-main").TagName.ToLowerInvariant());
+            Assert.IsEmpty(cut.FindAll(".project-link.active"));
         });
     }
 
     [TestMethod]
-    public void RefreshKeepsCurrentSelectedProjectWhenItStillExists()
+    public void RefreshKeepsRouteSelectedProjectWhenItStillExists()
     {
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
@@ -123,7 +125,7 @@ public sealed class NavMenuTests
         IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
             parameters => parameters.Add(component => component.InitialSnapshot, initialSnapshot));
 
-        cut.FindAll(".project-main")[1].Click();
+        cut.InvokeAsync(() => sidebarSyncService.SyncSelectedProjectFromUri(projectBId.ToString())).GetAwaiter().GetResult();
 
         ProjectSidebarSnapshotDto refreshedSnapshot = CreateSnapshot(
             selectedProjectId: projectAId,
@@ -180,7 +182,7 @@ public sealed class NavMenuTests
     }
 
     [TestMethod]
-    public void RefreshFallsBackToFirstValidProjectWhenCurrentSelectionDisappears()
+    public void RefreshClearsRouteSelectionWhenCurrentProjectDisappears()
     {
         using Bunit.TestContext context = new();
         RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
@@ -198,7 +200,7 @@ public sealed class NavMenuTests
         IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
             parameters => parameters.Add(component => component.InitialSnapshot, initialSnapshot));
 
-        cut.FindAll(".project-main")[1].Click();
+        cut.InvokeAsync(() => sidebarSyncService.SyncSelectedProjectFromUri(projectBId.ToString())).GetAwaiter().GetResult();
 
         ProjectSidebarSnapshotDto refreshedSnapshot = CreateSnapshot(
             selectedProjectId: projectCId,
@@ -228,8 +230,7 @@ public sealed class NavMenuTests
 
         cut.WaitForAssertion(() =>
         {
-            Assert.AreEqual(1, cut.FindAll(".project-link.active").Count);
-            StringAssert.Contains(cut.Find(".project-link.active").TextContent, "repo-c.zip");
+            Assert.IsEmpty(cut.FindAll(".project-link.active"));
         });
     }
 
@@ -519,7 +520,7 @@ public sealed class NavMenuTests
         cut.WaitForAssertion(() =>
         {
             Assert.AreEqual(100, cut.FindAll(".project-link").Count);
-            Assert.AreEqual(1, cut.FindAll(".project-link.active").Count);
+            Assert.IsEmpty(cut.FindAll(".project-link.active"));
             StringAssert.Contains(cut.Markup, "repo-large-100.zip");
         });
 
@@ -571,8 +572,7 @@ public sealed class NavMenuTests
                     "repo-noop.zip",
                     Guid.Parse("70000000-0000-0000-0000-000000000482"),
                     "repo-secondary.zip")), selectedProjectIdFromUri: null);
-            sidebarSyncService.SelectProject(selectedProjectId.ToString());
-            sidebarSyncService.SyncSelectedProjectFromUri(selectedProjectId.ToString());
+            sidebarSyncService.SyncSelectedProjectFromUri(null);
         }).GetAwaiter().GetResult();
 
         Assert.AreEqual(renderCount, cut.RenderCount);

@@ -25,12 +25,6 @@ public interface IController
     void InitializeSnapshot(ProjectSidebarSnapshotDto? snapshot, string? selectedProjectIdFromUri);
 
     /// <summary>
-    /// Selects one project in the sidebar UI.
-    /// </summary>
-    /// <param name="projectId">Project identifier to select.</param>
-    void SelectProject(string projectId);
-
-    /// <summary>
     /// Toggles the expansion state of one project group.
     /// </summary>
     /// <param name="groupKey">Group key to toggle.</param>
@@ -38,7 +32,7 @@ public interface IController
     void ToggleGroup(string groupKey, ProjectStatus status);
 
     /// <summary>
-    /// Reconciles the selected project against the current URI.
+    /// Reconciles the selected project against the current URI. The URI is the sole source of selection.
     /// </summary>
     /// <param name="selectedProjectIdFromUri">Optional project identifier from the current URI.</param>
     void SyncSelectedProjectFromUri(string? selectedProjectIdFromUri);
