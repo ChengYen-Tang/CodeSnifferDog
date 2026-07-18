@@ -1,6 +1,7 @@
 @page "/agent-status"
 @rendermode InteractiveWebAssembly
 @implements IAsyncDisposable
+@implements IDisposable
 
 @using System.Net
 @using System.Net.Http.Json
@@ -11,6 +12,7 @@
 @using CodeSnifferDog.Server.Shared.Projects
 @inject HttpClient HttpClient
 @inject ILiveSubscriptionClient LiveSubscriptionClient
+@inject NavigationManager NavigationManager
 
 <PageTitle>Agent Status</PageTitle>
 
@@ -20,9 +22,11 @@
 
     private readonly PageState _pageState = PageState.CreateEmpty();
     private bool _hasHandledParameters;
-    private Guid? _loadedProjectId;
+    private Guid? _requestedProjectId;
     private int _reconnectReloadInProgress;
+    private int _snapshotLoadVersion;
     private int _historyLoadVersion;
+    private CancellationTokenSource? _snapshotLoadCancellationTokenSource;
     private bool _disposed;
 
     private SnapshotState Snapshot => _pageState.Snapshot;
@@ -49,43 +53,122 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_hasHandledParameters && _loadedProjectId == ProjectId)
-            return;
-
-        _hasHandledParameters = true;
-        await LoadSnapshotAsync().ConfigureAwait(false);
+        await HandleProjectChangedAsync(ResolveRequestedProjectId()).ConfigureAwait(false);
     }
 
-    private async Task LoadSnapshotAsync()
+    protected override void OnInitialized()
     {
-        if (ProjectId is null)
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        try
         {
-            await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+            await InvokeAsync(() => HandleProjectChangedAsync(ExtractProjectIdFromLocation(args.Location)));
+        }
+        catch (Exception exception)
+        {
+            await DispatchExceptionAsync(exception);
+        }
+    }
+
+    private async Task HandleProjectChangedAsync(Guid? projectId)
+    {
+        if (_hasHandledParameters && _requestedProjectId == projectId)
+            return;
+
+        bool projectChanged = _hasHandledParameters;
+        _hasHandledParameters = true;
+        _requestedProjectId = projectId;
+        await LoadSnapshotAsync(projectId, clearProjectContext: projectChanged).ConfigureAwait(false);
+    }
+
+    private Guid? ExtractProjectIdFromLocation(string location)
+    {
+        Uri uri = NavigationManager.ToAbsoluteUri(location);
+        string relativePath = NavigationManager.ToBaseRelativePath(uri.ToString()).Trim('/');
+        return ProjectSidebarRouteSelection.ExtractSelectedProjectId(uri, relativePath);
+    }
+
+    private Guid? ResolveRequestedProjectId()
+    {
+        return ExtractProjectIdFromLocation(NavigationManager.Uri) ?? ProjectId;
+    }
+
+    private async Task LoadSnapshotAsync(Guid? projectId, bool clearProjectContext = false)
+    {
+        int requestVersion = Interlocked.Increment(ref _snapshotLoadVersion);
+        CancellationToken cancellationToken = await ReplaceSnapshotLoadCancellationTokenAsync().ConfigureAwait(false);
+
+        if (clearProjectContext)
+        {
+            Interlocked.Increment(ref _historyLoadVersion);
+            _pageState.BeginProjectLoad();
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            _pageState.SetSnapshotLoadState(isLoading: true, errorMessage: null);
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (projectId is null)
+        {
+            try
+            {
+                await LiveSubscriptionClient.UnsubscribeAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                return;
+
             _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Idle");
             _pageState.SetSelectedAgentLiveConnection(agentId: null, isConnected: false, isSubscribed: false, statusText: "Idle");
             _pageState.SetLiveConnectionError(null);
             _pageState.SetSnapshot(null);
             _pageState.SetSnapshotLoadState(isLoading: false, errorMessage: "No project selected.");
-            _loadedProjectId = null;
             return;
         }
 
-        _pageState.SetSnapshotLoadState(isLoading: true, errorMessage: null);
-        StateHasChanged();
+        if (clearProjectContext)
+        {
+            try
+            {
+                await LiveSubscriptionClient.UnsubscribeAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                return;
+        }
 
         try
         {
             string snapshotUrl = Selection.SelectedAgentId is Guid selectedAgentId
-                ? $"/api/projects/{ProjectId.Value}/agent-status?selectedAgentId={selectedAgentId}"
-                : $"/api/projects/{ProjectId.Value}/agent-status";
+                ? $"/api/projects/{projectId.Value}/agent-status?selectedAgentId={selectedAgentId}"
+                : $"/api/projects/{projectId.Value}/agent-status";
 
-            HttpResponseMessage response = await HttpClient.GetAsync(
+            using HttpResponseMessage response = await HttpClient.GetAsync(
                 snapshotUrl,
-                HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                return;
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+                await LiveSubscriptionClient.UnsubscribeAsync(cancellationToken).ConfigureAwait(false);
+                if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                    return;
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
                 _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
                 _pageState.SetLiveConnectionError(null);
@@ -97,12 +180,17 @@
             response.EnsureSuccessStatusCode();
 
             StatusSnapshotDto? snapshot = await response.Content
-                .ReadFromJsonAsync<StatusSnapshotDto>()
+                .ReadFromJsonAsync<StatusSnapshotDto>(cancellationToken)
                 .ConfigureAwait(false);
+
+            if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                return;
 
             if (snapshot is null)
             {
-                await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+                await LiveSubscriptionClient.UnsubscribeAsync(cancellationToken).ConfigureAwait(false);
+                if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                    return;
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
                 _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Snapshot unavailable");
                 _pageState.SetLiveConnectionError(null);
@@ -119,28 +207,42 @@
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Live pending");
                 _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Live pending");
                 _pageState.SetLiveConnectionError(null);
-                _loadedProjectId = ProjectId;
                 return;
             }
 
             try
             {
-                await SubscribeToLiveUpdatesAsync(snapshot).ConfigureAwait(false);
+                await SubscribeToLiveUpdatesAsync(snapshot, cancellationToken).ConfigureAwait(false);
+                if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                    return;
                 _pageState.SetLiveConnectionError(null);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
             }
             catch (Exception exception)
             {
-                await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+                await LiveSubscriptionClient.UnsubscribeAsync(cancellationToken).ConfigureAwait(false);
+                if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                    return;
                 _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Live unavailable");
                 _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Live unavailable");
                 _pageState.SetLiveConnectionError($"Failed to connect live updates: {exception.Message}");
             }
 
-            _loadedProjectId = ProjectId;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception exception)
         {
-            await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
+            if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                return;
+
+            await LiveSubscriptionClient.UnsubscribeAsync(cancellationToken).ConfigureAwait(false);
+            if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+                return;
             _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Connection failed");
             _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Connection failed");
             _pageState.SetLiveConnectionError(null);
@@ -183,13 +285,13 @@
     {
         ArgumentNullException.ThrowIfNull(update);
 
-        if (ProjectId is null || update.ProjectId != ProjectId.Value)
+        if (_requestedProjectId is null || update.ProjectId != _requestedProjectId.Value)
             return false;
 
         return _pageState.ApplyLiveUpdate(update);
     }
 
-    private async Task SubscribeToLiveUpdatesAsync(StatusSnapshotDto snapshot)
+    private async Task SubscribeToLiveUpdatesAsync(StatusSnapshotDto snapshot, CancellationToken cancellationToken = default)
     {
         Guid? selectedAgentId = Selection.SelectedAgentId;
         LiveSubscriptionRequestDto request = new()
@@ -213,7 +315,8 @@
                     : Task.CompletedTask;
             },
             HandleReconnectingAsync,
-            HandleReconnectRequiredAsync).ConfigureAwait(false);
+            HandleReconnectRequiredAsync,
+            cancellationToken).ConfigureAwait(false);
 
         _pageState.SetLiveConnection(isConnected: true, isSubscribed: true, statusText: "Live");
         _pageState.SetSelectedAgentLiveConnection(selectedAgentId, isConnected: true, isSubscribed: true, statusText: "Live");
@@ -223,12 +326,44 @@
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        await CancelSnapshotLoadAsync().ConfigureAwait(false);
         await LiveSubscriptionClient.DisposeAsync().ConfigureAwait(false);
     }
 
+    public void Dispose()
+    {
+        _disposed = true;
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+
+    private async Task<CancellationToken> ReplaceSnapshotLoadCancellationTokenAsync()
+    {
+        await CancelSnapshotLoadAsync().ConfigureAwait(false);
+        _snapshotLoadCancellationTokenSource = new CancellationTokenSource();
+        return _snapshotLoadCancellationTokenSource.Token;
+    }
+
+    private async Task CancelSnapshotLoadAsync()
+    {
+        CancellationTokenSource? cancellationTokenSource = Interlocked.Exchange(
+            ref _snapshotLoadCancellationTokenSource,
+            null);
+        if (cancellationTokenSource is null)
+            return;
+
+        await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+        cancellationTokenSource.Dispose();
+    }
+
+    private bool IsCurrentSnapshotLoad(int requestVersion, Guid? projectId) =>
+        !_disposed &&
+        requestVersion == Volatile.Read(ref _snapshotLoadVersion) &&
+        _requestedProjectId == projectId;
+
     private async Task HandleReconnectRequiredAsync()
     {
-        if (_disposed || ProjectId is null)
+        if (_disposed || _requestedProjectId is null)
             return;
 
         if (Interlocked.Exchange(ref _reconnectReloadInProgress, 1) == 1)
@@ -242,7 +377,7 @@
                 _pageState.SetSelectedAgentLiveConnection(Selection.SelectedAgentId, isConnected: false, isSubscribed: false, statusText: "Reconnecting");
                 _pageState.SetLiveConnectionError("Live connection interrupted. Reloading snapshot...");
                 StateHasChanged();
-                await LoadSnapshotAsync();
+                await LoadSnapshotAsync(_requestedProjectId);
             });
         }
         finally
@@ -253,7 +388,7 @@
 
     private Task HandleReconnectingAsync()
     {
-        if (_disposed || ProjectId is null)
+        if (_disposed || _requestedProjectId is null)
             return Task.CompletedTask;
 
         return InvokeAsync(() =>
@@ -286,7 +421,7 @@
 
     private async Task LoadAgentHistoryAsync(Guid agentId)
     {
-        if (ProjectId is null)
+        if (_requestedProjectId is not Guid projectId)
             return;
 
         int requestVersion = Interlocked.Increment(ref _historyLoadVersion);
@@ -296,9 +431,9 @@
         try
         {
             HistorySnapshotDto? history = await HttpClient.GetFromJsonAsync<HistorySnapshotDto>(
-                $"/api/projects/{ProjectId.Value}/agent-status/agents/{agentId}/history").ConfigureAwait(false);
+                $"/api/projects/{projectId}/agent-status/agents/{agentId}/history").ConfigureAwait(false);
 
-            if (!IsCurrentHistoryRequest(requestVersion, agentId))
+            if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
                 return;
 
             if (history is null)
@@ -312,14 +447,14 @@
         }
         catch (Exception exception)
         {
-            if (!IsCurrentHistoryRequest(requestVersion, agentId))
+            if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
                 return;
 
             History.SetError(agentId, $"Failed to load agent history: {exception.Message}");
         }
         finally
         {
-            if (IsCurrentHistoryRequest(requestVersion, agentId))
+            if (IsCurrentHistoryRequest(requestVersion, projectId, agentId))
             {
                 History.FinishLoading(agentId);
                 await InvokeAsync(StateHasChanged);
@@ -327,8 +462,10 @@
         }
     }
 
-    private bool IsCurrentHistoryRequest(int requestVersion, Guid agentId) =>
-        requestVersion == _historyLoadVersion && Selection.SelectedAgentId == agentId;
+    private bool IsCurrentHistoryRequest(int requestVersion, Guid projectId, Guid agentId) =>
+        requestVersion == _historyLoadVersion &&
+        _requestedProjectId == projectId &&
+        Selection.SelectedAgentId == agentId;
 
     private bool CanStartLiveSubscriptionOnThisRender()
     {

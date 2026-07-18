@@ -234,8 +234,7 @@ public sealed class AgentStatusTests
             StringAssert.Contains(cut.Markup, "First snapshot history");
         });
 
-        cut.Instance.ProjectId = secondSnapshot.ProjectId;
-        cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.Empty)).GetAwaiter().GetResult();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={secondSnapshot.ProjectId}");
 
         cut.WaitForAssertion(() =>
         {
@@ -246,6 +245,103 @@ public sealed class AgentStatusTests
 
         IElement selectedNode = cut.Find(".agent-roster-node.selected");
         StringAssert.Contains(selectedNode.TextContent, "Replacement Agent");
+    }
+
+    [TestMethod]
+    public void SwitchingProjects_ClearsPreviousSnapshotUntilTheNewSnapshotArrives()
+    {
+        using Bunit.TestContext context = new();
+        RegisterLiveSubscriptionClient(context);
+        Guid firstProjectId = Guid.Parse("70000000-0000-0000-0000-000000000012");
+        Guid secondProjectId = Guid.Parse("70000000-0000-0000-0000-000000000013");
+        Guid firstGroupId = Guid.Parse("71000000-0000-0000-0000-000000000012");
+        Guid secondGroupId = Guid.Parse("71000000-0000-0000-0000-000000000013");
+        Guid firstAgentId = Guid.Parse("72000000-0000-0000-0000-000000000012");
+        Guid secondAgentId = Guid.Parse("72000000-0000-0000-0000-000000000013");
+
+        StatusSnapshotDto firstSnapshot = CreateSnapshot(
+            firstProjectId,
+            [
+                CreateGroup(
+                    firstGroupId,
+                    "first-group",
+                    "First Group",
+                    new DateTimeOffset(2026, 5, 10, 10, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            firstAgentId,
+                            firstGroupId,
+                            "first-agent",
+                            "Finished Project Agent",
+                            RunStatus.Completed,
+                            new DateTimeOffset(2026, 5, 10, 10, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000012"),
+                                    firstAgentId,
+                                    1,
+                                    TimelineEntryKind.Output,
+                                    message: "Finished project history")
+                            ])
+                    ])
+            ]);
+
+        StatusSnapshotDto secondSnapshot = CreateSnapshot(
+            secondProjectId,
+            [
+                CreateGroup(
+                    secondGroupId,
+                    "second-group",
+                    "Second Group",
+                    new DateTimeOffset(2026, 5, 10, 10, 2, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            secondAgentId,
+                            secondGroupId,
+                            "second-agent",
+                            "Running Project Agent",
+                            RunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 10, 3, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000013"),
+                                    secondAgentId,
+                                    1,
+                                    TimelineEntryKind.Output,
+                                    message: "Running project history")
+                            ])
+                    ])
+            ]);
+
+        DelayedSecondSnapshotMessageHandler handler = new(firstSnapshot, secondSnapshot);
+        context.Services.AddSingleton(new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={firstProjectId}");
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
+        cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Finished project history"));
+
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={secondProjectId}");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.AreEqual(2, handler.RequestCount);
+            StringAssert.Contains(cut.Markup, "Loading agent snapshot...");
+            Assert.DoesNotContain(cut.Markup, "Finished Project Agent");
+            Assert.DoesNotContain(cut.Markup, "Finished project history");
+        });
+
+        handler.ReleaseSecondResponse();
+
+        cut.WaitForAssertion(() =>
+        {
+            StringAssert.Contains(cut.Markup, "Running Project Agent");
+            StringAssert.Contains(cut.Markup, "Running project history");
+            Assert.DoesNotContain(cut.Markup, "Finished project history");
+        });
     }
 
     [TestMethod]
@@ -675,8 +771,7 @@ public sealed class AgentStatusTests
         IElement selectedNodeBefore = cut.Find(".agent-roster-node.selected");
         StringAssert.Contains(selectedNodeBefore.TextContent, "Selected Agent");
 
-        cut.Instance.ProjectId = secondSnapshot.ProjectId;
-        cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.Empty)).GetAwaiter().GetResult();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={secondSnapshot.ProjectId}");
 
         cut.WaitForAssertion(() =>
         {
@@ -2239,6 +2334,36 @@ public sealed class AgentStatusTests
 
             return Task.FromResult(response);
         }
+    }
+
+    private sealed class DelayedSecondSnapshotMessageHandler(
+        StatusSnapshotDto firstSnapshot,
+        StatusSnapshotDto secondSnapshot) : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource<HttpResponseMessage> _secondResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly StatusSnapshotDto _firstSnapshot = firstSnapshot;
+        private readonly StatusSnapshotDto _secondSnapshot = secondSnapshot;
+
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            return RequestCount switch
+            {
+                1 => Task.FromResult(CreateResponse(_firstSnapshot)),
+                2 => _secondResponse.Task,
+                _ => throw new InvalidOperationException($"Unexpected snapshot request: {request.RequestUri}"),
+            };
+        }
+
+        public void ReleaseSecondResponse() => _secondResponse.SetResult(CreateResponse(_secondSnapshot));
+
+        private static HttpResponseMessage CreateResponse(StatusSnapshotDto snapshot) =>
+            new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(snapshot)),
+            };
     }
 
     private static bool InvokeApplyLiveUpdate(IRenderedComponent<AgentStatusPage> cut, LiveUpdateDto update)

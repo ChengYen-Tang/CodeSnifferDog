@@ -70,6 +70,11 @@
         SidebarSyncService.ToggleGroup(group.GroupKey, group.Status);
     }
 
+    private void SelectProjectForNavigation(string projectId)
+    {
+        SidebarSyncService.SyncSelectedProjectFromUri(projectId);
+    }
+
     private async Task ExecuteActionAsync(ProjectItem item, ProjectAction action)
     {
         if (!Guid.TryParse(item.ProjectId, out Guid projectId) || !_actingProjectIds.Add(item.ProjectId))
@@ -83,7 +88,9 @@
                     await SidebarSyncService.CancelProjectAsync(projectId);
                     break;
                 case ProjectActionKind.Delete:
-                    await SidebarSyncService.DeleteProjectAsync(projectId);
+                    bool deleted = await SidebarSyncService.DeleteProjectAsync(projectId);
+                    if (deleted)
+                        NavigationManager.NavigateTo("/");
                     break;
             }
         }
@@ -175,10 +182,10 @@
                         @foreach (var item in group.Items)
                         {
                             <div class="project-link @(item.ProjectId == _state.Ui.SelectedProjectId ? "active" : null)" @key="item.ProjectId">
-                                <div class="project-main">
+                                <a class="project-main" href="@item.StatusHref" @onclick="() => SelectProjectForNavigation(item.ProjectId)">
                                     <span class="project-name">@item.Name</span>
                                     <span class="project-meta">@item.Meta</span>
-                                </div>
+                                </a>
 
                                 <div class="project-actions">
                                     @foreach (var action in item.Actions)

@@ -102,9 +102,114 @@ public sealed class NavMenuTests
             StringAssert.Contains(cut.Markup, "repo-a.zip");
             StringAssert.Contains(cut.Markup, "Reviewing");
             Assert.IsEmpty(cut.FindAll(".sidebar-status-message"));
-            Assert.AreEqual("div", cut.Find(".project-main").TagName.ToLowerInvariant());
+            AngleSharp.Dom.IElement projectLink = cut.Find(".project-main");
+            Assert.AreEqual("a", projectLink.TagName.ToLowerInvariant());
+            Assert.AreEqual("/agent-status?projectId=70000000-0000-0000-0000-000000000401", projectLink.GetAttribute("href"));
             Assert.IsEmpty(cut.FindAll(".project-link.active"));
         });
+    }
+
+    [TestMethod]
+    public void ProjectCard_SelectsItsProjectBeforeNavigatingToAgentStatus()
+    {
+        using Bunit.TestContext context = new();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
+        context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000402");
+        Guid secondaryProjectId = Guid.Parse("70000000-0000-0000-0000-000000000403");
+        ProjectSidebarSnapshotDto snapshot = CreateSnapshot(
+            selectedProjectId: null,
+            CreateReviewingGroup(projectId, "repo-status.zip", secondaryProjectId, "other-repo.zip"));
+
+        IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
+            parameters => parameters.Add(component => component.InitialSnapshot, snapshot));
+
+        cut.Find(".project-main").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            AngleSharp.Dom.IElement activeProject = cut.Find(".project-link.active");
+            StringAssert.Contains(activeProject.TextContent, "repo-status.zip");
+        });
+    }
+
+    [TestMethod]
+    public void FailedProjectCard_ProvidesAgentStatusAction()
+    {
+        using Bunit.TestContext context = new();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
+        context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000404");
+        ProjectSidebarSnapshotDto snapshot = CreateSnapshot(
+            selectedProjectId: null,
+            new ProjectSidebarGroupDto
+            {
+                GroupKey = "failed",
+                DisplayName = "Failed",
+                Status = ProjectStatus.Failed,
+                SortOrder = 0,
+                Projects =
+                [
+                    new ProjectSidebarProjectDto
+                    {
+                        ProjectId = projectId,
+                        OriginalFileName = "repo-failed.zip",
+                        Status = ProjectStatus.Failed,
+                        CreatedAtUtc = new DateTimeOffset(2026, 5, 15, 11, 0, 0, TimeSpan.Zero),
+                        SortOrder = 0,
+                    },
+                ],
+            });
+
+        IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
+            parameters => parameters.Add(component => component.InitialSnapshot, snapshot));
+
+        cut.Find(".status-summary").Click();
+
+        AngleSharp.Dom.IElement statusAction = cut.Find(".project-action-button[title='Agent Team / Worker Status']");
+        Assert.AreEqual("S", statusAction.TextContent.Trim());
+        Assert.AreEqual($"/agent-status?projectId={projectId}", statusAction.GetAttribute("href"));
+    }
+
+    [TestMethod]
+    public void DeleteProject_WhenSuccessful_NavigatesToAddNewProject()
+    {
+        using Bunit.TestContext context = new();
+        RegisterSidebarServices(context, new SuccessfulDeleteMessageHandler());
+        context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000405");
+        ProjectSidebarSnapshotDto snapshot = CreateSnapshot(
+            selectedProjectId: projectId,
+            new ProjectSidebarGroupDto
+            {
+                GroupKey = "failed",
+                DisplayName = "Failed",
+                Status = ProjectStatus.Failed,
+                SortOrder = 0,
+                Projects =
+                [
+                    new ProjectSidebarProjectDto
+                    {
+                        ProjectId = projectId,
+                        OriginalFileName = "repo-delete.zip",
+                        Status = ProjectStatus.Failed,
+                        CreatedAtUtc = new DateTimeOffset(2026, 5, 15, 11, 0, 0, TimeSpan.Zero),
+                        SortOrder = 0,
+                    },
+                ],
+            });
+
+        IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
+            parameters => parameters.Add(component => component.InitialSnapshot, snapshot));
+
+        cut.Find(".status-summary").Click();
+        cut.Find(".project-action-button[title='Delete']").Click();
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        cut.WaitForAssertion(() => Assert.AreEqual("http://localhost/", navigationManager.Uri));
     }
 
     [TestMethod]
@@ -657,6 +762,25 @@ public sealed class NavMenuTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             throw new AssertFailedException($"HTTP should not be called during non-interactive initial render. Request: {request.RequestUri}");
+    }
+
+    private sealed class SuccessfulDeleteMessageHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Delete)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/projects/sidebar")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(CreateSnapshot(selectedProjectId: null)),
+                });
+            }
+
+            throw new AssertFailedException($"Unexpected request: {request.Method} {request.RequestUri}");
+        }
     }
 
     private sealed class StubRefreshSignalClient : IRefreshSignalClient

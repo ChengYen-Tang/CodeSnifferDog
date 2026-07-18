@@ -223,6 +223,7 @@
     background: transparent;
     color: inherit;
     text-align: left;
+    text-decoration: none;
 }
 
 .project-name,

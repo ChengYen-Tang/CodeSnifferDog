@@ -13,7 +13,12 @@ public static class ProjectSidebarRouteSelection
     /// <returns>The selected project identifier, or <see langword="null"/> when no project is selected.</returns>
     public static Guid? ExtractSelectedProjectId(Uri uri, string relativePath)
     {
-        string[] segments = relativePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        string routePath = relativePath;
+        int queryOrFragmentIndex = routePath.IndexOfAny(['?', '#']);
+        if (queryOrFragmentIndex >= 0)
+            routePath = routePath[..queryOrFragmentIndex];
+
+        string[] segments = routePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
 
         if (segments.Length == 2
             && string.Equals(segments[0], "reports", StringComparison.OrdinalIgnoreCase)

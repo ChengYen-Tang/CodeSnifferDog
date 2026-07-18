@@ -105,6 +105,18 @@ internal sealed class PageState(
     }
 
     /// <summary>
+    /// Clears project-scoped data before loading a different project's snapshot.
+    /// </summary>
+    public void BeginProjectLoad()
+    {
+        SetSnapshot(null);
+        SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Switching project");
+        SetSelectedAgentLiveConnection(agentId: null, isConnected: false, isSubscribed: false, statusText: "Switching project");
+        SetLiveConnectionError(null);
+        SetSnapshotLoadState(isLoading: true, errorMessage: null);
+    }
+
+    /// <summary>
     /// Updates the overall live connection state.
     /// </summary>
     /// <param name="isConnected">Whether the client is connected to the live-update transport.</param>

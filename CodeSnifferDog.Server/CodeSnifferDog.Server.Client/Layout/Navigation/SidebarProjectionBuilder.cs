@@ -28,6 +28,7 @@ internal static class SidebarProjectionBuilder
                         project.ProjectId.ToString(),
                         project.OriginalFileName,
                         $"uploaded {project.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}",
+                        CreateAgentStatusHref(project.ProjectId),
                         CreateActions(project.ProjectId, project.Status)))
                     .ToList(),
             })
@@ -43,13 +44,18 @@ internal static class SidebarProjectionBuilder
     {
         ProjectStatus.Reviewing =>
         [
-            ProjectAction.Link("S", "Agent Team / Worker Status", $"/agent-status?projectId={projectId}"),
+            ProjectAction.Link("S", "Agent Team / Worker Status", CreateAgentStatusHref(projectId)),
             ProjectAction.Cancel(),
         ],
         ProjectStatus.Completed =>
         [
-            ProjectAction.Link("S", "Agent Team / Worker Status", $"/agent-status?projectId={projectId}"),
+            ProjectAction.Link("S", "Agent Team / Worker Status", CreateAgentStatusHref(projectId)),
             ProjectAction.Link("R", "Report", $"/reports/{projectId}"),
+            ProjectAction.Delete(),
+        ],
+        ProjectStatus.Failed =>
+        [
+            ProjectAction.Link("S", "Agent Team / Worker Status", CreateAgentStatusHref(projectId)),
             ProjectAction.Delete(),
         ],
         _ =>
@@ -57,6 +63,13 @@ internal static class SidebarProjectionBuilder
             ProjectAction.Delete(),
         ],
     };
+
+    /// <summary>
+    /// Creates the agent-status route for a project.
+    /// </summary>
+    /// <param name="projectId">Project identifier used by the route.</param>
+    /// <returns>The project-scoped agent-status route.</returns>
+    private static string CreateAgentStatusHref(Guid projectId) => $"/agent-status?projectId={projectId}";
 
     /// <summary>
     /// Gets the short icon-like text used for one project-status group.
