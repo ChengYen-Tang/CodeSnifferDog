@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Common.Tools;
 using CodeSnifferDog.Modules.Tools.Common;
+using CodeSnifferDog.Modules.Tools.Shell;
 using Microsoft.Extensions.AI;
 using System.Text.Json;
 
@@ -16,13 +17,13 @@ public sealed class ToolSetTests
     {
         CommonCommandToolService service = new(
             CreateTemporaryDirectory(),
-            static (fileName, arguments, workingDirectory, cancellationToken) =>
+            new DelegateShellCommandRunner(static (command, workingDirectory, cancellationToken) =>
                 ValueTask.FromResult(new CommandExecutionResult
                 {
                     ExitCode = 0,
-                    StandardOutput = $"{fileName}:{arguments[0]}",
+                    StandardOutput = $"shell:{command}",
                     StandardError = "",
-                }),
+                })),
             static (fileName, arguments, workingDirectory, cancellationToken) =>
                 ValueTask.FromResult(new CommandExecutionResult
                 {
@@ -30,8 +31,7 @@ public sealed class ToolSetTests
                     StandardOutput = $"{fileName}:{arguments}",
                     StandardError = "",
                 }),
-            static () => "rg",
-            static () => false);
+            static () => "rg");
         string repositoryRootPath = CreateTemporaryDirectory();
         string targetFilePath = Path.Combine(repositoryRootPath, "sample.txt");
         await File.WriteAllTextAsync(targetFilePath, "one" + Environment.NewLine + "two", TestContext.CancellationToken);
@@ -58,7 +58,7 @@ public sealed class ToolSetTests
             },
             TestContext.CancellationToken);
 
-        Assert.AreEqual("/bin/bash:-lc", shellResult.StandardOutput);
+        Assert.AreEqual("shell:pwd", shellResult.StandardOutput);
         Assert.AreEqual("rg:alpha .", ripgrepResult.StandardOutput);
         Assert.AreEqual(0, readResult.ExitCode);
         Assert.AreEqual("two" + Environment.NewLine, readResult.StandardOutput);
@@ -73,9 +73,7 @@ public sealed class ToolSetTests
         CommandExecutionResult result = await toolSet.RunShellCommandAsync(
             new RunShellCommandArgs
             {
-                Command = OperatingSystem.IsWindows()
-                    ? "(Get-Location).Path"
-                    : "pwd",
+                Command = "(Get-Location).Path",
             },
             TestContext.CancellationToken);
 
@@ -221,5 +219,14 @@ public sealed class ToolSetTests
         string path = Path.Combine(Path.GetTempPath(), "CodeSnifferDog.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private sealed class DelegateShellCommandRunner(
+        Func<string, string, CancellationToken, ValueTask<CommandExecutionResult>> run) : IShellCommandRunner
+    {
+        public ValueTask<CommandExecutionResult> RunAsync(
+            string command,
+            string workingDirectory,
+            CancellationToken cancellationToken) => run(command, workingDirectory, cancellationToken);
     }
 }

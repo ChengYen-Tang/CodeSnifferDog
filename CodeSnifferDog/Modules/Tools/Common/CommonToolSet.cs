@@ -55,9 +55,9 @@ public sealed class CommonToolSet
             RunRipgrepCommandToolAsync,
             ReadFileRangeToolAsync));
 
-    [Description("Run one shell command in the repository root path. Shell is for narrow operational commands only. Do not use Shell to read file content, run unbounded recursive directory listings such as Get-ChildItem -Recurse, or produce large output. Use Ripgrep to search or list files narrowly, and use ReadFileRange to read files.")]
+    [Description("Run one PowerShell 7 command in the repository root path. Shell is for narrow, foreground operational commands only. Do not start background or detached work: cancellation stops the hosted PowerShell pipeline but cannot guarantee cleanup of child processes spawned by native commands. Do not use Shell to read file content, run unbounded recursive directory listings such as Get-ChildItem -Recurse, or produce large output. Use Ripgrep to search or list files narrowly, and use ReadFileRange to read files.")]
     private ValueTask<CommandExecutionResult> RunShellCommandToolAsync(
-        [Description("The shell command text to execute inside the repository root path. Keep output small. Do not use Get-Content, type, cat, or unbounded Get-ChildItem -Recurse output for file reading or discovery; use Ripgrep to narrow discovery and ReadFileRange to read files.")]
+        [Description("The PowerShell 7 command text to execute inside the repository root path. Keep output small and run only foreground work; native commands that detach child processes are outside cancellation containment. Do not use Get-Content, type, cat, or unbounded Get-ChildItem -Recurse output for file reading or discovery; use Ripgrep to narrow discovery and ReadFileRange to read files.")]
         string Command,
         CancellationToken cancellationToken) =>
         RunShellCommandAsync(

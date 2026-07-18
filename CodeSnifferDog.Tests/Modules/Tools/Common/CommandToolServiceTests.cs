@@ -1,7 +1,7 @@
 using CodeSnifferDog.Models.Common.Tools;
 using CodeSnifferDog.Modules.Tools.Common;
+using CodeSnifferDog.Modules.Tools.Shell;
 using Microsoft.Extensions.Logging;
-using System.Text;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.Common;
 
@@ -19,14 +19,13 @@ public sealed class CommandToolServiceTests
     }
 
     [TestMethod]
-    public async Task RunShellCommandAsync_UsesPowerShellEncodedCommand_OnWindows()
+    public async Task RunShellCommandAsync_UsesInProcessPowerShellRunner_OnEveryPlatform()
     {
-        CapturedArgumentsRun captured = new();
+        CapturedShellRun captured = new();
         CommonCommandToolService service = CreateService(
-            argumentsRunner: captured.RunAsync,
+            shellCommandRunner: captured,
             textRunner: FailTextRunner,
-            ripgrepExecutablePathProvider: () => "rg",
-            isWindows: () => true);
+            ripgrepExecutablePathProvider: () => "rg");
 
         await service.RunShellCommandAsync(
             new RunShellCommandArgs
@@ -35,35 +34,8 @@ public sealed class CommandToolServiceTests
             },
             TestContext.CancellationToken);
 
-        Assert.AreEqual("powershell", captured.FileName);
-        Assert.IsNotNull(captured.Arguments);
-        CollectionAssert.AreEqual(
-            new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand" },
-            captured.Arguments.Take(3).ToArray());
-        Assert.AreEqual(
-            "$ProgressPreference = 'SilentlyContinue'" + Environment.NewLine + "Get-Location",
-            Encoding.Unicode.GetString(Convert.FromBase64String(captured.Arguments[3])));
-    }
-
-    [TestMethod]
-    public async Task RunShellCommandAsync_UsesBashLoginCommand_WhenNotWindows()
-    {
-        CapturedArgumentsRun captured = new();
-        CommonCommandToolService service = CreateService(
-            argumentsRunner: captured.RunAsync,
-            textRunner: FailTextRunner,
-            ripgrepExecutablePathProvider: () => "rg",
-            isWindows: () => false);
-
-        await service.RunShellCommandAsync(
-            new RunShellCommandArgs
-            {
-                Command = "pwd",
-            },
-            TestContext.CancellationToken);
-
-        Assert.AreEqual("/bin/bash", captured.FileName);
-        CollectionAssert.AreEqual(new[] { "-lc", "pwd" }, captured.Arguments);
+        Assert.AreEqual("Get-Location", captured.Command);
+        Assert.AreEqual(service.RepositoryRootPath, captured.WorkingDirectory);
     }
 
     [TestMethod]
@@ -84,13 +56,13 @@ public sealed class CommandToolServiceTests
     {
         string largeOutput = new('a', 120_000);
         CommonCommandToolService service = CreateService(
-            argumentsRunner: (fileName, arguments, workingDirectory, cancellationToken) =>
+            shellCommandRunner: new DelegateShellCommandRunner((command, workingDirectory, cancellationToken) =>
                 ValueTask.FromResult(new CommandExecutionResult
                 {
                     ExitCode = 0,
                     StandardOutput = largeOutput,
                     StandardError = "error",
-                }),
+                })),
             textRunner: FailTextRunner);
 
         CommandExecutionResult result = await service.RunShellCommandAsync(
@@ -135,10 +107,8 @@ public sealed class CommandToolServiceTests
     {
         CapturedTextRun captured = new();
         CommonCommandToolService service = CreateService(
-            argumentsRunner: FailArgumentsRunner,
             textRunner: captured.RunAsync,
-            ripgrepExecutablePathProvider: () => @"Z:\Tools\rg.exe",
-            isWindows: () => true);
+            ripgrepExecutablePathProvider: () => @"Z:\Tools\rg.exe");
 
         await service.RunRipgrepCommandAsync(
             new RunRipgrepCommandArgs
@@ -156,7 +126,6 @@ public sealed class CommandToolServiceTests
     {
         string largeOutput = string.Join(Environment.NewLine, Enumerable.Range(1, 30_000).Select(static index => $"match {index}"));
         CommonCommandToolService service = CreateService(
-            argumentsRunner: FailArgumentsRunner,
             textRunner: (fileName, arguments, workingDirectory, cancellationToken) =>
                 ValueTask.FromResult(new CommandExecutionResult
                 {
@@ -216,22 +185,19 @@ public sealed class CommandToolServiceTests
     }
 
     private static CommonCommandToolService CreateService(
-        CommandArgumentsRunner? argumentsRunner = null,
+        IShellCommandRunner? shellCommandRunner = null,
         CommandTextRunner? textRunner = null,
         RipgrepExecutablePathProvider? ripgrepExecutablePathProvider = null,
-        Func<bool>? isWindows = null,
         ILogger<CommonCommandToolService>? logger = null) =>
         new(
             CreateTemporaryDirectory(),
-            argumentsRunner ?? SucceedArgumentsRunner,
+            shellCommandRunner ?? new DelegateShellCommandRunner(SucceedShellRunner),
             textRunner ?? SucceedTextRunner,
             ripgrepExecutablePathProvider ?? (() => "rg"),
-            isWindows ?? (() => true),
             logger);
 
-    private static ValueTask<CommandExecutionResult> SucceedArgumentsRunner(
-        string fileName,
-        IReadOnlyList<string> arguments,
+    private static ValueTask<CommandExecutionResult> SucceedShellRunner(
+        string command,
         string workingDirectory,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(Succeeded());
@@ -242,13 +208,6 @@ public sealed class CommandToolServiceTests
         string workingDirectory,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(Succeeded());
-
-    private static ValueTask<CommandExecutionResult> FailArgumentsRunner(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        string workingDirectory,
-        CancellationToken cancellationToken) =>
-        throw new AssertFailedException("Arguments runner should not be called.");
 
     private static ValueTask<CommandExecutionResult> FailTextRunner(
         string fileName,
@@ -272,22 +231,30 @@ public sealed class CommandToolServiceTests
         return path;
     }
 
-    private sealed class CapturedArgumentsRun
+    private sealed class CapturedShellRun : IShellCommandRunner
     {
-        public string? FileName { get; private set; }
+        public string? Command { get; private set; }
 
-        public string[]? Arguments { get; private set; }
+        public string? WorkingDirectory { get; private set; }
 
         public ValueTask<CommandExecutionResult> RunAsync(
-            string fileName,
-            IReadOnlyList<string> arguments,
+            string command,
             string workingDirectory,
             CancellationToken cancellationToken)
         {
-            FileName = fileName;
-            Arguments = [.. arguments];
+            Command = command;
+            WorkingDirectory = workingDirectory;
             return ValueTask.FromResult(Succeeded());
         }
+    }
+
+    private sealed class DelegateShellCommandRunner(
+        Func<string, string, CancellationToken, ValueTask<CommandExecutionResult>> run) : IShellCommandRunner
+    {
+        public ValueTask<CommandExecutionResult> RunAsync(
+            string command,
+            string workingDirectory,
+            CancellationToken cancellationToken) => run(command, workingDirectory, cancellationToken);
     }
 
     private sealed class CapturedTextRun

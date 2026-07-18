@@ -1,7 +1,8 @@
 using CodeSnifferDog.Models.Common.Tools;
+using CodeSnifferDog.Modules.Tools.Output;
+using CodeSnifferDog.Modules.Tools.Shell;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using System.Text;
 
 namespace CodeSnifferDog.Modules.Tools.Common;
 
@@ -11,10 +12,9 @@ namespace CodeSnifferDog.Modules.Tools.Common;
 internal sealed class CommonCommandToolService
 {
     private readonly string _repositoryRootPath;
-    private readonly CommandArgumentsRunner _argumentsRunner;
+    private readonly IShellCommandRunner _shellCommandRunner;
     private readonly CommandTextRunner _textRunner;
     private readonly RipgrepExecutablePathProvider _ripgrepExecutablePathProvider;
-    private readonly Func<bool> _isWindows;
     private readonly ILogger<CommonCommandToolService>? _logger;
 
     /// <summary>
@@ -27,10 +27,9 @@ internal sealed class CommonCommandToolService
         ILogger<CommonCommandToolService>? logger = null)
         : this(
             repositoryRootPath,
-            CommandProcessRunner.RunAsync,
+            new PowerShellCommandRunner(),
             CommandProcessRunner.RunAsync,
             new RipgrepAssetLocator().GetExecutablePath,
-            OperatingSystem.IsWindows,
             logger)
     {
     }
@@ -39,29 +38,25 @@ internal sealed class CommonCommandToolService
     /// Initializes a new instance of the <see cref="CommonCommandToolService"/> class for tests or composed services.
     /// </summary>
     /// <param name="repositoryRootPath">Repository root path used as the working directory.</param>
-    /// <param name="argumentsRunner">Runner used for argument-list processes.</param>
+    /// <param name="shellCommandRunner">In-process PowerShell runner used for shell commands.</param>
     /// <param name="textRunner">Runner used for raw-argument-string processes.</param>
     /// <param name="ripgrepExecutablePathProvider">Provider that resolves the ripgrep executable path.</param>
-    /// <param name="isWindows">Function that reports whether the current platform is Windows.</param>
     /// <param name="logger">Optional logger.</param>
     internal CommonCommandToolService(
         string repositoryRootPath,
-        CommandArgumentsRunner argumentsRunner,
+        IShellCommandRunner shellCommandRunner,
         CommandTextRunner textRunner,
         RipgrepExecutablePathProvider ripgrepExecutablePathProvider,
-        Func<bool> isWindows,
         ILogger<CommonCommandToolService>? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(argumentsRunner);
+        ArgumentNullException.ThrowIfNull(shellCommandRunner);
         ArgumentNullException.ThrowIfNull(textRunner);
         ArgumentNullException.ThrowIfNull(ripgrepExecutablePathProvider);
-        ArgumentNullException.ThrowIfNull(isWindows);
 
         _repositoryRootPath = ValidateRepositoryRootPath(repositoryRootPath);
-        _argumentsRunner = argumentsRunner;
+        _shellCommandRunner = shellCommandRunner;
         _textRunner = textRunner;
         _ripgrepExecutablePathProvider = ripgrepExecutablePathProvider;
-        _isWindows = isWindows;
         _logger = logger;
     }
 
@@ -87,9 +82,9 @@ internal sealed class CommonCommandToolService
             _repositoryRootPath,
             command);
 
-        CommandExecutionResult result = _isWindows()
-            ? await _argumentsRunner("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", EncodePowerShellCommand(BuildPowerShellCommand(command))], _repositoryRootPath, cancellationToken).ConfigureAwait(false)
-            : await _argumentsRunner("/bin/bash", ["-lc", command], _repositoryRootPath, cancellationToken).ConfigureAwait(false);
+        CommandExecutionResult result = await _shellCommandRunner
+            .RunAsync(command, _repositoryRootPath, cancellationToken)
+            .ConfigureAwait(false);
 
         CommandExecutionResult limitedResult = CommandOutputLimiter.Limit(result);
         LogCommandResult("Shell", command, limitedResult, stopwatch.ElapsedMilliseconds);
@@ -186,24 +181,6 @@ internal sealed class CommonCommandToolService
 
         return fullPath;
     }
-
-    /// <summary>
-    /// Encodes one PowerShell command for use with <c>-EncodedCommand</c>.
-    /// </summary>
-    /// <param name="command">Command text to encode.</param>
-    /// <returns>The Base64-encoded command.</returns>
-    private static string EncodePowerShellCommand(string command)
-        =>
-        Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-
-    /// <summary>
-    /// Prepends standard PowerShell setup to one command.
-    /// </summary>
-    /// <param name="command">Command text to wrap.</param>
-    /// <returns>The wrapped command.</returns>
-    private static string BuildPowerShellCommand(string command)
-        =>
-        "$ProgressPreference = 'SilentlyContinue'" + Environment.NewLine + command;
 
     /// <summary>
     /// Determines whether a command string starts with the rg executable name.

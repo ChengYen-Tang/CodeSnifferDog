@@ -1,4 +1,5 @@
 using CodeSnifferDog.Modules.Tools.Common;
+using CodeSnifferDog.Modules.Tools.Output;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.Common;
 

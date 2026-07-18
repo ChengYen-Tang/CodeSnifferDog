@@ -2,7 +2,7 @@ using CodeSnifferDog.Models.Common.Tools;
 using System.Text;
 using SharedTokenEstimator = CodeSnifferDog.Modules.Estimation.TokenEstimator;
 
-namespace CodeSnifferDog.Modules.Tools.Common;
+namespace CodeSnifferDog.Modules.Tools.Output;
 
 /// <summary>
 /// Applies a hard token cap to command output before it is returned to the model.
@@ -59,10 +59,14 @@ internal static class CommandOutputLimiter
         string standardOutput,
         string standardError,
         int originalLines,
-        long originalBytes)
+        long originalBytes,
+        bool pipelineWasStoppedEarly = false)
     {
+        string outputMetadata = pipelineWasStoppedEarly
+            ? $"Output observed before the pipeline was stopped. Lines: {originalLines}, bytes: {originalBytes}."
+            : $"Original lines: {originalLines}, original bytes: {originalBytes}.";
         string warning =
-            $"Warning: command output was too large and was truncated. Original lines: {originalLines}, original bytes: {originalBytes}. Do not retry the same large-output command with Shell. Do not use unbounded recursive directory listings such as Get-ChildItem -Recurse. Use Ripgrep to narrow files, symbols, or line numbers, or use bounded file listings with explicit filters/limits. Then use ReadFileRange with smaller offsetLine/limitLines to read file content. The file-reading tool is ReadFileRange.";
+            $"Warning: command output was too large and was truncated. {outputMetadata} Do not retry the same large-output command with Shell. Do not use unbounded recursive directory listings such as Get-ChildItem -Recurse. Use Ripgrep to narrow files, symbols, or line numbers, or use bounded file listings with explicit filters/limits. Then use ReadFileRange with smaller offsetLine/limitLines to read file content. The file-reading tool is ReadFileRange.";
         int remainingBytes = Math.Max(
             0,
             MaxCombinedOutputBytes -
