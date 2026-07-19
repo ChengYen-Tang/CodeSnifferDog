@@ -2,6 +2,7 @@ using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ContextCompaction.Agents;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
+using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Workflows.Common;
@@ -91,6 +92,101 @@ public sealed class CompactingChatClientTests
     }
 
     [TestMethod]
+    public async Task ProviderUsageBias_TriggersCompactionOnTheNextCallWithinTheSameAttempt()
+    {
+        ChatMessage[] messages = [new(ChatRole.User, new string('x', 300))];
+        int rawEstimateTokens = TokenEstimator.Estimate(messages);
+        UsageReportingChatClient provider = new(inputTokenCount: rawEstimateTokens + 600);
+        RecordingSummarizer summarizer = new();
+        CompactingChatClient client = new(provider, new AgentCompactionOptions
+        {
+            Reducer = new ChatReducer(
+                CreateOptions(modelContextWindowTokens: rawEstimateTokens + 3),
+                new StaticSummaryPromptProvider("Summarize."),
+                summarizer),
+        });
+
+        _ = await AgentRunAttemptContext.RunAsync(
+            Guid.CreateVersion7(),
+            async () =>
+            {
+                _ = await client.GetResponseAsync(messages);
+                _ = await client.GetResponseAsync(messages);
+                return true;
+            });
+
+        Assert.HasCount(2, provider.Requests);
+        Assert.HasCount(1, summarizer.Inputs);
+        Assert.IsTrue(ContainsSummaryCheckpoint(provider.Requests[1]));
+    }
+
+    [TestMethod]
+    public async Task ProviderUsageBias_DoesNotCrossAgentAttempts()
+    {
+        ChatMessage[] messages = [new(ChatRole.User, new string('x', 300))];
+        int rawEstimateTokens = TokenEstimator.Estimate(messages);
+        UsageReportingChatClient provider = new(inputTokenCount: rawEstimateTokens + 600);
+        RecordingSummarizer summarizer = new();
+        CompactingChatClient client = new(provider, new AgentCompactionOptions
+        {
+            Reducer = new ChatReducer(
+                CreateOptions(modelContextWindowTokens: rawEstimateTokens + 3),
+                new StaticSummaryPromptProvider("Summarize."),
+                summarizer),
+        });
+
+        _ = await AgentRunAttemptContext.RunAsync(
+            Guid.CreateVersion7(),
+            async () =>
+            {
+                _ = await client.GetResponseAsync(messages);
+                return true;
+            });
+        _ = await AgentRunAttemptContext.RunAsync(
+            Guid.CreateVersion7(),
+            async () =>
+            {
+                _ = await client.GetResponseAsync(messages);
+                return true;
+            });
+
+        Assert.HasCount(2, provider.Requests);
+        Assert.IsEmpty(summarizer.Inputs);
+    }
+
+    [TestMethod]
+    public async Task StreamingPartialUsage_FinalInputUsageCalibratesTheNextCall()
+    {
+        ChatMessage[] messages = [new(ChatRole.User, new string('x', 300))];
+        int rawEstimateTokens = TokenEstimator.Estimate(messages);
+        PartialUsageStreamingChatClient provider = new(inputTokenCount: rawEstimateTokens + 600);
+        RecordingSummarizer summarizer = new();
+        CompactingChatClient client = new(provider, new AgentCompactionOptions
+        {
+            Reducer = new ChatReducer(
+                CreateOptions(modelContextWindowTokens: rawEstimateTokens + 3),
+                new StaticSummaryPromptProvider("Summarize."),
+                summarizer),
+        });
+
+        _ = await AgentRunAttemptContext.RunAsync(
+            Guid.CreateVersion7(),
+            async () =>
+            {
+                await foreach (ChatResponseUpdate _ in client.GetStreamingResponseAsync(messages))
+                {
+                }
+
+                _ = await client.GetResponseAsync(messages);
+                return true;
+            });
+
+        Assert.HasCount(2, provider.Requests);
+        Assert.HasCount(1, summarizer.Inputs);
+        Assert.IsTrue(ContainsSummaryCheckpoint(provider.Requests[1]));
+    }
+
+    [TestMethod]
     public void DisposingAdapter_DoesNotDisposeSharedProvider()
     {
         RecordingChatClient provider = new();
@@ -104,9 +200,9 @@ public sealed class CompactingChatClientTests
         Assert.IsFalse(provider.IsDisposed);
     }
 
-    private static CompactionOptions CreateOptions() => new()
+    private static CompactionOptions CreateOptions(long modelContextWindowTokens = 100) => new()
     {
-        ModelContextWindowTokens = 100,
+        ModelContextWindowTokens = modelContextWindowTokens,
         SummaryReservedOutputTokens = 1,
         AutoCompactBufferTokens = 1,
         PreservedTailMinTokens = 1,
@@ -200,5 +296,77 @@ public sealed class CompactingChatClientTests
 
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
         public void Dispose() => IsDisposed = true;
+    }
+
+    private sealed class UsageReportingChatClient(int inputTokenCount) : IChatClient
+    {
+        public List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            Requests.Add([.. messages]);
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "done"))
+            {
+                Usage = new UsageDetails
+                {
+                    InputTokenCount = inputTokenCount,
+                    OutputTokenCount = 1,
+                    TotalTokenCount = inputTokenCount + 1,
+                },
+            });
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ChatResponse response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+            foreach (ChatResponseUpdate update in response.ToChatResponseUpdates())
+                yield return update;
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public void Dispose() { }
+    }
+
+    private sealed class PartialUsageStreamingChatClient(int inputTokenCount) : IChatClient
+    {
+        public List<IReadOnlyList<ChatMessage>> Requests { get; } = [];
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            Requests.Add([.. messages]);
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            Requests.Add([.. messages]);
+
+            yield return new ChatResponseUpdate(
+                ChatRole.Assistant,
+                [new UsageContent(new UsageDetails { OutputTokenCount = 1 })]);
+            yield return new ChatResponseUpdate(
+                ChatRole.Assistant,
+                [new UsageContent(new UsageDetails
+                {
+                    InputTokenCount = inputTokenCount,
+                    OutputTokenCount = 1,
+                    TotalTokenCount = inputTokenCount + 1,
+                })]);
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public void Dispose() { }
     }
 }

@@ -38,11 +38,22 @@ public sealed class ContextPreparationService
         IEnumerable<ChatMessage> messages,
         AgentSession? session,
         ContextPreparationState? unscopedState = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int inputTokenBiasTokens = 0)
     {
         ArgumentNullException.ThrowIfNull(messages);
         IReadOnlyList<ChatMessage> requestMessages = messages as IReadOnlyList<ChatMessage> ?? [.. messages];
-        _logger.LogDebug("Preparing model context. Mode: {CompactionMode}; MessageCount: {MessageCount}; EstimatedTokens: {EstimatedTokens}; AutomaticThreshold: {AutomaticThreshold}; EffectiveContextWindowTokens: {EffectiveContextWindowTokens}.", _options.Mode, requestMessages.Count, TokenEstimator.Estimate(requestMessages), _options.GetAutoCompactThreshold(), _options.GetEffectiveContextWindowTokens());
+        int rawEstimatedTokens = TokenEstimator.Estimate(requestMessages);
+        int normalizedBiasTokens = Math.Max(0, inputTokenBiasTokens);
+        _logger.LogDebug(
+            "Preparing model context. Mode: {CompactionMode}; MessageCount: {MessageCount}; RawEstimatedTokens: {RawEstimatedTokens}; InputTokenBiasTokens: {InputTokenBiasTokens}; CalibratedEstimatedTokens: {CalibratedEstimatedTokens}; AutomaticThreshold: {AutomaticThreshold}; EffectiveContextWindowTokens: {EffectiveContextWindowTokens}.",
+            _options.Mode,
+            requestMessages.Count,
+            rawEstimatedTokens,
+            normalizedBiasTokens,
+            AddTokenBias(rawEstimatedTokens, normalizedBiasTokens),
+            _options.GetAutoCompactThreshold(),
+            _options.GetEffectiveContextWindowTokens());
         requestMessages = MessageShrinker.ApplySnip(requestMessages, _options).Messages;
         requestMessages = MessageShrinker.ApplyMicroCompaction(requestMessages, _options).Messages;
         if (_options.Mode == CompactionMode.ContextCollapse)
@@ -61,7 +72,9 @@ public sealed class ContextPreparationService
         if (state.CircuitBreakerOpen) return requestMessages;
         try
         {
-            CompactionResult result = await _reducer.CompactAutomaticAsync(requestMessages, cancellationToken).ConfigureAwait(false);
+            CompactionResult result = await _reducer
+                .CompactAutomaticAsync(requestMessages, normalizedBiasTokens, cancellationToken)
+                .ConfigureAwait(false);
             if (result.WasCompacted) { if (session is null) stateScope.Reset(); else _sessionState.Reset(session); }
             return ChatReducer.BuildMessages(result);
         }
@@ -77,6 +90,9 @@ public sealed class ContextPreparationService
             return requestMessages;
         }
     }
+
+    private static int AddTokenBias(int rawEstimatedTokens, int inputTokenBiasTokens) =>
+        (int)Math.Min(int.MaxValue, Math.Max(0L, (long)rawEstimatedTokens + inputTokenBiasTokens));
 }
 
 /// <summary>Thread-safe automatic-compaction state for a non-agent-session invocation scope.</summary>

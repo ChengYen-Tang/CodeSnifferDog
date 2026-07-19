@@ -2,6 +2,7 @@ using CodeSnifferDog.Models.ContextCompaction.Agents;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
+using CodeSnifferDog.Agents.Common.TokenUsage;
 using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -33,9 +34,10 @@ internal sealed class CompactingChatClient(
         CancellationToken cancellationToken = default)
     {
         int? callNumber = AgentRunAttemptContext.GetNextModelCallNumber();
-        IEnumerable<ChatMessage> compactedMessages = await PrepareAsync(messages, callNumber, cancellationToken).ConfigureAwait(false);
-        ChatResponse response = await _innerClient.GetResponseAsync(compactedMessages, options, cancellationToken).ConfigureAwait(false);
-        LogUsage(response.Usage, response.ModelId ?? options?.ModelId, callNumber);
+        AttemptPreparationState? state = GetAttemptState();
+        PreparedModelContext preparedContext = await PrepareAsync(messages, state, callNumber, cancellationToken).ConfigureAwait(false);
+        ChatResponse response = await _innerClient.GetResponseAsync(preparedContext.Messages, options, cancellationToken).ConfigureAwait(false);
+        LogUsage(response.Usage, response.ModelId ?? options?.ModelId, callNumber, preparedContext.Prediction, state?.InputTokenCalibration);
         return response;
     }
 
@@ -45,14 +47,15 @@ internal sealed class CompactingChatClient(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         int? callNumber = AgentRunAttemptContext.GetNextModelCallNumber();
-        IEnumerable<ChatMessage> compactedMessages = await PrepareAsync(messages, callNumber, cancellationToken).ConfigureAwait(false);
+        AttemptPreparationState? state = GetAttemptState();
+        PreparedModelContext preparedContext = await PrepareAsync(messages, state, callNumber, cancellationToken).ConfigureAwait(false);
 
         await foreach (ChatResponseUpdate update in _innerClient
-            .GetStreamingResponseAsync(compactedMessages, options, cancellationToken)
+            .GetStreamingResponseAsync(preparedContext.Messages, options, cancellationToken)
             .ConfigureAwait(false))
         {
             foreach (UsageContent usage in update.Contents.OfType<UsageContent>())
-                LogUsage(usage.Details, update.ModelId ?? options?.ModelId, callNumber);
+                LogUsage(usage.Details, update.ModelId ?? options?.ModelId, callNumber, preparedContext.Prediction, state?.InputTokenCalibration);
             yield return update;
         }
     }
@@ -63,48 +66,82 @@ internal sealed class CompactingChatClient(
     // The provider client is owned by the composition root and may be shared.
     public void Dispose() { }
 
-    private async Task<IReadOnlyList<ChatMessage>> PrepareAsync(
+    private async Task<PreparedModelContext> PrepareAsync(
         IEnumerable<ChatMessage> messages,
+        AttemptPreparationState? state,
         int? callNumber,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<ChatMessage> originalMessages = messages as IReadOnlyList<ChatMessage> ?? [.. messages];
-        AttemptPreparationState? state = GetAttemptState();
         ContextPreparationState automaticState = state?.AutomaticState ?? new ContextPreparationState();
         IReadOnlyList<ChatMessage> messagesToPrepare = state?.Checkpoint?.BuildInput(originalMessages) ?? originalMessages;
+        int inputTokenBiasTokens = state?.InputTokenCalibration.BiasTokens ?? 0;
         IReadOnlyList<ChatMessage> compactedMessages = await _preparation
-            .PrepareAsync(messagesToPrepare, session: null, automaticState, cancellationToken)
+            .PrepareAsync(
+                messagesToPrepare,
+                session: null,
+                unscopedState: automaticState,
+                cancellationToken: cancellationToken,
+                inputTokenBiasTokens: inputTokenBiasTokens)
             .ConfigureAwait(false);
         state?.UpdateCheckpoint(originalMessages, compactedMessages);
+        int rawEstimateBefore = TokenEstimator.Estimate(originalMessages);
+        int rawEstimate = TokenEstimator.Estimate(compactedMessages);
+        int calibratedEstimate = AddTokenBias(rawEstimate, inputTokenBiasTokens);
         _logger.LogDebug(
-            "Prepared per-call model context. GroupKey: {GroupKey}; AgentKey: {AgentKey}; AttemptId: {AttemptId}; CallNumber: {CallNumber}; EstimatedInputTokensBefore: {EstimatedInputTokensBefore}; EstimatedInputTokens: {EstimatedInputTokens}; AutomaticThreshold: {AutomaticThreshold}; WasCompacted: {WasCompacted}.",
+            "Prepared per-call model context. GroupKey: {GroupKey}; AgentKey: {AgentKey}; AttemptId: {AttemptId}; CallNumber: {CallNumber}; RawEstimatedInputTokensBefore: {RawEstimatedInputTokensBefore}; RawEstimatedInputTokens: {RawEstimatedInputTokens}; InputTokenBiasTokens: {InputTokenBiasTokens}; CalibratedInputTokens: {CalibratedInputTokens}; AutomaticThreshold: {AutomaticThreshold}; WasCompacted: {WasCompacted}.",
             AgentRunAttemptContext.CurrentAgentGroupKey,
             AgentRunAttemptContext.CurrentAgentKey,
             AgentRunAttemptContext.CurrentAttemptId,
             callNumber,
-            TokenEstimator.Estimate(originalMessages),
-            TokenEstimator.Estimate(compactedMessages),
+            rawEstimateBefore,
+            rawEstimate,
+            inputTokenBiasTokens,
+            calibratedEstimate,
             _options.Reducer.Options.GetAutoCompactThreshold(),
             compactedMessages.Any(message => message.AdditionalProperties?.ContainsKey(CompactionArtifactMetadata.IsCompactionSummaryKey) == true));
-        return compactedMessages;
+        return new PreparedModelContext(
+            compactedMessages,
+            new CallTokenPrediction(rawEstimate, calibratedEstimate));
     }
 
     private AttemptPreparationState? GetAttemptState() =>
         AgentRunAttemptContext.GetOrCreateAttemptState(_attemptStateKey, static () => new AttemptPreparationState());
 
-    private void LogUsage(UsageDetails? usage, string? model, int? callNumber)
+    private void LogUsage(
+        UsageDetails? usage,
+        string? model,
+        int? callNumber,
+        CallTokenPrediction prediction,
+        InputTokenCalibration? inputTokenCalibration)
     {
         if (usage is null)
             return;
 
+        int? actualInputTokens = usage.InputTokenCount is { } inputTokenCount && inputTokenCount > 0
+            ? (int)Math.Min(int.MaxValue, inputTokenCount)
+            : null;
+        InputTokenCalibrationObservation? calibrationObservation = actualInputTokens is { } inputTokens && inputTokenCalibration is not null
+            ? inputTokenCalibration.Observe(
+                prediction.RawEstimateTokens,
+                prediction.CalibratedEstimateTokens,
+                inputTokens)
+            : null;
+
         _logger.LogDebug(
-            "LLM usage received. GroupKey: {GroupKey}; AgentKey: {AgentKey}; AttemptId: {AttemptId}; CallNumber: {CallNumber}; Model: {Model}; InputTokens: {InputTokens}; OutputTokens: {OutputTokens}; TotalTokens: {TotalTokens}.",
+            "LLM usage received. GroupKey: {GroupKey}; AgentKey: {AgentKey}; AttemptId: {AttemptId}; CallNumber: {CallNumber}; Model: {Model}; RawEstimatedInputTokens: {RawEstimatedInputTokens}; CalibratedInputTokens: {CalibratedInputTokens}; InputTokens: {InputTokens}; PredictionErrorTokens: {PredictionErrorTokens}; ObservedBiasTokens: {ObservedBiasTokens}; InputTokenBiasTokens: {InputTokenBiasTokens}; CalibrationUpdated: {CalibrationUpdated}; OutputTokens: {OutputTokens}; TotalTokens: {TotalTokens}.",
             AgentRunAttemptContext.CurrentAgentGroupKey,
             AgentRunAttemptContext.CurrentAgentKey,
             AgentRunAttemptContext.CurrentAttemptId,
             callNumber,
             model,
+            calibrationObservation?.RawEstimateTokens ?? prediction.RawEstimateTokens,
+            calibrationObservation?.CalibratedEstimateTokens ?? prediction.CalibratedEstimateTokens,
             usage.InputTokenCount,
+            calibrationObservation?.PredictionErrorTokens,
+            calibrationObservation?.ObservedBiasTokens,
+            calibrationObservation?.BiasTokens ?? inputTokenCalibration?.BiasTokens,
+            calibrationObservation?.WasUpdated,
             usage.OutputTokenCount,
             usage.TotalTokenCount);
     }
@@ -112,6 +149,7 @@ internal sealed class CompactingChatClient(
     private sealed class AttemptPreparationState
     {
         public ContextPreparationState AutomaticState { get; } = new();
+        public InputTokenCalibration InputTokenCalibration { get; } = new();
         public CompactionCheckpoint? Checkpoint { get; private set; }
 
         public void UpdateCheckpoint(IReadOnlyList<ChatMessage> rawMessages, IReadOnlyList<ChatMessage> preparedMessages)
@@ -120,6 +158,15 @@ internal sealed class CompactingChatClient(
                 Checkpoint = new CompactionCheckpoint(rawMessages, preparedMessages);
         }
     }
+
+    private readonly record struct PreparedModelContext(
+        IReadOnlyList<ChatMessage> Messages,
+        CallTokenPrediction Prediction);
+
+    private readonly record struct CallTokenPrediction(int RawEstimateTokens, int CalibratedEstimateTokens);
+
+    private static int AddTokenBias(int rawEstimateTokens, int inputTokenBiasTokens) =>
+        (int)Math.Min(int.MaxValue, Math.Max(0L, (long)rawEstimateTokens + inputTokenBiasTokens));
 
     private sealed class CompactionCheckpoint(IReadOnlyList<ChatMessage> rawMessages, IReadOnlyList<ChatMessage> preparedMessages)
     {

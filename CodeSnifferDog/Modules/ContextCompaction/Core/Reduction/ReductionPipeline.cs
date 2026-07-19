@@ -28,6 +28,19 @@ internal sealed class ReductionPipeline(
     private readonly CompactionResultBuilder _resultBuilder = new(options, artifactsProvider);
 
     /// <summary>
+    /// Compacts using transcript-only token estimation.
+    /// </summary>
+    /// <param name="messages">Transcript messages to compact.</param>
+    /// <param name="reason">Reason that triggered the compaction evaluation.</param>
+    /// <param name="cancellationToken">Cancels the compaction attempt.</param>
+    /// <returns>The resulting compaction result.</returns>
+    public Task<CompactionResult> CompactAsync(
+        IEnumerable<ChatMessage> messages,
+        CompactionReason reason,
+        CancellationToken cancellationToken) =>
+        CompactAsync(messages, reason, additionalEstimatedInputTokens: 0, cancellationToken: cancellationToken);
+
+    /// <summary>
     /// Compacts the supplied transcript when the selected reason or thresholds require it.
     /// </summary>
     /// <param name="messages">Transcript messages to compact.</param>
@@ -39,13 +52,14 @@ internal sealed class ReductionPipeline(
     public async Task<CompactionResult> CompactAsync(
         IEnumerable<ChatMessage> messages,
         CompactionReason reason,
+        int additionalEstimatedInputTokens,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(messages);
 
         List<ChatMessage> materializedMessages = [.. messages];
         CompactionResultBuilder.EnsureMessageIdentities(materializedMessages);
-        if (!ShouldCompact(materializedMessages, reason))
+        if (!ShouldCompact(materializedMessages, reason, additionalEstimatedInputTokens))
             return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
 
         // A provider cannot accept a summary request or compacted context that splits a function call from its results.
@@ -94,12 +108,14 @@ internal sealed class ReductionPipeline(
     /// <returns><see langword="true" /> for reactive compaction, or when the automatic threshold is exceeded.</returns>
     private bool ShouldCompact(
         IReadOnlyList<ChatMessage> messages,
-        CompactionReason reason)
+        CompactionReason reason,
+        int additionalEstimatedInputTokens)
     {
         if (reason == CompactionReason.Reactive)
             return true;
 
-        int estimatedTokens = TokenEstimator.Estimate(messages);
-        return estimatedTokens >= options.GetAutoCompactThreshold();
+        long estimatedTokens = TokenEstimator.Estimate(messages);
+        long adjustedEstimate = estimatedTokens + Math.Max(0, additionalEstimatedInputTokens);
+        return adjustedEstimate >= options.GetAutoCompactThreshold();
     }
 }

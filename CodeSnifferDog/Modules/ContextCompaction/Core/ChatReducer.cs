@@ -86,7 +86,22 @@ public sealed class ChatReducer : IChatReducer
     public async Task<CompactionResult> CompactAutomaticAsync(
         IEnumerable<ChatMessage> messages,
         CancellationToken cancellationToken = default) =>
-        await _pipeline.CompactAsync(messages, CompactionReason.AutomaticThreshold, cancellationToken).ConfigureAwait(false);
+        await CompactAutomaticAsync(messages, additionalEstimatedInputTokens: 0, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Runs automatic compaction with request-level input tokens that are not represented by transcript messages.
+    /// </summary>
+    /// <param name="messages">Transcript messages to evaluate for automatic compaction.</param>
+    /// <param name="additionalEstimatedInputTokens">A non-negative provider-request overhead estimate.</param>
+    /// <param name="cancellationToken">Cancels the compaction attempt.</param>
+    /// <returns>The detailed compaction result for the automatic pass.</returns>
+    public async Task<CompactionResult> CompactAutomaticAsync(
+        IEnumerable<ChatMessage> messages,
+        int additionalEstimatedInputTokens,
+        CancellationToken cancellationToken = default) =>
+        await _pipeline
+            .CompactAsync(messages, CompactionReason.AutomaticThreshold, additionalEstimatedInputTokens, cancellationToken)
+            .ConfigureAwait(false);
 
     /// <summary>
     /// Runs the compaction pipeline using the reactive reason code.
@@ -97,7 +112,9 @@ public sealed class ChatReducer : IChatReducer
     public async Task<CompactionResult> CompactReactiveAsync(
         IEnumerable<ChatMessage> messages,
         CancellationToken cancellationToken = default) =>
-        await _pipeline.CompactAsync(messages, CompactionReason.Reactive, cancellationToken).ConfigureAwait(false);
+        await _pipeline
+            .CompactAsync(messages, CompactionReason.Reactive, additionalEstimatedInputTokens: 0, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
 
     /// <summary>
     /// Rebuilds the active transcript from a previously computed compaction result.
