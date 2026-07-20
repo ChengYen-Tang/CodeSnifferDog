@@ -61,13 +61,17 @@ internal sealed class SnapshotQueryService(
                 agent.ProjectAgentGroupId,
                 agent.RuntimeKey,
                 agent.DisplayName,
-                agent.SystemPrompt,
+                null,
                 agent.Status,
                 agent.CreatedAtUtc))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         Guid? effectiveSelectedAgentId = ResolveSelectedAgentId(agents, selectedAgentId);
+        string? selectedSystemPrompt =
+            effectiveSelectedAgentId is Guid selectedPromptAgentId
+                ? await LoadSystemPromptAsync(dbContext, selectedPromptAgentId, cancellationToken).ConfigureAwait(false)
+                : null;
         IReadOnlyList<TimelineEntryProjection> selectedTimelineEntries =
             effectiveSelectedAgentId is Guid selectedHistoryAgentId
                 ? await LoadTimelineEntriesAsync(dbContext, selectedHistoryAgentId, cancellationToken).ConfigureAwait(false)
@@ -84,6 +88,7 @@ internal sealed class SnapshotQueryService(
                     .ThenBy(agent => agent.DisplayName, StringComparer.Ordinal)
                     .Select(agent => new SnapshotAgentRow(
                         agent,
+                        SystemPrompt: effectiveSelectedAgentId == agent.AgentId ? selectedSystemPrompt : null,
                         HasLoadedHistory: effectiveSelectedAgentId == agent.AgentId,
                         TimelineEntries: effectiveSelectedAgentId == agent.AgentId ? selectedTimelineEntries : []))
                     .ToList()))
@@ -104,18 +109,25 @@ internal sealed class SnapshotQueryService(
         await using CodeSnifferDogServerDbContext dbContext =
             await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        bool agentExists = await dbContext.ProjectAgents
+        var agentHeader = await dbContext.ProjectAgents
             .AsNoTracking()
             .Where(agent => agent.Id == agentId)
             .Join(
-                dbContext.ProjectAgentGroups.AsNoTracking(),
+                dbContext.ProjectAgentGroups
+                    .AsNoTracking()
+                    .Where(group => group.ProjectId == projectId),
                 agent => agent.ProjectAgentGroupId,
                 group => group.Id,
-                (agent, group) => new { agent.Id, group.ProjectId })
-            .AnyAsync(item => item.Id == agentId && item.ProjectId == projectId, cancellationToken)
+                (agent, group) => new
+                {
+                    AgentId = agent.Id,
+                    group.ProjectId,
+                    agent.SystemPrompt,
+                })
+            .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        if (!agentExists)
+        if (agentHeader is null)
             return null;
 
         IReadOnlyList<TimelineEntryProjection> timelineEntries =
@@ -124,6 +136,7 @@ internal sealed class SnapshotQueryService(
         return new HistorySnapshotReadModel(
             projectId,
             agentId,
+            agentHeader.SystemPrompt,
             timelineEntries);
     }
 
@@ -176,9 +189,23 @@ internal sealed class SnapshotQueryService(
             .ToListAsync(cancellationToken);
 
     /// <summary>
+    /// Loads the prompt for the one agent whose details are included in a snapshot.
+    /// </summary>
+    private static Task<string> LoadSystemPromptAsync(
+        CodeSnifferDogServerDbContext dbContext,
+        Guid agentId,
+        CancellationToken cancellationToken) =>
+        dbContext.ProjectAgents
+            .AsNoTracking()
+            .Where(agent => agent.Id == agentId)
+            .Select(agent => agent.SystemPrompt)
+            .SingleAsync(cancellationToken);
+
+    /// <summary>
     /// Lightweight project row used when building status snapshots.
     /// </summary>
     /// <param name="ProjectId">Project identifier.</param>
     /// <param name="Status">Persisted project status.</param>
     private sealed record ProjectSnapshotRow(Guid ProjectId, ProjectProcessingStatus Status);
+
 }

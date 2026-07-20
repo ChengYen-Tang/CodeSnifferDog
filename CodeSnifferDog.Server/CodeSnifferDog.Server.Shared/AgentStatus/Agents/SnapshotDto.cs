@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace CodeSnifferDog.Server.Shared.AgentStatus.Agents;
 
 /// <summary>
@@ -26,9 +28,10 @@ public sealed class SnapshotDto
     public required string DisplayName { get; init; }
 
     /// <summary>
-    /// Gets the system prompt assigned to the agent.
+    /// Gets the system prompt assigned to the agent when this agent's details are loaded.
     /// </summary>
-    public string SystemPrompt { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SystemPrompt { get; init; }
 
     /// <summary>
     /// Gets the current run status.

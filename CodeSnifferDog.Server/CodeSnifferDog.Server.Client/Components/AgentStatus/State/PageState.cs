@@ -168,13 +168,30 @@ internal sealed class PageState(
         _liveUpdateReducer.Apply(update, Snapshot, Selection, History);
 
     /// <summary>
+    /// Applies a batch of live updates and reports whether any visible state changed.
+    /// </summary>
+    /// <param name="updates">Ordered live updates to apply.</param>
+    /// <returns><see langword="true" /> when at least one update changed state.</returns>
+    public bool ApplyLiveUpdates(IReadOnlyList<LiveUpdateDto> updates)
+    {
+        bool changed = false;
+        for (int index = 0; index < updates.Count; index++)
+            changed |= ApplyLiveUpdate(updates[index]);
+
+        return changed;
+    }
+
+    /// <summary>
     /// Replaces the cached timeline history for one agent and updates the history pane when that agent is selected.
     /// </summary>
     /// <param name="agentId">Agent identifier whose timeline history should be replaced.</param>
     /// <param name="timelineEntries">Replacement timeline entries.</param>
-    public void SetAgentHistory(Guid agentId, IReadOnlyList<TimelineEntryDto> timelineEntries)
+    public void SetAgentHistory(
+        Guid agentId,
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
+        string? systemPrompt = null)
     {
-        Snapshot.ReplaceAgentHistory(agentId, timelineEntries);
+        Snapshot.ReplaceAgentHistory(agentId, timelineEntries, systemPrompt);
         History.ApplySelectedAgentSnapshot(timelineEntries, agentId);
     }
 

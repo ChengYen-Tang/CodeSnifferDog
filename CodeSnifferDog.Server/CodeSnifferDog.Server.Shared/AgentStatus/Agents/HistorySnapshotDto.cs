@@ -16,6 +16,11 @@ public sealed class HistorySnapshotDto
     public required Guid AgentId { get; init; }
 
     /// <summary>
+    /// Gets the system prompt assigned to the agent.
+    /// </summary>
+    public string SystemPrompt { get; init; } = string.Empty;
+
+    /// <summary>
     /// Gets the loaded timeline entries.
     /// </summary>
     public required IReadOnlyList<TimelineEntryDto> TimelineEntries { get; init; }

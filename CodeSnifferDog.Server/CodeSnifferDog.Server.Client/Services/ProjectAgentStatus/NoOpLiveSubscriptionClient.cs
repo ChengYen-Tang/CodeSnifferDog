@@ -10,7 +10,7 @@ public sealed class NoOpLiveSubscriptionClient : ILiveSubscriptionClient
     /// <inheritdoc />
     public Task SubscribeAsync(
         LiveSubscriptionRequestDto request,
-        Func<LiveUpdateDto, Task> onUpdate,
+        Func<IReadOnlyList<LiveUpdateDto>, Task> onUpdates,
         Func<Task> onReconnecting,
         Func<Task> onReconnectRequired,
         CancellationToken cancellationToken = default) =>

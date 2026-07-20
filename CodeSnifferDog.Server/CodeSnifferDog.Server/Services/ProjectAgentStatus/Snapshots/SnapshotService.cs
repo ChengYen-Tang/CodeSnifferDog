@@ -62,6 +62,7 @@ internal sealed class SnapshotService(
         {
             ProjectId = history.ProjectId,
             AgentId = history.AgentId,
+            SystemPrompt = history.SystemPrompt,
             TimelineEntries = timelineEntries,
         };
     }
@@ -91,7 +92,7 @@ internal sealed class SnapshotService(
         GroupId = agent.Agent.GroupId,
         RuntimeKey = agent.Agent.RuntimeKey,
         DisplayName = agent.Agent.DisplayName,
-        SystemPrompt = agent.Agent.SystemPrompt,
+        SystemPrompt = agent.SystemPrompt,
         Status = _projectionMapper.MapAgentStatus(agent.Agent.Status, ExceptionStyle.Snapshot),
         CreatedAtUtc = agent.Agent.CreatedAtUtc,
         HasLoadedHistory = agent.HasLoadedHistory,

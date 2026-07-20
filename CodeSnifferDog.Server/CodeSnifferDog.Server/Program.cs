@@ -57,7 +57,8 @@ else
 }
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+if (app.Configuration.GetValue<bool>("HttpsRedirection:Enabled"))
+    app.UseHttpsRedirection();
 
 app.UseAntiforgery();
 

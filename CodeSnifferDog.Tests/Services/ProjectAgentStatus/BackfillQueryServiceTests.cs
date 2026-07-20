@@ -1,5 +1,6 @@
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
+using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Snapshots.Queries;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using Microsoft.EntityFrameworkCore;
@@ -58,6 +59,69 @@ public sealed class BackfillQueryServiceTests
         Assert.AreEqual(agentId, result.Agents.Single().AgentId);
         Assert.HasCount(1, result.TimelineEntries);
         Assert.AreEqual(2L, result.TimelineEntries.Single().Sequence);
+    }
+
+    [TestMethod]
+    public async Task GetBackfillAsync_WhenProjectStateIsExcluded_ReturnsOnlyRequestedTimelineTail()
+    {
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
+        await SeedProjectTreeAsync(dbContextFactory, projectId, groupId, agentId);
+        BackfillQueryService service = new(dbContextFactory);
+
+        BackfillReadModel result = await service.GetBackfillAsync(
+            new LiveSubscriptionRequestDto
+            {
+                ProjectId = projectId,
+                SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
+                AgentId = agentId,
+                LatestSequence = 1,
+                IncludeProjectState = false,
+            },
+            TestContext.CancellationToken);
+
+        Assert.AreEqual(projectId, result.ProjectId);
+        Assert.IsNull(result.ProjectStatus);
+        Assert.IsEmpty(result.Groups);
+        Assert.IsEmpty(result.Agents);
+        TimelineEntryProjection timelineEntry = Assert.ContainsSingle(result.TimelineEntries);
+        Assert.AreEqual(agentId, timelineEntry.AgentId);
+        Assert.AreEqual(2L, timelineEntry.Sequence);
+        Assert.AreEqual("new", timelineEntry.Message);
+    }
+
+    [TestMethod]
+    public async Task GetBackfillAsync_WhenProjectStateIsExcludedAndAgentBelongsToDifferentProject_ReturnsEmptyPartialReadModel()
+    {
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentId = Guid.CreateVersion7();
+        Guid otherProjectId = Guid.CreateVersion7();
+        Guid otherGroupId = Guid.CreateVersion7();
+        Guid otherAgentId = Guid.CreateVersion7();
+        await SeedProjectTreeAsync(dbContextFactory, projectId, groupId, agentId);
+        await SeedProjectTreeAsync(dbContextFactory, otherProjectId, otherGroupId, otherAgentId);
+        BackfillQueryService service = new(dbContextFactory);
+
+        BackfillReadModel result = await service.GetBackfillAsync(
+            new LiveSubscriptionRequestDto
+            {
+                ProjectId = projectId,
+                SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
+                AgentId = otherAgentId,
+                LatestSequence = 0,
+                IncludeProjectState = false,
+            },
+            TestContext.CancellationToken);
+
+        Assert.AreEqual(projectId, result.ProjectId);
+        Assert.IsNull(result.ProjectStatus);
+        Assert.IsEmpty(result.Groups);
+        Assert.IsEmpty(result.Agents);
+        Assert.IsEmpty(result.TimelineEntries);
     }
 
     [TestMethod]

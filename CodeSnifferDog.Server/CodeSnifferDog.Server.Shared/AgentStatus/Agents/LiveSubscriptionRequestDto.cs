@@ -24,4 +24,10 @@ public sealed class LiveSubscriptionRequestDto
     /// Gets the latest timeline sequence the client has already received.
     /// </summary>
     public long LatestSequence { get; init; }
+
+    /// <summary>
+    /// Gets whether the catch-up response must include current project, group, and agent state.
+    /// Same-project agent switches can omit this data because the project channel remains subscribed.
+    /// </summary>
+    public bool IncludeProjectState { get; init; } = true;
 }

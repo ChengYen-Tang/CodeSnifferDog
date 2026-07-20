@@ -171,6 +171,49 @@ public sealed class PageStateTests
     }
 
     [TestMethod]
+    public void AgentUpsert_WithPromptUpdatesPromptAndNullPromptPreservesIt()
+    {
+        PageState state = PageState.CreateEmpty();
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000025");
+        Guid agentId = Guid.Parse("72000000-0000-0000-0000-000000000025");
+        state.SetSnapshot(CreateSnapshot(
+            [
+                CreateGroup(
+                    groupId,
+                    "Group A",
+                    1,
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "Agent",
+                            1,
+                            [CreateTimelineEntry(agentId, 1, "existing history")],
+                            systemPrompt: "original prompt")
+                    ]),
+            ]));
+
+        bool promptChanged = state.ApplyLiveUpdate(
+            CreateAgentUpdate(groupId, agentId, "Agent", 1, systemPrompt: "updated prompt"));
+
+        Assert.IsTrue(promptChanged);
+        SnapshotDto updatedAgent = state.Snapshot.FindAgent(agentId)!;
+        Assert.AreEqual("updated prompt", updatedAgent.SystemPrompt);
+        Assert.HasCount(1, updatedAgent.TimelineEntries);
+        Assert.AreEqual("existing history", updatedAgent.TimelineEntries[0].Message);
+
+        bool summaryChanged = state.ApplyLiveUpdate(
+            CreateAgentUpdate(groupId, agentId, "Renamed Agent", 1, systemPrompt: null));
+
+        Assert.IsTrue(summaryChanged);
+        SnapshotDto renamedAgent = state.Snapshot.FindAgent(agentId)!;
+        Assert.AreEqual("Renamed Agent", renamedAgent.DisplayName);
+        Assert.AreEqual("updated prompt", renamedAgent.SystemPrompt);
+        Assert.HasCount(1, renamedAgent.TimelineEntries);
+        Assert.AreEqual("existing history", renamedAgent.TimelineEntries[0].Message);
+    }
+
+    [TestMethod]
     public void SelectedTimelineUpdatesChangeHistoryAndNonSelectedTimelineUpdateIsNoOp()
     {
         PageState state = PageState.CreateEmpty();
@@ -322,7 +365,12 @@ public sealed class PageStateTests
         Assert.AreEqual(0, state.History.GetLatestSequence());
     }
 
-    private static LiveUpdateDto CreateAgentUpdate(Guid groupId, Guid agentId, string displayName, int createdMinute) => new()
+    private static LiveUpdateDto CreateAgentUpdate(
+        Guid groupId,
+        Guid agentId,
+        string displayName,
+        int createdMinute,
+        string? systemPrompt = null) => new()
     {
         ProjectId = Guid.Parse("70000000-0000-0000-0000-000000000001"),
         Kind = LiveUpdateKind.AgentUpserted,
@@ -333,9 +381,9 @@ public sealed class PageStateTests
             GroupId = groupId,
             RuntimeKey = displayName.ToLowerInvariant().Replace(' ', '-'),
             DisplayName = displayName,
+            SystemPrompt = systemPrompt,
             Status = RunStatus.Waiting,
             CreatedAtUtc = CreatedAt(createdMinute),
-            SystemPrompt = "",
         },
     };
 
@@ -373,13 +421,14 @@ public sealed class PageStateTests
         Guid groupId,
         string displayName,
         int createdMinute,
-        IReadOnlyList<TimelineEntryDto> timelineEntries) => new()
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
+        string? systemPrompt = "") => new()
         {
             AgentId = agentId,
             GroupId = groupId,
             RuntimeKey = displayName.ToLowerInvariant().Replace(' ', '-'),
             DisplayName = displayName,
-            SystemPrompt = "",
+            SystemPrompt = systemPrompt,
             Status = RunStatus.Waiting,
             CreatedAtUtc = CreatedAt(createdMinute),
             HasLoadedHistory = timelineEntries.Count > 0,

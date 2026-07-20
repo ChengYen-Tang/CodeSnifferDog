@@ -23,7 +23,7 @@ internal sealed record GroupProjection(
 /// <param name="GroupId">Owning group identifier.</param>
 /// <param name="RuntimeKey">Stable runtime key.</param>
 /// <param name="DisplayName">Display name shown to clients.</param>
-/// <param name="SystemPrompt">System prompt assigned to the agent.</param>
+/// <param name="SystemPrompt">Optional prompt carried by an individual live upsert.</param>
 /// <param name="Status">Persisted agent status.</param>
 /// <param name="CreatedAtUtc">Creation timestamp in UTC.</param>
 internal sealed record AgentProjection(
@@ -31,7 +31,7 @@ internal sealed record AgentProjection(
     Guid GroupId,
     string RuntimeKey,
     string DisplayName,
-    string SystemPrompt,
+    string? SystemPrompt,
     PersistedAgentStatus Status,
     DateTimeOffset CreatedAtUtc);
 
