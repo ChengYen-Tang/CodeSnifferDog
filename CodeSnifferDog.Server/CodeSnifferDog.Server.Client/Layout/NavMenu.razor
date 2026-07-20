@@ -165,7 +165,11 @@
         @foreach (var group in _groups)
         {
             <section class="status-group" @key="group.GroupKey">
-                <div class="status-summary" role="button" tabindex="0" title="@group.Title" @onclick="() => ToggleGroup(group)">
+                <button type="button"
+                        class="status-summary"
+                        title="@group.Title"
+                        aria-expanded="@(group.IsExpanded ? "true" : "false")"
+                        @onclick="() => ToggleGroup(group)">
                     <span class="status-heading">
                         <span class="group-icon @group.IconCssClass">@group.IconText</span>
                         <span class="group-title">@group.Title</span>
@@ -174,7 +178,7 @@
                         <span class="group-count">@group.Items.Count</span>
                         <span class="group-chevron">@(group.IsExpanded ? "˅" : ">")</span>
                     </span>
-                </div>
+                </button>
 
                 @if (group.IsExpanded)
                 {
@@ -182,7 +186,10 @@
                         @foreach (var item in group.Items)
                         {
                             <div class="project-link @(item.ProjectId == _state.Ui.SelectedProjectId ? "active" : null)" @key="item.ProjectId">
-                                <a class="project-main" href="@item.StatusHref" @onclick="() => SelectProjectForNavigation(item.ProjectId)">
+                                <a class="project-main"
+                                   href="@item.StatusHref"
+                                   aria-current="@(item.ProjectId == _state.Ui.SelectedProjectId ? "page" : null)"
+                                   @onclick="() => SelectProjectForNavigation(item.ProjectId)">
                                     <span class="project-name">@item.Name</span>
                                     <span class="project-meta">@item.Meta</span>
                                 </a>
@@ -192,7 +199,7 @@
                                     {
                                         if (action.Href is not null)
                                         {
-                                            <a class="project-action-button" href="@action.Href" title="@action.Label" @key="action.Label" @onclick:stopPropagation="true">
+                                            <a class="project-action-button" href="@action.Href" title="@action.Label" aria-label="@action.Label" @key="action.Label" @onclick:stopPropagation="true">
                                                 @action.IconText
                                             </a>
                                         }
@@ -202,6 +209,7 @@
                                                 type="button"
                                                 class="project-action-button"
                                                 title="@action.Label"
+                                                aria-label="@action.Label"
                                                 @key="action.Label"
                                                 disabled="@_actingProjectIds.Contains(item.ProjectId)"
                                                 @onclick="() => ExecuteActionAsync(item, action)"

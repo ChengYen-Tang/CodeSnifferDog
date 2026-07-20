@@ -24,7 +24,10 @@ else
         <div class="agent-message-bubble">
             @if (isTool)
             {
-                <button type="button" class="tool-call-summary" @onclick="() => OnToggleToolDetails.InvokeAsync(ToolKey)">
+                <button type="button"
+                        class="tool-call-summary"
+                        aria-expanded="@(IsExpanded ? "true" : "false")"
+                        @onclick="() => OnToggleToolDetails.InvokeAsync(ToolKey)">
                     <span class="tool-call-chip">Tool</span>
                     <span class="tool-call-summary-name">@Entry.ToolName</span>
                     <span>@(IsExpanded ? "v" : ">")</span>

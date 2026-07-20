@@ -3,7 +3,7 @@
 <section class="agent-history-pane">
     <div class="agent-history-toolbar">
         <div>
-            <div class="agent-history-title">History</div>
+            <h2 class="agent-history-title">History</h2>
             @if (SelectedAgent is not null)
             {
                 <div class="small text-body-secondary">@SelectedAgent.DisplayName</div>
@@ -19,7 +19,7 @@
         </button>
     </div>
 
-    <div class="agent-chat-log">
+    <div class="agent-chat-log" role="log" aria-live="polite">
         @if (IsHistoryLoading && SelectedAgentId == HistoryAgentId)
         {
             <div class="alert alert-info mb-0" role="status">Loading agent history...</div>
@@ -27,6 +27,20 @@
         else if (HistoryErrorMessage is not null && SelectedAgentId == HistoryAgentId)
         {
             <div class="alert alert-warning mb-0" role="alert">@HistoryErrorMessage</div>
+        }
+        else if (SelectedAgent is null)
+        {
+            <div class="agent-empty-state agent-history-empty-state">
+                <div class="agent-empty-state-title">Select an agent</div>
+                <div class="agent-empty-state-copy">Choose an agent to inspect its execution history.</div>
+            </div>
+        }
+        else if (TimelineEntries.Count == 0)
+        {
+            <div class="agent-empty-state agent-history-empty-state">
+                <div class="agent-empty-state-title">No activity recorded</div>
+                <div class="agent-empty-state-copy">New messages and tool calls will appear here.</div>
+            </div>
         }
         else
         {

@@ -3,6 +3,7 @@
 <div class="report-file-item @(IsSelected ? "active" : null)">
     <button type="button"
             class="report-file-select"
+            aria-current="@(IsSelected ? "true" : null)"
             @onclick="SelectReportAsync">
         <span class="report-file-icon">MD</span>
         <span class="report-file-body">
@@ -13,6 +14,7 @@
     <a class="report-file-download"
        href="@($"/api/projects/{ProjectId}/reports/{Report.ReportId}/download")"
        title="Download report"
+       aria-label="@($"Download {Report.RuleName} report")"
        download="@($"{Report.RuleName}.md")">
         ↓
     </a>
