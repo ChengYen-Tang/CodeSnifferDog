@@ -174,6 +174,52 @@ public sealed class NavMenuTests
     }
 
     [TestMethod]
+    public void CanceledProjectCard_ProvidesAgentStatusActionAndFullNameTooltip()
+    {
+        using Bunit.TestContext context = new();
+        RegisterSidebarServices(context, new ThrowingHttpMessageHandler());
+        context.Renderer.SetRendererInfo(new RendererInfo("Static", isInteractive: false));
+
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000406");
+        const string projectName = "a-very-long-project-name-that-must-not-expand-the-sidebar-layout.zip";
+        ProjectSidebarSnapshotDto snapshot = CreateSnapshot(
+            selectedProjectId: null,
+            new ProjectSidebarGroupDto
+            {
+                GroupKey = "canceled",
+                DisplayName = "Canceled",
+                Status = ProjectStatus.Canceled,
+                SortOrder = 0,
+                Projects =
+                [
+                    new ProjectSidebarProjectDto
+                    {
+                        ProjectId = projectId,
+                        OriginalFileName = projectName,
+                        Status = ProjectStatus.Canceled,
+                        CreatedAtUtc = new DateTimeOffset(2026, 5, 15, 11, 0, 0, TimeSpan.Zero),
+                        SortOrder = 0,
+                    },
+                ],
+            });
+
+        IRenderedComponent<NavMenu> cut = context.RenderComponent<NavMenu>(
+            parameters => parameters.Add(component => component.InitialSnapshot, snapshot));
+
+        cut.Find(".status-summary").Click();
+
+        AngleSharp.Dom.IElement projectMain = cut.Find(".project-main");
+        AngleSharp.Dom.IElement projectNameElement = projectMain.QuerySelector(".project-name")!;
+        Assert.AreEqual(projectName, projectNameElement.TextContent);
+        Assert.AreEqual(projectName, projectMain.GetAttribute("title"));
+        Assert.AreEqual($"/agent-status?projectId={projectId}", projectMain.GetAttribute("href"));
+
+        AngleSharp.Dom.IElement statusAction = cut.Find(".project-action-button[title='Agent Team / Worker Status']");
+        Assert.AreEqual("S", statusAction.TextContent.Trim());
+        Assert.AreEqual($"/agent-status?projectId={projectId}", statusAction.GetAttribute("href"));
+    }
+
+    [TestMethod]
     public void DeleteProject_WhenSuccessful_NavigatesToAddNewProject()
     {
         using Bunit.TestContext context = new();

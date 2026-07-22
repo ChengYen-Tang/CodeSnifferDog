@@ -6,28 +6,41 @@
     </div>
 
     <div class="agent-group-list">
-        @foreach (var group in Groups)
+        @if (Groups.Count == 0)
         {
-            <section class="agent-group-card" @key="group.GroupId">
-                <div class="agent-group-name">@group.DisplayName</div>
-                <div class="agent-node-list">
-                    @foreach (var agent in group.Agents)
-                    {
-                        var isSelected = agent.AgentId == SelectedAgentId;
+            <div class="agent-empty-state">
+                <div class="agent-empty-state-title">No agents yet</div>
+                <div class="agent-empty-state-copy">Agents appear here when project analysis starts.</div>
+            </div>
+        }
+        else
+        {
+            @foreach (var group in Groups)
+            {
+                <section class="agent-group-card" @key="group.GroupId">
+                    <div class="agent-group-name">@group.DisplayName</div>
+                    <div class="agent-node-list">
+                        @foreach (var agent in group.Agents)
+                        {
+                            var isSelected = agent.AgentId == SelectedAgentId;
 
-                        <button type="button"
-                                class="agent-roster-node @(isSelected ? "selected" : null)"
-                                @key="agent.AgentId"
-                                @onclick="() => OnSelectAgent.InvokeAsync(agent.AgentId)">
-                            <div class="agent-roster-main">
-                                <div class="agent-roster-name">@agent.DisplayName</div>
-                                <div class="agent-roster-rule">@FormatCreatedAt(agent.CreatedAtUtc)</div>
-                            </div>
-                            <span class="agent-status-dot @StatusCss(agent.Status)" title="@FormatStatus(agent.Status)"></span>
-                        </button>
-                    }
-                </div>
-            </section>
+                            <button type="button"
+                                    class="agent-roster-node @(isSelected ? "selected" : null)"
+                                    aria-current="@(isSelected ? "true" : null)"
+                                    @key="agent.AgentId"
+                                    @onclick="() => OnSelectAgent.InvokeAsync(agent.AgentId)">
+                                <span class="agent-roster-main">
+                                    <span class="agent-roster-name">@agent.DisplayName</span>
+                                    <span class="agent-roster-rule">@FormatCreatedAt(agent.CreatedAtUtc)</span>
+                                </span>
+                                <span class="agent-status-dot @StatusCss(agent.Status)" title="@FormatStatus(agent.Status)">
+                                    <span class="visually-hidden">@FormatStatus(agent.Status)</span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                </section>
+            }
         }
     </div>
 </aside>

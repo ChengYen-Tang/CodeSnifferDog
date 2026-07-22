@@ -11,13 +11,13 @@ public interface ILiveSubscriptionClient : IAsyncDisposable
     /// Subscribes to live updates for one project and optional selected agent.
     /// </summary>
     /// <param name="request">Subscription request describing the target project and optional selected agent.</param>
-    /// <param name="onUpdate">Callback invoked for each received live update.</param>
+    /// <param name="onUpdates">Callback invoked for each ordered batch of received live updates.</param>
     /// <param name="onReconnecting">Callback invoked when the underlying transport starts reconnecting.</param>
     /// <param name="onReconnectRequired">Callback invoked when the client must resubscribe after reconnection or closure.</param>
     /// <param name="cancellationToken">Cancels subscription startup.</param>
     Task SubscribeAsync(
         LiveSubscriptionRequestDto request,
-        Func<LiveUpdateDto, Task> onUpdate,
+        Func<IReadOnlyList<LiveUpdateDto>, Task> onUpdates,
         Func<Task> onReconnecting,
         Func<Task> onReconnectRequired,
         CancellationToken cancellationToken = default);

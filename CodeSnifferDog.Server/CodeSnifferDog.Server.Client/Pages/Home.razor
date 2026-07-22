@@ -131,8 +131,9 @@
                 <div class="col-12">
                     <div class="row g-4">
                         <div class="col-12">
-                            <label class="form-label fw-semibold text-dark-emphasis" for="@UploadInputElementId">Selected Archive</label>
+                            <label class="form-label fw-semibold text-dark-emphasis" for="new-project-selected-archive">Selected Archive</label>
                             <input
+                                id="new-project-selected-archive"
                                 class="form-control form-control-lg"
                                 type="text"
                                 value="@(_selectedArchiveDisplayName ?? "No archive selected")"
@@ -140,16 +141,17 @@
                         </div>
 
                         <div class="col-12">
-                            <label class="form-label fw-semibold text-dark-emphasis mb-3">Zip Archive</label>
+                            <div class="form-label fw-semibold text-dark-emphasis mb-3">Zip Archive</div>
                             <label class="upload-dropzone w-100" id="@UploadDropzoneElementId" for="@UploadInputElementId">
                                 <InputFile
                                     id="@UploadInputElementId"
-                                    class="d-none"
+                                    class="visually-hidden"
                                     accept=".zip"
+                                    aria-describedby="new-project-upload-help"
                                     OnChange="HandleSelectedFileAsync" />
                                 <span class="badge rounded-pill text-bg-primary px-3 py-2">.zip only</span>
                                 <div class="upload-title">Drop archive here or click to browse</div>
-                                <div class="upload-subtitle">Single project package upload for server-side analysis.</div>
+                                <div id="new-project-upload-help" class="upload-subtitle">Single project package upload for server-side analysis.</div>
                                 @if (HasSelectedArchive)
                                 {
                                     <div class="upload-selection-note">@_selectedArchiveDisplayName</div>
@@ -162,7 +164,7 @@
                 @if (!string.IsNullOrWhiteSpace(_errorMessage))
                 {
                     <div class="col-12">
-                        <div class="alert alert-warning mb-0" role="alert">@_errorMessage</div>
+                    <div class="alert alert-warning mb-0" role="alert">@_errorMessage</div>
                     </div>
                 }
 

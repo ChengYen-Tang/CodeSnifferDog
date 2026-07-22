@@ -22,12 +22,14 @@
     }
 }
 
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
 <div class="page">
-    <aside class="sidebar">
+    <aside class="sidebar" aria-label="Project navigation">
         <CodeSnifferDog.Server.Client.Layout.NavMenu InitialSnapshot="_initialSidebarSnapshot" />
     </aside>
 
-    <main>
+    <main id="main-content" tabindex="-1">
         <article class="content">
             @Body
         </article>

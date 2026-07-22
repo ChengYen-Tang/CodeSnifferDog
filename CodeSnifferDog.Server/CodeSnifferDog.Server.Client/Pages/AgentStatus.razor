@@ -1,7 +1,6 @@
 @page "/agent-status"
 @rendermode InteractiveWebAssembly
 @implements IAsyncDisposable
-@implements IDisposable
 
 @using System.Net
 @using System.Net.Http.Json
@@ -26,7 +25,10 @@
     private int _reconnectReloadInProgress;
     private int _snapshotLoadVersion;
     private int _historyLoadVersion;
+    private int _liveSubscriptionVersion;
     private CancellationTokenSource? _snapshotLoadCancellationTokenSource;
+    private CancellationTokenSource? _historyLoadCancellationTokenSource;
+    private CancellationTokenSource? _liveSubscriptionCancellationTokenSource;
     private bool _disposed;
 
     private SnapshotState Snapshot => _pageState.Snapshot;
@@ -98,20 +100,36 @@
 
     private async Task LoadSnapshotAsync(Guid? projectId, bool clearProjectContext = false)
     {
+        if (_disposed)
+            return;
+
         int requestVersion = Interlocked.Increment(ref _snapshotLoadVersion);
         CancellationToken cancellationToken = await ReplaceSnapshotLoadCancellationTokenAsync().ConfigureAwait(false);
+        if (!IsCurrentSnapshotLoad(requestVersion, projectId))
+            return;
 
-        if (clearProjectContext)
+        Interlocked.Increment(ref _historyLoadVersion);
+        await CancelHistoryLoadAsync().ConfigureAwait(false);
+        await CancelLiveSubscriptionAsync().ConfigureAwait(false);
+        if (!IsCurrentSnapshotLoad(requestVersion, projectId) || cancellationToken.IsCancellationRequested)
+            return;
+
+        bool startedLoading = false;
+        await InvokeAsync(() =>
         {
-            Interlocked.Increment(ref _historyLoadVersion);
-            _pageState.BeginProjectLoad();
-            await InvokeAsync(StateHasChanged);
-        }
-        else
-        {
-            _pageState.SetSnapshotLoadState(isLoading: true, errorMessage: null);
-            await InvokeAsync(StateHasChanged);
-        }
+            if (!IsCurrentSnapshotLoad(requestVersion, projectId) || cancellationToken.IsCancellationRequested)
+                return;
+
+            if (clearProjectContext)
+                _pageState.BeginProjectLoad();
+            else
+                _pageState.SetSnapshotLoadState(isLoading: true, errorMessage: null);
+
+            startedLoading = true;
+            StateHasChanged();
+        });
+        if (!startedLoading)
+            return;
 
         if (projectId is null)
         {
@@ -253,26 +271,39 @@
 
     private async Task SelectAgentAsync(Guid agentId)
     {
-        if (Selection.SelectedAgentId == agentId)
+        if (_disposed || Selection.SelectedAgentId == agentId)
             return;
 
+        int requestVersion = Interlocked.Increment(ref _historyLoadVersion);
+        Guid? projectId = _requestedProjectId;
         _pageState.SelectAgent(agentId);
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            await LiveSubscriptionClient.UnsubscribeAsync().ConfigureAwait(false);
             _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Switching");
             _pageState.SetSelectedAgentLiveConnection(agentId, isConnected: false, isSubscribed: false, statusText: "Switching");
             _pageState.SetLiveConnectionError(null);
-            await EnsureSelectedAgentHistoryAsync(agentId).ConfigureAwait(false);
+            await EnsureSelectedAgentHistoryAsync(agentId, requestVersion).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            projectId is not Guid selectedProjectId ||
+            !IsCurrentHistoryRequest(requestVersion, selectedProjectId, agentId))
+        {
         }
         catch (Exception exception)
         {
-            _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Switching");
-            _pageState.SetSelectedAgentLiveConnection(agentId, isConnected: false, isSubscribed: false, statusText: "Switching");
-            History.SetError(agentId, $"Failed to switch agent live updates: {exception.Message}");
-            await InvokeAsync(StateHasChanged);
+            await InvokeAsync(() =>
+            {
+                if (projectId is not Guid selectedProjectId ||
+                    !IsCurrentHistoryRequest(requestVersion, selectedProjectId, agentId))
+                    return;
+
+                _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Switching");
+                _pageState.SetSelectedAgentLiveConnection(agentId, isConnected: false, isSubscribed: false, statusText: "Switching");
+                History.SetError(agentId, $"Failed to switch agent live updates: {exception.Message}");
+                StateHasChanged();
+            });
         }
     }
 
@@ -285,15 +316,62 @@
     {
         ArgumentNullException.ThrowIfNull(update);
 
-        if (_requestedProjectId is null || update.ProjectId != _requestedProjectId.Value)
+        if (_requestedProjectId is null ||
+            update.ProjectId != _requestedProjectId.Value ||
+            !ShouldApplyLiveUpdate(update))
             return false;
 
         return _pageState.ApplyLiveUpdate(update);
     }
 
+    internal bool ApplyLiveUpdates(IReadOnlyList<LiveUpdateDto> updates)
+    {
+        return ApplyLiveUpdates(
+            updates,
+            Selection.SelectedAgentId,
+            Volatile.Read(ref _historyLoadVersion));
+    }
+
+    private bool ApplyLiveUpdates(
+        IReadOnlyList<LiveUpdateDto> updates,
+        Guid? subscribedAgentId,
+        int selectionVersion)
+    {
+        ArgumentNullException.ThrowIfNull(updates);
+
+        bool changed = false;
+        for (int index = 0; index < updates.Count; index++)
+        {
+            LiveUpdateDto update = updates[index];
+            if (_requestedProjectId is not null &&
+                update.ProjectId == _requestedProjectId.Value &&
+                ShouldApplyLiveUpdate(update) &&
+                ShouldApplySubscriptionUpdate(update, subscribedAgentId, selectionVersion))
+            {
+                changed |= _pageState.ApplyLiveUpdate(update);
+            }
+        }
+
+        return changed;
+    }
+
     private async Task SubscribeToLiveUpdatesAsync(StatusSnapshotDto snapshot, CancellationToken cancellationToken = default)
     {
+        if (_disposed)
+            return;
+
         Guid? selectedAgentId = Selection.SelectedAgentId;
+        int selectionVersion = Volatile.Read(ref _historyLoadVersion);
+        int subscriptionVersion = Interlocked.Increment(ref _liveSubscriptionVersion);
+        CancellationToken liveCancellationToken = await ReplaceLiveSubscriptionCancellationTokenAsync(cancellationToken).ConfigureAwait(false);
+        if (!IsCurrentLiveSelection(
+                subscriptionVersion,
+                selectionVersion,
+                snapshot.ProjectId,
+                selectedAgentId,
+                liveCancellationToken))
+            return;
+
         LiveSubscriptionRequestDto request = new()
         {
             ProjectId = snapshot.ProjectId,
@@ -302,46 +380,99 @@
             LatestSequence = selectedAgentId == History.AgentId ? History.GetLatestSequence() : 0,
         };
 
-        _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Connecting");
-        _pageState.SetSelectedAgentLiveConnection(selectedAgentId, isConnected: false, isSubscribed: false, statusText: "Connecting");
-        StateHasChanged();
+        await InvokeAsync(() =>
+        {
+            if (!IsCurrentLiveSelection(
+                    subscriptionVersion,
+                    selectionVersion,
+                    snapshot.ProjectId,
+                    selectedAgentId,
+                    liveCancellationToken))
+                return;
+
+            _pageState.SetLiveConnection(isConnected: false, isSubscribed: false, statusText: "Connecting");
+            _pageState.SetSelectedAgentLiveConnection(selectedAgentId, isConnected: false, isSubscribed: false, statusText: "Connecting");
+            StateHasChanged();
+        });
 
         await LiveSubscriptionClient.SubscribeAsync(
             request,
-            update =>
+            updates => InvokeAsync(() =>
             {
-                return ApplyLiveUpdate(update)
-                    ? InvokeAsync(StateHasChanged)
-                    : Task.CompletedTask;
-            },
+                if (!IsCurrentLiveCallback(subscriptionVersion, snapshot.ProjectId, liveCancellationToken))
+                    return;
+
+                if (ApplyLiveUpdates(updates, selectedAgentId, selectionVersion))
+                    StateHasChanged();
+            }),
             HandleReconnectingAsync,
             HandleReconnectRequiredAsync,
-            cancellationToken).ConfigureAwait(false);
+            liveCancellationToken).ConfigureAwait(false);
 
-        _pageState.SetLiveConnection(isConnected: true, isSubscribed: true, statusText: "Live");
-        _pageState.SetSelectedAgentLiveConnection(selectedAgentId, isConnected: true, isSubscribed: true, statusText: "Live");
-        await InvokeAsync(StateHasChanged);
+        liveCancellationToken.ThrowIfCancellationRequested();
+        await InvokeAsync(() =>
+        {
+            if (!IsCurrentLiveSelection(
+                    subscriptionVersion,
+                    selectionVersion,
+                    snapshot.ProjectId,
+                    selectedAgentId,
+                    liveCancellationToken))
+                return;
+
+            _pageState.SetLiveConnection(isConnected: true, isSubscribed: true, statusText: "Live");
+            _pageState.SetSelectedAgentLiveConnection(selectedAgentId, isConnected: true, isSubscribed: true, statusText: "Live");
+            StateHasChanged();
+        });
     }
+
+    private bool IsCurrentLiveCallback(
+        int subscriptionVersion,
+        Guid projectId,
+        CancellationToken cancellationToken) =>
+        !_disposed &&
+        !cancellationToken.IsCancellationRequested &&
+        subscriptionVersion == Volatile.Read(ref _liveSubscriptionVersion) &&
+        _requestedProjectId == projectId;
+
+    private bool IsCurrentLiveSelection(
+        int subscriptionVersion,
+        int selectionVersion,
+        Guid projectId,
+        Guid? agentId,
+        CancellationToken cancellationToken) =>
+        IsCurrentLiveCallback(subscriptionVersion, projectId, cancellationToken) &&
+        selectionVersion == Volatile.Read(ref _historyLoadVersion) &&
+        Selection.SelectedAgentId == agentId;
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+            return;
+
         _disposed = true;
         NavigationManager.LocationChanged -= OnLocationChanged;
         await CancelSnapshotLoadAsync().ConfigureAwait(false);
+        await CancelHistoryLoadAsync().ConfigureAwait(false);
+        await CancelLiveSubscriptionAsync().ConfigureAwait(false);
         await LiveSubscriptionClient.DisposeAsync().ConfigureAwait(false);
-    }
-
-    public void Dispose()
-    {
-        _disposed = true;
-        NavigationManager.LocationChanged -= OnLocationChanged;
     }
 
     private async Task<CancellationToken> ReplaceSnapshotLoadCancellationTokenAsync()
     {
-        await CancelSnapshotLoadAsync().ConfigureAwait(false);
-        _snapshotLoadCancellationTokenSource = new CancellationTokenSource();
-        return _snapshotLoadCancellationTokenSource.Token;
+        CancellationTokenSource nextCancellationTokenSource = new();
+        CancellationToken nextCancellationToken = nextCancellationTokenSource.Token;
+        CancellationTokenSource? previousCancellationTokenSource = Interlocked.Exchange(
+            ref _snapshotLoadCancellationTokenSource,
+            nextCancellationTokenSource);
+
+        if (previousCancellationTokenSource is not null)
+        {
+            await previousCancellationTokenSource.CancelAsync().ConfigureAwait(false);
+            previousCancellationTokenSource.Dispose();
+        }
+
+        return nextCancellationToken;
     }
 
     private async Task CancelSnapshotLoadAsync()
@@ -400,72 +531,230 @@
         });
     }
 
-    private Task EnsureSelectedAgentHistoryAsync(Guid agentId)
+    private async Task EnsureSelectedAgentHistoryAsync(Guid agentId, int requestVersion)
     {
+        if (_disposed ||
+            _requestedProjectId is not Guid projectId ||
+            !IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+            return;
+
+        CancellationToken cancellationToken = await ReplaceHistoryLoadCancellationTokenAsync().ConfigureAwait(false);
+        if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+            return;
+
+        if (Snapshot.Snapshot is not StatusSnapshotDto snapshot)
+            return;
+
         SnapshotDto? agent = Snapshot.FindAgent(agentId);
         if (agent is null)
-            return Task.CompletedTask;
+            return;
 
         if (agent.HasLoadedHistory)
         {
-            History.ClearError();
-            return InvokeAsync(async () =>
+            await InvokeAsync(() =>
             {
-                await SubscribeToLiveUpdatesAsync(Snapshot.Snapshot!).ConfigureAwait(false);
+                if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+                    return;
+
+                History.ClearError();
                 StateHasChanged();
             });
+
+            await SubscribeToLiveUpdatesAsync(snapshot, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
-        return LoadAgentHistoryAsync(agentId);
+        await LoadAgentHistoryAsync(projectId, agentId, requestVersion, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task LoadAgentHistoryAsync(Guid agentId)
+    private async Task LoadAgentHistoryAsync(
+        Guid projectId,
+        Guid agentId,
+        int requestVersion,
+        CancellationToken cancellationToken)
     {
-        if (_requestedProjectId is not Guid projectId)
+        if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
             return;
 
-        int requestVersion = Interlocked.Increment(ref _historyLoadVersion);
-        History.StartLoading(agentId);
-        await InvokeAsync(StateHasChanged);
+        bool startedLoading = false;
+        await InvokeAsync(() =>
+        {
+            if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+                return;
+
+            History.StartLoading(agentId);
+            startedLoading = true;
+            StateHasChanged();
+        });
+        if (!startedLoading)
+            return;
 
         try
         {
             HistorySnapshotDto? history = await HttpClient.GetFromJsonAsync<HistorySnapshotDto>(
-                $"/api/projects/{projectId}/agent-status/agents/{agentId}/history").ConfigureAwait(false);
+                $"/api/projects/{projectId}/agent-status/agents/{agentId}/history",
+                cancellationToken).ConfigureAwait(false);
 
             if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
                 return;
 
             if (history is null)
             {
-                History.SetError(agentId, "Agent history response was empty.");
+                await InvokeAsync(() =>
+                {
+                    if (IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+                        History.SetError(agentId, "Agent history response was empty.");
+                });
                 return;
             }
 
-            _pageState.SetAgentHistory(history.AgentId, history.TimelineEntries);
-            await SubscribeToLiveUpdatesAsync(Snapshot.Snapshot!).ConfigureAwait(false);
+            if (history.ProjectId != projectId || history.AgentId != agentId)
+            {
+                await InvokeAsync(() =>
+                {
+                    if (IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+                        History.SetError(agentId, "Agent history response did not match the selected agent.");
+                });
+                return;
+            }
+
+            bool appliedHistory = false;
+            await InvokeAsync(() =>
+            {
+                if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+                    return;
+
+                _pageState.SetAgentHistory(history.AgentId, history.TimelineEntries, history.SystemPrompt);
+                appliedHistory = true;
+            });
+            if (!appliedHistory)
+                return;
+
+            await SubscribeToLiveUpdatesAsync(Snapshot.Snapshot!, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception exception)
         {
             if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
                 return;
 
-            History.SetError(agentId, $"Failed to load agent history: {exception.Message}");
+            await InvokeAsync(() =>
+            {
+                if (IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+                    History.SetError(agentId, $"Failed to load agent history: {exception.Message}");
+            });
         }
         finally
         {
             if (IsCurrentHistoryRequest(requestVersion, projectId, agentId))
             {
-                History.FinishLoading(agentId);
-                await InvokeAsync(StateHasChanged);
+                await InvokeAsync(() =>
+                {
+                    if (!IsCurrentHistoryRequest(requestVersion, projectId, agentId))
+                        return;
+
+                    History.FinishLoading(agentId);
+                    StateHasChanged();
+                });
             }
         }
     }
 
     private bool IsCurrentHistoryRequest(int requestVersion, Guid projectId, Guid agentId) =>
-        requestVersion == _historyLoadVersion &&
+        !_disposed &&
+        requestVersion == Volatile.Read(ref _historyLoadVersion) &&
         _requestedProjectId == projectId &&
         Selection.SelectedAgentId == agentId;
+
+    private async Task<CancellationToken> ReplaceHistoryLoadCancellationTokenAsync()
+    {
+        CancellationTokenSource nextCancellationTokenSource = new();
+        CancellationToken nextCancellationToken = nextCancellationTokenSource.Token;
+        CancellationTokenSource? previousCancellationTokenSource = Interlocked.Exchange(
+            ref _historyLoadCancellationTokenSource,
+            nextCancellationTokenSource);
+
+        if (previousCancellationTokenSource is not null)
+        {
+            await previousCancellationTokenSource.CancelAsync().ConfigureAwait(false);
+            previousCancellationTokenSource.Dispose();
+        }
+
+        return nextCancellationToken;
+    }
+
+    private async Task CancelHistoryLoadAsync()
+    {
+        CancellationTokenSource? cancellationTokenSource = Interlocked.Exchange(
+            ref _historyLoadCancellationTokenSource,
+            null);
+        if (cancellationTokenSource is null)
+            return;
+
+        await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+        cancellationTokenSource.Dispose();
+    }
+
+    private async Task<CancellationToken> ReplaceLiveSubscriptionCancellationTokenAsync(
+        CancellationToken cancellationToken)
+    {
+        CancellationTokenSource nextCancellationTokenSource =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        CancellationToken nextCancellationToken = nextCancellationTokenSource.Token;
+        CancellationTokenSource? previousCancellationTokenSource = Interlocked.Exchange(
+            ref _liveSubscriptionCancellationTokenSource,
+            nextCancellationTokenSource);
+
+        if (previousCancellationTokenSource is not null)
+        {
+            await previousCancellationTokenSource.CancelAsync().ConfigureAwait(false);
+            previousCancellationTokenSource.Dispose();
+        }
+
+        return nextCancellationToken;
+    }
+
+    private async Task CancelLiveSubscriptionAsync()
+    {
+        Interlocked.Increment(ref _liveSubscriptionVersion);
+        CancellationTokenSource? cancellationTokenSource = Interlocked.Exchange(
+            ref _liveSubscriptionCancellationTokenSource,
+            null);
+        if (cancellationTokenSource is null)
+            return;
+
+        await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+        cancellationTokenSource.Dispose();
+    }
+
+    private bool ShouldApplyLiveUpdate(LiveUpdateDto update) =>
+        update.Kind switch
+        {
+            LiveUpdateKind.TimelineEntryUpserted =>
+                update.TimelineEntry?.AgentId == Selection.SelectedAgentId,
+            LiveUpdateKind.TimelineEntriesRemoved =>
+                update.RemovedTimelineEntries?.AgentId == Selection.SelectedAgentId,
+            _ => true,
+        };
+
+    private bool ShouldApplySubscriptionUpdate(
+        LiveUpdateDto update,
+        Guid? subscribedAgentId,
+        int selectionVersion) =>
+        update.Kind switch
+        {
+            LiveUpdateKind.TimelineEntryUpserted =>
+                selectionVersion == Volatile.Read(ref _historyLoadVersion) &&
+                subscribedAgentId == Selection.SelectedAgentId &&
+                update.TimelineEntry?.AgentId == subscribedAgentId,
+            LiveUpdateKind.TimelineEntriesRemoved =>
+                selectionVersion == Volatile.Read(ref _historyLoadVersion) &&
+                subscribedAgentId == Selection.SelectedAgentId &&
+                update.RemovedTimelineEntries?.AgentId == subscribedAgentId,
+            _ => true,
+        };
 
     private bool CanStartLiveSubscriptionOnThisRender()
     {

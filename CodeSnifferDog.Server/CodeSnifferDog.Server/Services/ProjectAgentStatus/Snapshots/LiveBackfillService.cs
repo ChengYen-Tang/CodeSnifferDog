@@ -28,36 +28,36 @@ internal sealed class LiveBackfillService(
             .GetBackfillAsync(request, cancellationToken)
             .ConfigureAwait(false);
 
-        if (backfill.ProjectStatus is null)
-            return [];
-
         List<LiveUpdateDto> updates = [];
-        updates.Add(new LiveUpdateDto
+        if (backfill.ProjectStatus is { } projectStatus)
         {
-            ProjectId = backfill.ProjectId,
-            Kind = LiveUpdateKind.ProjectStatusChanged,
-            OccurredAtUtc = DateTimeOffset.UtcNow,
-            ProjectStatus = new ExecutionStatusChangedDto
+            updates.Add(new LiveUpdateDto
             {
-                Status = _projectionMapper.MapProjectStatus(backfill.ProjectStatus.Value),
-            },
-        });
+                ProjectId = backfill.ProjectId,
+                Kind = LiveUpdateKind.ProjectStatusChanged,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+                ProjectStatus = new ExecutionStatusChangedDto
+                {
+                    Status = _projectionMapper.MapProjectStatus(projectStatus),
+                },
+            });
 
-        updates.AddRange(backfill.Groups.Select(group => new LiveUpdateDto
-        {
-            ProjectId = backfill.ProjectId,
-            Kind = LiveUpdateKind.AgentGroupUpserted,
-            OccurredAtUtc = group.CreatedAtUtc,
-            Group = _projectionMapper.MapGroup(group),
-        }));
+            updates.AddRange(backfill.Groups.Select(group => new LiveUpdateDto
+            {
+                ProjectId = backfill.ProjectId,
+                Kind = LiveUpdateKind.AgentGroupUpserted,
+                OccurredAtUtc = group.CreatedAtUtc,
+                Group = _projectionMapper.MapGroup(group),
+            }));
 
-        updates.AddRange(backfill.Agents.Select(agent => new LiveUpdateDto
-        {
-            ProjectId = backfill.ProjectId,
-            Kind = LiveUpdateKind.AgentUpserted,
-            OccurredAtUtc = agent.CreatedAtUtc,
-            Agent = _projectionMapper.MapAgent(agent, ExceptionStyle.Snapshot),
-        }));
+            updates.AddRange(backfill.Agents.Select(agent => new LiveUpdateDto
+            {
+                ProjectId = backfill.ProjectId,
+                Kind = LiveUpdateKind.AgentUpserted,
+                OccurredAtUtc = agent.CreatedAtUtc,
+                Agent = _projectionMapper.MapAgent(agent, ExceptionStyle.Snapshot),
+            }));
+        }
 
         updates.AddRange(backfill.TimelineEntries.Select(entry => new LiveUpdateDto
         {

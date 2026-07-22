@@ -5,6 +5,7 @@ using CodeSnifferDog.Server.Client.Services.ProjectAgentStatus;
 using CodeSnifferDog.Server.Shared.AgentStatus;
 using CodeSnifferDog.Server.Shared.Projects;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Net;
@@ -248,7 +249,9 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
-    public void SwitchingProjects_ClearsPreviousSnapshotUntilTheNewSnapshotArrives()
+    [Timeout(5000)]
+    [DoNotParallelize]
+    public async Task SwitchingProjects_ClearsPreviousSnapshotUntilTheNewSnapshotArrives()
     {
         using Bunit.TestContext context = new();
         RegisterLiveSubscriptionClient(context);
@@ -325,6 +328,7 @@ public sealed class AgentStatusTests
         cut.WaitForAssertion(() => StringAssert.Contains(cut.Markup, "Finished project history"));
 
         navigationManager.NavigateTo($"http://localhost/agent-status?projectId={secondProjectId}");
+        await handler.SecondRequestStarted.WaitAsync(TestContext.CancellationToken);
 
         cut.WaitForAssertion(() =>
         {
@@ -1079,6 +1083,72 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
+    public void LiveUpdateBatch_AppliesUpdatesInReceivedOrder()
+    {
+        using Bunit.TestContext context = new();
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("90000000-0000-0000-0000-000000000130");
+        Guid groupId = Guid.Parse("90000000-0000-0000-0000-000000000131");
+        Guid agentId = Guid.Parse("90000000-0000-0000-0000-000000000132");
+        Guid timelineEntryId = Guid.Parse("90000000-0000-0000-0000-000000000133");
+        StatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "batch-group",
+                    "Batch Group",
+                    new DateTimeOffset(2026, 5, 10, 12, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentId,
+                            groupId,
+                            "batch-agent",
+                            "Batch Agent",
+                            RunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 12, 1, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+
+        context.Services.AddSingleton(new HttpClient(new SnapshotMessageHandler([snapshot]))
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
+        cut.WaitForAssertion(() => Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls));
+
+        liveSubscriptionClient.EmitBatch(
+            CreateTimelineLiveUpdate(
+                projectId,
+                timelineEntryId,
+                agentId,
+                sequence: 1,
+                entryKind: TimelineEntryKind.Output,
+                occurredAtUtc: new DateTimeOffset(2026, 5, 10, 12, 2, 0, TimeSpan.Zero),
+                message: "First batch version"),
+            CreateTimelineLiveUpdate(
+                projectId,
+                timelineEntryId,
+                agentId,
+                sequence: 1,
+                entryKind: TimelineEntryKind.Output,
+                occurredAtUtc: new DateTimeOffset(2026, 5, 10, 12, 2, 1, TimeSpan.Zero),
+                message: "Second batch version"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.HasCount(1, cut.FindAll(".agent-message"));
+            Assert.DoesNotContain(cut.Markup, "First batch version");
+            StringAssert.Contains(cut.Markup, "Second batch version");
+        });
+    }
+
+    [TestMethod]
     public void LiveReducer_TimelineEntriesRemoved_RemovesSelectedAgentHistoryEntries()
     {
         using Bunit.TestContext context = new();
@@ -1367,7 +1437,7 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
-    public void SelectingAnotherAgent_ReSubscribesLiveUpdatesForSelectedAgentOnly()
+    public void SelectingAnotherAgent_ReSubscribesWithoutUnsubscribingProjectChannel()
     {
         using Bunit.TestContext context = new();
         FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
@@ -1450,6 +1520,8 @@ public sealed class AgentStatusTests
 
         cut.WaitForAssertion(() =>
         {
+            Assert.HasCount(2, liveSubscriptionClient.SubscribeCalls);
+            Assert.AreEqual(0, liveSubscriptionClient.UnsubscribeCallCount);
             Assert.AreEqual(agentBId, liveSubscriptionClient.LastRequest?.AgentId);
             Assert.AreEqual(5L, liveSubscriptionClient.LastRequest?.LatestSequence);
             StringAssert.Contains(cut.Markup, "B5");
@@ -1457,7 +1529,409 @@ public sealed class AgentStatusTests
     }
 
     [TestMethod]
-    public void SelectingAnotherAgent_WhenHistoryLoadFails_UnsubscribesOldLiveTailAndShowsError()
+    [Timeout(5000)]
+    [DoNotParallelize]
+    public async Task AgentSwitchWhileHistoryLoads_ProjectUpdateContinuesAndPreviousAgentTimelineIsIgnored()
+    {
+        using Bunit.TestContext context = new();
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000230");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000230");
+        Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000230");
+        Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000231");
+        StatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 13, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentAId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            RunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 13, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000230"),
+                                    agentAId,
+                                    1,
+                                    TimelineEntryKind.Output,
+                                    message: "Agent A baseline")
+                            ]),
+                        CreateAgent(
+                            agentBId,
+                            groupId,
+                            "agent-b",
+                            "Agent B",
+                            RunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 13, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ],
+            ProjectStatus.Reviewing);
+        HistorySnapshotDto agentBHistory = new()
+        {
+            ProjectId = projectId,
+            AgentId = agentBId,
+            TimelineEntries =
+            [
+                CreateTimelineEntry(
+                    Guid.Parse("73000000-0000-0000-0000-000000000231"),
+                    agentBId,
+                    2,
+                    TimelineEntryKind.Output,
+                    message: "Agent B loaded history")
+            ],
+        };
+        DelayedHistoryMessageHandler messageHandler = new(snapshot, agentBId);
+        context.Services.AddSingleton(new HttpClient(messageHandler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
+        cut.WaitForAssertion(() => Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls));
+
+        Task selectAgentBTask = cut.FindAll(".agent-roster-node")[1].ClickAsync(new MouseEventArgs());
+        try
+        {
+            await messageHandler.DelayedHistoryRequestStarted.WaitAsync(TestContext.CancellationToken);
+            cut.WaitForAssertion(() =>
+            {
+                Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+                Assert.Contains("Agent B", cut.Find(".agent-roster-node.selected").TextContent);
+            });
+
+            liveSubscriptionClient.EmitBatch(
+                new LiveUpdateDto
+                {
+                    ProjectId = projectId,
+                    Kind = LiveUpdateKind.ProjectStatusChanged,
+                    OccurredAtUtc = new DateTimeOffset(2026, 5, 10, 13, 3, 0, TimeSpan.Zero),
+                    ProjectStatus = new ExecutionStatusChangedDto
+                    {
+                        Status = ProjectStatus.Completed,
+                    },
+                },
+                CreateTimelineLiveUpdate(
+                    projectId,
+                    Guid.Parse("73000000-0000-0000-0000-000000000232"),
+                    agentAId,
+                    sequence: 2,
+                    entryKind: TimelineEntryKind.Output,
+                    occurredAtUtc: new DateTimeOffset(2026, 5, 10, 13, 3, 1, TimeSpan.Zero),
+                    message: "Stale Agent A timeline"));
+
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Contains("Analysis completed", cut.Markup);
+                Assert.Contains("Agent B", cut.Find(".agent-roster-node.selected").TextContent);
+                Assert.DoesNotContain("Stale Agent A timeline", cut.Markup);
+                Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+            });
+        }
+        finally
+        {
+            messageHandler.ReleaseDelayedHistory(agentBHistory);
+        }
+
+        await selectAgentBTask.WaitAsync(TestContext.CancellationToken);
+        cut.WaitForAssertion(() => Assert.Contains("Agent B loaded history", cut.Markup));
+    }
+
+    [TestMethod]
+    [Timeout(5000)]
+    [DoNotParallelize]
+    public async Task RapidAgentSwitch_LateHistoryResponseDoesNotReplaceCurrentSelection()
+    {
+        using Bunit.TestContext context = new();
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000232");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000232");
+        Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000232");
+        Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000233");
+        Guid agentCId = Guid.Parse("72000000-0000-0000-0000-000000000234");
+        StatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 14, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentAId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            RunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 14, 1, 0, TimeSpan.Zero),
+                            [
+                                CreateTimelineEntry(
+                                    Guid.Parse("73000000-0000-0000-0000-000000000233"),
+                                    agentAId,
+                                    1,
+                                    TimelineEntryKind.Output,
+                                    message: "Agent A baseline")
+                            ]),
+                        CreateAgent(
+                            agentBId,
+                            groupId,
+                            "agent-b",
+                            "Agent B",
+                            RunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 14, 2, 0, TimeSpan.Zero),
+                            []),
+                        CreateAgent(
+                            agentCId,
+                            groupId,
+                            "agent-c",
+                            "Agent C",
+                            RunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 14, 3, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+        HistorySnapshotDto agentBHistory = new()
+        {
+            ProjectId = projectId,
+            AgentId = agentBId,
+            TimelineEntries =
+            [
+                CreateTimelineEntry(
+                    Guid.Parse("73000000-0000-0000-0000-000000000234"),
+                    agentBId,
+                    2,
+                    TimelineEntryKind.Output,
+                    message: "Late Agent B history")
+            ],
+        };
+        HistorySnapshotDto agentCHistory = new()
+        {
+            ProjectId = projectId,
+            AgentId = agentCId,
+            TimelineEntries =
+            [
+                CreateTimelineEntry(
+                    Guid.Parse("73000000-0000-0000-0000-000000000235"),
+                    agentCId,
+                    3,
+                    TimelineEntryKind.Output,
+                    message: "Current Agent C history")
+            ],
+        };
+        DelayedHistoryMessageHandler messageHandler = new(
+            snapshot,
+            agentBId,
+            new Dictionary<Guid, HistorySnapshotDto>
+            {
+                [agentCId] = agentCHistory,
+            });
+        context.Services.AddSingleton(new HttpClient(messageHandler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
+        cut.WaitForAssertion(() => Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls));
+
+        Task selectAgentBTask = cut.FindAll(".agent-roster-node")[1].ClickAsync(new MouseEventArgs());
+        try
+        {
+            await messageHandler.DelayedHistoryRequestStarted.WaitAsync(TestContext.CancellationToken);
+            cut.WaitForAssertion(() =>
+                Assert.Contains("Agent B", cut.Find(".agent-roster-node.selected").TextContent));
+
+            Task selectAgentCTask = cut.FindAll(".agent-roster-node")[2].ClickAsync(new MouseEventArgs());
+            await selectAgentCTask.WaitAsync(TestContext.CancellationToken);
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Contains("Agent C", cut.Find(".agent-roster-node.selected").TextContent);
+                Assert.Contains("Current Agent C history", cut.Markup);
+                Assert.AreEqual(agentCId, liveSubscriptionClient.LastRequest?.AgentId);
+            });
+
+            messageHandler.ReleaseDelayedHistory(agentBHistory);
+            await selectAgentBTask.WaitAsync(TestContext.CancellationToken);
+
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Contains("Agent C", cut.Find(".agent-roster-node.selected").TextContent);
+                Assert.Contains("Current Agent C history", cut.Markup);
+                Assert.DoesNotContain("Late Agent B history", cut.Markup);
+                Assert.AreEqual(agentCId, liveSubscriptionClient.LastRequest?.AgentId);
+                Assert.HasCount(2, liveSubscriptionClient.SubscribeCalls);
+            });
+        }
+        finally
+        {
+            messageHandler.ReleaseDelayedHistory(agentBHistory);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(5000)]
+    [DoNotParallelize]
+    public async Task AgentReselection_LateInitialCallbackDoesNotInterruptCurrentHistoryLoad()
+    {
+        using Bunit.TestContext context = new();
+        FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
+        Guid projectId = Guid.Parse("70000000-0000-0000-0000-000000000236");
+        Guid groupId = Guid.Parse("71000000-0000-0000-0000-000000000236");
+        Guid agentAId = Guid.Parse("72000000-0000-0000-0000-000000000236");
+        Guid agentBId = Guid.Parse("72000000-0000-0000-0000-000000000237");
+        StatusSnapshotDto snapshot = CreateSnapshot(
+            projectId,
+            [
+                CreateGroup(
+                    groupId,
+                    "group-a",
+                    "Group A",
+                    new DateTimeOffset(2026, 5, 10, 15, 0, 0, TimeSpan.Zero),
+                    [
+                        CreateAgent(
+                            agentAId,
+                            groupId,
+                            "agent-a",
+                            "Agent A",
+                            RunStatus.Running,
+                            new DateTimeOffset(2026, 5, 10, 15, 1, 0, TimeSpan.Zero),
+                            []),
+                        CreateAgent(
+                            agentBId,
+                            groupId,
+                            "agent-b",
+                            "Agent B",
+                            RunStatus.Waiting,
+                            new DateTimeOffset(2026, 5, 10, 15, 2, 0, TimeSpan.Zero),
+                            [])
+                    ])
+            ]);
+        HistorySnapshotDto agentAHistory = new()
+        {
+            ProjectId = projectId,
+            AgentId = agentAId,
+            TimelineEntries =
+            [
+                CreateTimelineEntry(
+                    Guid.Parse("73000000-0000-0000-0000-000000000236"),
+                    agentAId,
+                    1,
+                    TimelineEntryKind.Input,
+                    message: "Agent A full history input"),
+                CreateTimelineEntry(
+                    Guid.Parse("73000000-0000-0000-0000-000000000237"),
+                    agentAId,
+                    2,
+                    TimelineEntryKind.Output,
+                    message: "Agent A full history output")
+            ],
+        };
+        HistorySnapshotDto agentBHistory = new()
+        {
+            ProjectId = projectId,
+            AgentId = agentBId,
+            TimelineEntries =
+            [
+                CreateTimelineEntry(
+                    Guid.Parse("73000000-0000-0000-0000-000000000238"),
+                    agentBId,
+                    1,
+                    TimelineEntryKind.Output,
+                    message: "Agent B history")
+            ],
+        };
+        ControlledHistoryMessageHandler messageHandler = new(snapshot, agentAId, agentBId);
+        context.Services.AddSingleton(new HttpClient(messageHandler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        NavigationManager navigationManager = context.Services.GetRequiredService<NavigationManager>();
+        navigationManager.NavigateTo($"http://localhost/agent-status?projectId={projectId}");
+        IRenderedComponent<AgentStatusPage> cut = RenderAgentStatus(context);
+        cut.WaitForAssertion(() =>
+        {
+            Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+            Assert.HasCount(1, liveSubscriptionClient.UpdateCallbacks);
+            Assert.Contains("Agent A", cut.Find(".agent-roster-node.selected").TextContent);
+        });
+
+        Task selectAgentBTask = cut.FindAll(".agent-roster-node")[1].ClickAsync(new MouseEventArgs());
+        Task? selectAgentATask = null;
+        try
+        {
+            await messageHandler.WaitForHistoryRequestAsync(agentBId)
+                .WaitAsync(TestContext.CancellationToken);
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Contains("Agent B", cut.Find(".agent-roster-node.selected").TextContent);
+                Assert.Contains("Loading agent history...", cut.Markup);
+            });
+
+            selectAgentATask = cut.FindAll(".agent-roster-node")[0].ClickAsync(new MouseEventArgs());
+            await messageHandler.WaitForHistoryRequestAsync(agentAId)
+                .WaitAsync(TestContext.CancellationToken);
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Contains("Agent A", cut.Find(".agent-roster-node.selected").TextContent);
+                Assert.Contains("Loading agent history...", cut.Markup);
+                Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+            });
+
+            liveSubscriptionClient.EmitBatchFromSubscription(
+                subscriptionIndex: 0,
+                CreateTimelineLiveUpdate(
+                    projectId,
+                    Guid.Parse("73000000-0000-0000-0000-000000000239"),
+                    agentAId,
+                    sequence: 99,
+                    entryKind: TimelineEntryKind.Output,
+                    occurredAtUtc: new DateTimeOffset(2026, 5, 10, 15, 3, 0, TimeSpan.Zero),
+                    message: "Late initial Agent A timeline"));
+
+            cut.WaitForAssertion(() =>
+            {
+                Assert.DoesNotContain("Late initial Agent A timeline", cut.Markup);
+                Assert.Contains("Loading agent history...", cut.Markup);
+                Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
+            });
+
+            messageHandler.ReleaseHistory(agentAId, agentAHistory);
+            await selectAgentATask.WaitAsync(TestContext.CancellationToken);
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Contains("Agent A full history input", cut.Markup);
+                Assert.Contains("Agent A full history output", cut.Markup);
+                Assert.DoesNotContain("Late initial Agent A timeline", cut.Markup);
+                Assert.DoesNotContain("Loading agent history...", cut.Markup);
+                Assert.HasCount(2, liveSubscriptionClient.SubscribeCalls);
+                Assert.AreEqual(agentAId, liveSubscriptionClient.LastRequest?.AgentId);
+            });
+        }
+        finally
+        {
+            messageHandler.ReleaseHistory(agentAId, agentAHistory);
+            messageHandler.ReleaseHistory(agentBId, agentBHistory);
+        }
+
+        await selectAgentBTask.WaitAsync(TestContext.CancellationToken);
+        if (selectAgentATask is not null)
+            await selectAgentATask.WaitAsync(TestContext.CancellationToken);
+    }
+
+    [TestMethod]
+    public void SelectingAnotherAgent_WhenHistoryLoadFails_KeepsProjectSubscriptionAndShowsError()
     {
         using Bunit.TestContext context = new();
         FakeLiveSubscriptionClient liveSubscriptionClient = RegisterLiveSubscriptionClient(context);
@@ -1522,7 +1996,7 @@ public sealed class AgentStatusTests
 
         cut.WaitForAssertion(() =>
         {
-            Assert.AreEqual(1, liveSubscriptionClient.UnsubscribeCallCount);
+            Assert.AreEqual(0, liveSubscriptionClient.UnsubscribeCallCount);
             Assert.HasCount(1, liveSubscriptionClient.SubscribeCalls);
             StringAssert.Contains(cut.FindAll(".agent-roster-node.selected").Single().TextContent, "Agent B");
             StringAssert.Contains(cut.Markup, "Failed to load agent history: No history response was configured for agent");
@@ -2340,11 +2814,15 @@ public sealed class AgentStatusTests
         StatusSnapshotDto firstSnapshot,
         StatusSnapshotDto secondSnapshot) : HttpMessageHandler
     {
+        private readonly TaskCompletionSource _secondRequestStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<HttpResponseMessage> _secondResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly StatusSnapshotDto _firstSnapshot = firstSnapshot;
         private readonly StatusSnapshotDto _secondSnapshot = secondSnapshot;
 
         public int RequestCount { get; private set; }
+
+        public Task SecondRequestStarted => _secondRequestStarted.Task;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -2352,9 +2830,15 @@ public sealed class AgentStatusTests
             return RequestCount switch
             {
                 1 => Task.FromResult(CreateResponse(_firstSnapshot)),
-                2 => _secondResponse.Task,
+                2 => StartSecondRequest(),
                 _ => throw new InvalidOperationException($"Unexpected snapshot request: {request.RequestUri}"),
             };
+        }
+
+        private Task<HttpResponseMessage> StartSecondRequest()
+        {
+            _secondRequestStarted.TrySetResult();
+            return _secondResponse.Task;
         }
 
         public void ReleaseSecondResponse() => _secondResponse.SetResult(CreateResponse(_secondSnapshot));
@@ -2364,6 +2848,110 @@ public sealed class AgentStatusTests
             {
                 Content = new StringContent(JsonSerializer.Serialize(snapshot)),
             };
+    }
+
+    private sealed class DelayedHistoryMessageHandler(
+        StatusSnapshotDto snapshot,
+        Guid delayedAgentId,
+        IReadOnlyDictionary<Guid, HistorySnapshotDto>? immediateHistories = null) : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _delayedHistoryRequestStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<HttpResponseMessage> _delayedHistoryResponse =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly IReadOnlyDictionary<Guid, HistorySnapshotDto> _immediateHistories =
+            immediateHistories ?? new Dictionary<Guid, HistorySnapshotDto>();
+
+        public Task DelayedHistoryRequestStarted => _delayedHistoryRequestStarted.Task;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            string absolutePath = request.RequestUri?.AbsolutePath ?? string.Empty;
+            if (!absolutePath.Contains("/history", StringComparison.Ordinal))
+                return Task.FromResult(CreateResponse(snapshot));
+
+            string[] segments = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            Guid agentId = Guid.Parse(segments[^2]);
+            if (agentId == delayedAgentId)
+            {
+                _delayedHistoryRequestStarted.TrySetResult();
+                return _delayedHistoryResponse.Task;
+            }
+
+            if (!_immediateHistories.TryGetValue(agentId, out HistorySnapshotDto? history))
+                throw new InvalidOperationException($"No history response was configured for agent '{agentId}'.");
+
+            return Task.FromResult(CreateResponse(history));
+        }
+
+        public void ReleaseDelayedHistory(HistorySnapshotDto history) =>
+            _delayedHistoryResponse.TrySetResult(CreateResponse(history));
+
+        private static HttpResponseMessage CreateResponse<T>(T value) =>
+            new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(value)),
+            };
+    }
+
+    private sealed class ControlledHistoryMessageHandler : HttpMessageHandler
+    {
+        private readonly StatusSnapshotDto _snapshot;
+        private readonly Dictionary<Guid, ControlledHistoryRequest> _historyRequests;
+
+        public ControlledHistoryMessageHandler(StatusSnapshotDto snapshot, params Guid[] agentIds)
+        {
+            _snapshot = snapshot;
+            _historyRequests = agentIds.ToDictionary(
+                agentId => agentId,
+                _ => new ControlledHistoryRequest());
+        }
+
+        public Task WaitForHistoryRequestAsync(Guid agentId) =>
+            GetHistoryRequest(agentId).Started.Task;
+
+        public void ReleaseHistory(Guid agentId, HistorySnapshotDto history) =>
+            GetHistoryRequest(agentId).Response.TrySetResult(CreateResponse(history));
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            string absolutePath = request.RequestUri?.AbsolutePath ?? string.Empty;
+            if (!absolutePath.Contains("/history", StringComparison.Ordinal))
+                return Task.FromResult(CreateResponse(_snapshot));
+
+            string[] segments = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            Guid agentId = Guid.Parse(segments[^2]);
+            ControlledHistoryRequest historyRequest = GetHistoryRequest(agentId);
+            historyRequest.Started.TrySetResult();
+            return historyRequest.Response.Task;
+        }
+
+        private ControlledHistoryRequest GetHistoryRequest(Guid agentId)
+        {
+            if (!_historyRequests.TryGetValue(agentId, out ControlledHistoryRequest? historyRequest))
+                throw new InvalidOperationException($"No controlled history response was configured for agent '{agentId}'.");
+
+            return historyRequest;
+        }
+
+        private static HttpResponseMessage CreateResponse<T>(T value) =>
+            new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(value)),
+            };
+
+        private sealed class ControlledHistoryRequest
+        {
+            public TaskCompletionSource Started { get; } =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public TaskCompletionSource<HttpResponseMessage> Response { get; } =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
     }
 
     private static bool InvokeApplyLiveUpdate(IRenderedComponent<AgentStatusPage> cut, LiveUpdateDto update)
@@ -2424,11 +3012,13 @@ public sealed class AgentStatusTests
 
     private sealed class FakeLiveSubscriptionClient : ILiveSubscriptionClient
     {
-        private Func<LiveUpdateDto, Task>? _onUpdate;
+        private Func<IReadOnlyList<LiveUpdateDto>, Task>? _onUpdates;
         private Func<Task>? _onReconnecting;
         private Func<Task>? _onReconnectRequired;
 
         public List<LiveSubscriptionRequestDto> SubscribeCalls { get; } = [];
+
+        public List<Func<IReadOnlyList<LiveUpdateDto>, Task>> UpdateCallbacks { get; } = [];
 
         public LiveSubscriptionRequestDto? LastRequest => SubscribeCalls.LastOrDefault();
 
@@ -2438,7 +3028,7 @@ public sealed class AgentStatusTests
 
         public Task SubscribeAsync(
             LiveSubscriptionRequestDto request,
-            Func<LiveUpdateDto, Task> onUpdate,
+            Func<IReadOnlyList<LiveUpdateDto>, Task> onUpdates,
             Func<Task> onReconnecting,
             Func<Task> onReconnectRequired,
             CancellationToken cancellationToken = default)
@@ -2447,7 +3037,8 @@ public sealed class AgentStatusTests
                 throw SubscribeException;
 
             SubscribeCalls.Add(request);
-            _onUpdate = onUpdate;
+            UpdateCallbacks.Add(onUpdates);
+            _onUpdates = onUpdates;
             _onReconnecting = onReconnecting;
             _onReconnectRequired = onReconnectRequired;
             return Task.CompletedTask;
@@ -2459,10 +3050,18 @@ public sealed class AgentStatusTests
             return Task.CompletedTask;
         }
 
-        public void Emit(LiveUpdateDto update)
+        public void Emit(LiveUpdateDto update) => EmitBatch(update);
+
+        public void EmitBatch(params LiveUpdateDto[] updates)
         {
-            Assert.IsNotNull(_onUpdate);
-            _onUpdate(update).GetAwaiter().GetResult();
+            Assert.IsNotNull(_onUpdates);
+            _onUpdates(updates).GetAwaiter().GetResult();
+        }
+
+        public void EmitBatchFromSubscription(int subscriptionIndex, params LiveUpdateDto[] updates)
+        {
+            Func<IReadOnlyList<LiveUpdateDto>, Task> onUpdates = UpdateCallbacks[subscriptionIndex];
+            onUpdates(updates).GetAwaiter().GetResult();
         }
 
         public void TriggerReconnectRequired()

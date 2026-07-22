@@ -66,6 +66,30 @@ public sealed class SidebarProjectionBuilderTests
     }
 
     [TestMethod]
+    public void CreatesAgentStatusAndDeleteActionsForCanceledProjects()
+    {
+        Guid canceledProjectId = Guid.Parse("70000000-0000-0000-0000-000000000514");
+        State state = CreateState(
+            selectedProjectId: null,
+            CreateGroup(
+                "canceled",
+                "Canceled",
+                ProjectStatus.Canceled,
+                0,
+                CreateProject(canceledProjectId, "canceled.zip", ProjectStatus.Canceled, 1)));
+
+        ProjectItem canceledProject = SidebarProjectionBuilder.CreateGroups(state)[0].Items[0];
+
+        CollectionAssert.AreEqual(
+            new[] { ProjectActionKind.Link, ProjectActionKind.Delete },
+            canceledProject.Actions.Select(action => action.Kind).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "S", "D" },
+            canceledProject.Actions.Select(action => action.IconText).ToArray());
+        Assert.AreEqual($"/agent-status?projectId={canceledProjectId}", canceledProject.Actions[0].Href);
+    }
+
+    [TestMethod]
     public void LargeProjectionPreservesProjectOrderAndCount()
     {
         Guid selectedProjectId = Guid.Parse("70000000-0000-0000-0001-000000000001");

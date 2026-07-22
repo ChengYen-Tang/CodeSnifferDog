@@ -60,7 +60,7 @@ public sealed class ProjectionMapperTests
             groupId,
             "agent",
             "Agent",
-            "prompt",
+            null,
             PersistedAgentStatus.Running,
             now);
         TimelineEntryProjection entry = new(

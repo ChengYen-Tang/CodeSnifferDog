@@ -65,6 +65,9 @@ public sealed class SnapshotServiceTests
         Assert.AreEqual(RunStatus.Running, firstGroup.Agents[1].Status);
         Assert.IsTrue(firstGroup.Agents[0].HasLoadedHistory);
         Assert.IsFalse(firstGroup.Agents[1].HasLoadedHistory);
+        Assert.AreEqual("System prompt alpha", firstGroup.Agents[0].SystemPrompt);
+        Assert.IsNull(firstGroup.Agents[1].SystemPrompt);
+        Assert.IsNull(snapshot.AgentGroups[1].Agents.Single().SystemPrompt);
 
         IReadOnlyList<TimelineEntryDto> timeline = firstGroup.Agents[0].TimelineEntries;
         Assert.HasCount(3, timeline);
@@ -107,6 +110,7 @@ public sealed class SnapshotServiceTests
         Assert.IsNotNull(history);
         Assert.AreEqual(projectId, history.ProjectId);
         Assert.AreEqual(alphaAgentId, history.AgentId);
+        Assert.AreEqual("System prompt alpha", history.SystemPrompt);
         Assert.HasCount(3, history.TimelineEntries);
         Assert.AreEqual(1L, history.TimelineEntries[0].Sequence);
         Assert.AreEqual(3L, history.TimelineEntries[2].Sequence);

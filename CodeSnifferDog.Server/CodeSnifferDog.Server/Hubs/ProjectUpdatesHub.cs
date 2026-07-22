@@ -27,20 +27,29 @@ public sealed class ProjectUpdatesHub : Hub
     /// Subscribes the caller to project-wide updates and an optional agent-specific timeline channel.
     /// </summary>
     /// <param name="request">Subscription request that identifies the project and optional agent timeline.</param>
-    /// <returns>A task that completes after group membership is updated and the initial backfill is sent.</returns>
+    /// <returns>The ordered catch-up updates captured after group membership is established.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is <see langword="null"/>.</exception>
-    public async Task SubscribeToProject(LiveSubscriptionRequestDto request)
+    public async Task<LiveUpdateDto[]> SubscribeToProject(LiveSubscriptionRequestDto request)
     {
         ArgumentNullException.ThrowIfNull(request);
         CancellationToken cancellationToken = Context.ConnectionAborted;
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, ProjectUpdatesContract.GetProjectChannelName(request.ProjectId), cancellationToken);
-        await SwapAgentTimelineGroupAsync(request.ProjectId, request.AgentId, cancellationToken).ConfigureAwait(false);
-
-        IReadOnlyList<LiveUpdateDto> backfill = await _backfillService.GetBackfillAsync(request, cancellationToken).ConfigureAwait(false);
-        foreach (LiveUpdateDto update in backfill)
+        try
         {
-            await Clients.Caller.SendAsync(ProjectUpdatesContract.AgentStatusUpdatedMethodName, update, cancellationToken).ConfigureAwait(false);
+            await Groups.AddToGroupAsync(
+                Context.ConnectionId,
+                ProjectUpdatesContract.GetProjectChannelName(request.ProjectId),
+                cancellationToken);
+            await SwapAgentTimelineGroupAsync(request.ProjectId, request.AgentId, cancellationToken).ConfigureAwait(false);
+
+            IReadOnlyList<LiveUpdateDto> backfill = await _backfillService
+                .GetBackfillAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+            return [.. backfill];
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return [];
         }
     }
 

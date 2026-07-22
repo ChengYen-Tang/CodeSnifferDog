@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CodeSnifferDog.Server.Data;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
@@ -66,6 +67,12 @@ public sealed class LiveBackfillServiceTests
         Assert.AreEqual("Review Group", groupUpdates[0].Group!.DisplayName);
         Assert.AreEqual("Agent A", agentUpdates[0].Agent!.DisplayName);
         Assert.AreEqual("Agent B", agentUpdates[1].Agent!.DisplayName);
+        Assert.IsNull(agentUpdates[0].Agent!.SystemPrompt);
+        Assert.IsNull(agentUpdates[1].Agent!.SystemPrompt);
+        string serializedAgentUpdates = JsonSerializer.Serialize(agentUpdates);
+        Assert.DoesNotContain(serializedAgentUpdates, "SystemPrompt");
+        Assert.DoesNotContain(serializedAgentUpdates, "System prompt A");
+        Assert.DoesNotContain(serializedAgentUpdates, "System prompt B");
 
         Assert.IsTrue(timelineUpdates.All(update => update.TimelineEntry is not null));
         Assert.IsTrue(timelineUpdates.Any(update =>
@@ -76,6 +83,44 @@ public sealed class LiveBackfillServiceTests
             update.TimelineEntry!.AgentId == agentAId &&
             update.TimelineEntry.Sequence == 1));
         Assert.IsFalse(timelineUpdates.Any(update => update.TimelineEntry!.AgentId == agentBId));
+    }
+
+    [TestMethod]
+    public async Task GetBackfillAsync_WhenProjectStateIsExcluded_ReturnsOnlyTimelineUpdates()
+    {
+        Guid projectId = Guid.CreateVersion7();
+        Guid groupId = Guid.CreateVersion7();
+        Guid agentAId = Guid.CreateVersion7();
+        Guid agentBId = Guid.CreateVersion7();
+
+        using ServiceProvider services = CreateServices();
+        IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory =
+            services.GetRequiredService<IDbContextFactory<CodeSnifferDogServerDbContext>>();
+        ILiveBackfillService service = services.GetRequiredService<ILiveBackfillService>();
+        await SeedProjectAsync(dbContextFactory, projectId, groupId, agentAId, agentBId, TestContext.CancellationToken);
+
+        IReadOnlyList<LiveUpdateDto> updates = await service.GetBackfillAsync(
+            new LiveSubscriptionRequestDto
+            {
+                ProjectId = projectId,
+                SnapshotGeneratedAtUtc = DateTimeOffset.UtcNow,
+                AgentId = agentAId,
+                LatestSequence = 1,
+                IncludeProjectState = false,
+            },
+            TestContext.CancellationToken);
+
+        LiveUpdateDto update = Assert.ContainsSingle(updates);
+        Assert.AreEqual(projectId, update.ProjectId);
+        Assert.AreEqual(LiveUpdateKind.TimelineEntryUpserted, update.Kind);
+        Assert.IsNull(update.ProjectStatus);
+        Assert.IsNull(update.Group);
+        Assert.IsNull(update.Agent);
+        Assert.IsNull(update.AgentStatus);
+        Assert.IsNotNull(update.TimelineEntry);
+        Assert.AreEqual(agentAId, update.TimelineEntry.AgentId);
+        Assert.AreEqual(2L, update.TimelineEntry.Sequence);
+        Assert.AreEqual("Agent A second entry", update.TimelineEntry.Message);
     }
 
     [TestMethod]

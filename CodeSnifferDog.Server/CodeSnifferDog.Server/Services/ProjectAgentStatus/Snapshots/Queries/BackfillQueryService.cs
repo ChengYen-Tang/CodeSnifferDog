@@ -26,6 +26,30 @@ internal sealed class BackfillQueryService(
         await using CodeSnifferDogServerDbContext dbContext =
             await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
+        if (!request.IncludeProjectState)
+        {
+            IReadOnlyList<TimelineEntryProjection> selectedTimeline =
+                request.AgentId is Guid selectedAgentId &&
+                await AgentBelongsToProjectAsync(
+                    dbContext,
+                    request.ProjectId,
+                    selectedAgentId,
+                    cancellationToken).ConfigureAwait(false)
+                    ? await LoadTimelineEntriesAsync(
+                        dbContext,
+                        selectedAgentId,
+                        request.LatestSequence,
+                        cancellationToken).ConfigureAwait(false)
+                    : [];
+
+            return new BackfillReadModel(
+                request.ProjectId,
+                null,
+                [],
+                [],
+                selectedTimeline);
+        }
+
         ProjectProcessingStatus? projectStatus = await dbContext.Projects
             .AsNoTracking()
             .Where(project => project.Id == request.ProjectId)
@@ -60,7 +84,7 @@ internal sealed class BackfillQueryService(
                 agent.ProjectAgentGroupId,
                 agent.RuntimeKey,
                 agent.DisplayName,
-                agent.SystemPrompt,
+                null,
                 agent.Status,
                 agent.CreatedAtUtc))
             .ToListAsync(cancellationToken)
@@ -108,4 +132,24 @@ internal sealed class BackfillQueryService(
                 entry.ToolArguments,
                 entry.ToolResult))
             .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// Checks that an agent belongs to the requested project without loading the full roster.
+    /// </summary>
+    private static Task<bool> AgentBelongsToProjectAsync(
+        CodeSnifferDogServerDbContext dbContext,
+        Guid projectId,
+        Guid agentId,
+        CancellationToken cancellationToken) =>
+        dbContext.ProjectAgents
+            .AsNoTracking()
+            .Where(agent => agent.Id == agentId)
+            .Join(
+                dbContext.ProjectAgentGroups
+                    .AsNoTracking()
+                    .Where(group => group.ProjectId == projectId),
+                agent => agent.ProjectAgentGroupId,
+                group => group.Id,
+                (agent, _) => agent.Id)
+            .AnyAsync(candidateAgentId => candidateAgentId == agentId, cancellationToken);
 }

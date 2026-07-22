@@ -27,10 +27,12 @@ internal sealed record SnapshotGroupRow(
 /// Read model that pairs one agent projection with its optional loaded history.
 /// </summary>
 /// <param name="Agent">Projected agent row.</param>
+/// <param name="SystemPrompt">System prompt when this agent's details are loaded.</param>
 /// <param name="HasLoadedHistory">Whether <paramref name="TimelineEntries" /> is populated for this agent.</param>
 /// <param name="TimelineEntries">Loaded timeline entries for the agent.</param>
 internal sealed record SnapshotAgentRow(
     AgentProjection Agent,
+    string? SystemPrompt,
     bool HasLoadedHistory,
     IReadOnlyList<TimelineEntryProjection> TimelineEntries);
 
@@ -39,8 +41,10 @@ internal sealed record SnapshotAgentRow(
 /// </summary>
 /// <param name="ProjectId">Project identifier that owns the agent.</param>
 /// <param name="AgentId">Agent identifier whose history was loaded.</param>
+/// <param name="SystemPrompt">System prompt assigned to the agent.</param>
 /// <param name="TimelineEntries">Loaded timeline entries.</param>
 internal sealed record HistorySnapshotReadModel(
     Guid ProjectId,
     Guid AgentId,
+    string SystemPrompt,
     IReadOnlyList<TimelineEntryProjection> TimelineEntries);

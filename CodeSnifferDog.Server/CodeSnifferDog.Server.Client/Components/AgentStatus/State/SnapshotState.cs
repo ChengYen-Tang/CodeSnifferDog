@@ -98,31 +98,51 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
         if (Snapshot is null)
             return;
 
-        List<GroupSnapshotDto> groups = Snapshot.AgentGroups
-            .Select(group => new GroupSnapshotDto
+        List<GroupSnapshotDto>? groups = null;
+        for (int groupIndex = 0; groupIndex < Snapshot.AgentGroups.Count; groupIndex++)
+        {
+            GroupSnapshotDto group = Snapshot.AgentGroups[groupIndex];
+            List<SnapshotDto>? agents = null;
+            for (int agentIndex = 0; agentIndex < group.Agents.Count; agentIndex++)
+            {
+                SnapshotDto agent = group.Agents[agentIndex];
+                if (agent.AgentId == agentIdToKeep ||
+                    (!agent.HasLoadedHistory && agent.TimelineEntries.Count == 0 && agent.SystemPrompt is null))
+                {
+                    continue;
+                }
+
+                agents ??= group.Agents.ToList();
+                agents[agentIndex] = new SnapshotDto
+                {
+                    AgentId = agent.AgentId,
+                    GroupId = agent.GroupId,
+                    RuntimeKey = agent.RuntimeKey,
+                    DisplayName = agent.DisplayName,
+                    SystemPrompt = null,
+                    Status = agent.Status,
+                    CreatedAtUtc = agent.CreatedAtUtc,
+                    HasLoadedHistory = false,
+                    TimelineEntries = [],
+                };
+            }
+
+            if (agents is null)
+                continue;
+
+            groups ??= Snapshot.AgentGroups.ToList();
+            groups[groupIndex] = new GroupSnapshotDto
             {
                 GroupId = group.GroupId,
                 RuntimeKey = group.RuntimeKey,
                 DisplayName = group.DisplayName,
                 CreatedAtUtc = group.CreatedAtUtc,
-                Agents = group.Agents
-                    .Select(agent => new SnapshotDto
-                    {
-                        AgentId = agent.AgentId,
-                        GroupId = agent.GroupId,
-                        RuntimeKey = agent.RuntimeKey,
-                        DisplayName = agent.DisplayName,
-                        SystemPrompt = agent.SystemPrompt,
-                        Status = agent.Status,
-                        CreatedAtUtc = agent.CreatedAtUtc,
-                        HasLoadedHistory = agent.AgentId == agentIdToKeep && agent.HasLoadedHistory,
-                        TimelineEntries = agent.AgentId == agentIdToKeep ? agent.TimelineEntries : [],
-                    })
-                    .ToList(),
-            })
-            .ToList();
+                Agents = agents,
+            };
+        }
 
-        ReplaceSnapshotGroups(groups);
+        if (groups is not null)
+            ReplaceSnapshotGroupsPreservingLookup(groups);
     }
 
     /// <summary>
@@ -135,8 +155,19 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
         if (group is null || Snapshot is null)
             return false;
 
-        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
         bool hasExistingGroup = _lookup.TryGetGroupIndex(group.GroupId, out int existingIndex);
+        if (hasExistingGroup)
+        {
+            GroupSnapshotDto existingGroup = Snapshot.AgentGroups[existingIndex];
+            if (string.Equals(existingGroup.RuntimeKey, group.RuntimeKey, StringComparison.Ordinal) &&
+                string.Equals(existingGroup.DisplayName, group.DisplayName, StringComparison.Ordinal) &&
+                existingGroup.CreatedAtUtc == group.CreatedAtUtc)
+            {
+                return false;
+            }
+        }
+
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
         GroupSnapshotDto nextGroup = hasExistingGroup
             ? new GroupSnapshotDto
             {
@@ -177,16 +208,19 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
         if (!_lookup.TryGetGroupIndex(agent.GroupId, out int groupIndex))
             return false;
 
-        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
-        GroupSnapshotDto group = groups[groupIndex];
-        List<SnapshotDto> agents = group.Agents.ToList();
+        GroupSnapshotDto group = Snapshot.AgentGroups[groupIndex];
         bool hasExistingAgent =
             _lookup.TryGetAgentLocation(agent.AgentId, out AgentStatusSnapshotAgentLocation existingLocation) &&
             existingLocation.GroupIndex == groupIndex;
         int existingIndex = hasExistingAgent ? existingLocation.AgentIndex : -1;
-        IReadOnlyList<TimelineEntryDto> timelineEntries =
-            hasExistingAgent ? agents[existingIndex].TimelineEntries : [];
+        SnapshotDto? existingAgent = hasExistingAgent ? group.Agents[existingIndex] : null;
+        IReadOnlyList<TimelineEntryDto> timelineEntries = existingAgent?.TimelineEntries ?? [];
 
+        if (existingAgent is not null && AgentMatches(existingAgent, agent))
+            return false;
+
+        List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
+        List<SnapshotDto> agents = group.Agents.ToList();
         SnapshotDto nextAgent = new()
         {
             AgentId = agent.AgentId,
@@ -195,7 +229,7 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
             DisplayName = agent.DisplayName,
             Status = agent.Status,
             CreatedAtUtc = agent.CreatedAtUtc,
-            SystemPrompt = agent.SystemPrompt,
+            SystemPrompt = agent.SystemPrompt ?? existingAgent?.SystemPrompt,
             HasLoadedHistory = hasExistingAgent && agents[existingIndex].HasLoadedHistory,
             TimelineEntries = timelineEntries,
         };
@@ -234,10 +268,13 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
         if (!_lookup.TryGetAgentLocation(agentStatus.AgentId, out AgentStatusSnapshotAgentLocation location))
             return false;
 
+        GroupSnapshotDto group = Snapshot.AgentGroups[location.GroupIndex];
+        SnapshotDto existingAgent = group.Agents[location.AgentIndex];
+        if (existingAgent.Status == agentStatus.Status)
+            return false;
+
         List<GroupSnapshotDto> groups = Snapshot.AgentGroups.ToList();
-        GroupSnapshotDto group = groups[location.GroupIndex];
         List<SnapshotDto> agents = group.Agents.ToList();
-        SnapshotDto existingAgent = agents[location.AgentIndex];
         agents[location.AgentIndex] = new SnapshotDto
         {
             AgentId = existingAgent.AgentId,
@@ -260,7 +297,7 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
             Agents = agents,
         };
 
-        ReplaceSnapshotGroups(groups);
+        ReplaceSnapshotGroupsPreservingLookup(groups);
         return true;
     }
 
@@ -309,7 +346,7 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
             Agents = agents,
         };
 
-        ReplaceSnapshotGroups(groups);
+        ReplaceSnapshotGroupsPreservingLookup(groups);
         return result;
     }
 
@@ -359,7 +396,7 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
             Agents = agents,
         };
 
-        ReplaceSnapshotGroups(groups);
+        ReplaceSnapshotGroupsPreservingLookup(groups);
         return result;
     }
 
@@ -368,7 +405,10 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
     /// </summary>
     /// <param name="agentId">Agent identifier whose cached history should be replaced.</param>
     /// <param name="timelineEntries">Replacement timeline entries.</param>
-    public void ReplaceAgentHistory(Guid agentId, IReadOnlyList<TimelineEntryDto> timelineEntries)
+    public void ReplaceAgentHistory(
+        Guid agentId,
+        IReadOnlyList<TimelineEntryDto> timelineEntries,
+        string? systemPrompt = null)
     {
         if (Snapshot is null)
             return;
@@ -386,7 +426,7 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
             GroupId = existingAgent.GroupId,
             RuntimeKey = existingAgent.RuntimeKey,
             DisplayName = existingAgent.DisplayName,
-            SystemPrompt = existingAgent.SystemPrompt,
+            SystemPrompt = systemPrompt ?? existingAgent.SystemPrompt,
             Status = existingAgent.Status,
             CreatedAtUtc = existingAgent.CreatedAtUtc,
             HasLoadedHistory = true,
@@ -402,7 +442,7 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
             Agents = agents,
         };
 
-        ReplaceSnapshotGroups(groups);
+        ReplaceSnapshotGroupsPreservingLookup(groups);
     }
 
     /// <summary>
@@ -413,6 +453,9 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
     private bool UpdateProjectStatus(ExecutionStatusChangedDto? projectStatus)
     {
         if (projectStatus is null || Snapshot is null)
+            return false;
+
+        if (Snapshot.ProjectStatus == projectStatus.Status)
             return false;
 
         Snapshot = new StatusSnapshotDto
@@ -449,10 +492,40 @@ internal sealed class SnapshotState(StatusSnapshotDto? snapshot)
     }
 
     /// <summary>
+    /// Replaces group nodes after a value-only mutation that preserves every group and agent index.
+    /// </summary>
+    private void ReplaceSnapshotGroupsPreservingLookup(IReadOnlyList<GroupSnapshotDto> groups)
+    {
+        if (Snapshot is null)
+            return;
+
+        Snapshot = new StatusSnapshotDto
+        {
+            ProjectId = Snapshot.ProjectId,
+            ProjectStatus = Snapshot.ProjectStatus,
+            SnapshotGeneratedAtUtc = Snapshot.SnapshotGeneratedAtUtc,
+            AgentGroups = groups,
+        };
+    }
+
+    /// <summary>
     /// Rebuilds fast lookup indexes from the current snapshot tree.
     /// </summary>
     private void RebuildLookup()
     {
         _lookup = SnapshotLookup.From(Snapshot?.AgentGroups);
     }
+
+    /// <summary>
+    /// Determines whether a live agent summary is identical to the current snapshot node.
+    /// </summary>
+    private static bool AgentMatches(SnapshotDto snapshot, LiveDto update) =>
+        snapshot.AgentId == update.AgentId &&
+        snapshot.GroupId == update.GroupId &&
+        string.Equals(snapshot.RuntimeKey, update.RuntimeKey, StringComparison.Ordinal) &&
+        string.Equals(snapshot.DisplayName, update.DisplayName, StringComparison.Ordinal) &&
+        (update.SystemPrompt is null ||
+            string.Equals(snapshot.SystemPrompt, update.SystemPrompt, StringComparison.Ordinal)) &&
+        snapshot.Status == update.Status &&
+        snapshot.CreatedAtUtc == update.CreatedAtUtc;
 }

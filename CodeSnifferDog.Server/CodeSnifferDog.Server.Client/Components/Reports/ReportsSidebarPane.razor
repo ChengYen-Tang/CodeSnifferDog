@@ -12,7 +12,8 @@
                 {
                     <a class="project-action-button"
                        href="@($"/api/projects/{ProjectId}/reports/download")"
-                       title="Download all reports as zip">
+                       title="Download all reports as zip"
+                       aria-label="Download all reports as zip">
                         ZIP
                     </a>
                 }
@@ -22,15 +23,15 @@
         <div class="reports-file-list">
             @if (IsListLoading)
             {
-                <div class="text-secondary">Loading reports...</div>
+                <div class="reports-state-message" role="status">Loading reports...</div>
             }
             else if (!string.IsNullOrWhiteSpace(ListErrorMessage))
             {
-                <div class="text-danger">@ListErrorMessage</div>
+                <div class="reports-state-message reports-state-error" role="alert">@ListErrorMessage</div>
             }
             else if (ReportList is null || ReportList.Reports.Count == 0)
             {
-                <div class="text-secondary">No reports available for this project.</div>
+                <div class="reports-state-message">No reports available for this project.</div>
             }
             else
             {

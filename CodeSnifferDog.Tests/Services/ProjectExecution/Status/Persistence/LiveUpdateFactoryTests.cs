@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CodeSnifferDog.Server.Data.Entities;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Notifications;
 using CodeSnifferDog.Server.Services.ProjectAgentStatus.Projection;
@@ -60,6 +61,8 @@ public sealed class LiveUpdateFactoryTests
         Assert.AreEqual(LiveUpdateKind.AgentGroupUpserted, groupUpdate.Kind);
         Assert.AreEqual(groupId, groupUpdate.Group!.GroupId);
         Assert.AreEqual(RunStatus.Running, agentUpdate.Agent!.Status);
+        Assert.AreEqual("prompt", agentUpdate.Agent.SystemPrompt);
+        Assert.Contains("\"SystemPrompt\":\"prompt\"", JsonSerializer.Serialize(agentUpdate));
         Assert.AreEqual(RunStatus.Running, statusUpdate.AgentStatus!.Status);
         Assert.AreEqual(TimelineEntryKind.Tool, timelineUpdate.TimelineEntry!.EntryKind);
         Assert.AreEqual("result", timelineUpdate.TimelineEntry.ToolResult);

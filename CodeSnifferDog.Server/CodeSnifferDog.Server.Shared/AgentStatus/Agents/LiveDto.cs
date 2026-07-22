@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace CodeSnifferDog.Server.Shared.AgentStatus.Agents;
 
 /// <summary>
@@ -26,9 +28,11 @@ public sealed class LiveDto
     public required string DisplayName { get; init; }
 
     /// <summary>
-    /// Gets the system prompt assigned to the agent.
+    /// Gets an updated system prompt when an individual live agent upsert carries one.
+    /// Roster backfills leave this value null so large prompts are omitted from the payload.
     /// </summary>
-    public string SystemPrompt { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SystemPrompt { get; init; }
 
     /// <summary>
     /// Gets the current run status.
