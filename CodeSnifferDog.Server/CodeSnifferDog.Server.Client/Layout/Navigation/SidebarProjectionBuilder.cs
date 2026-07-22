@@ -53,7 +53,7 @@ internal static class SidebarProjectionBuilder
             ProjectAction.Link("R", "Report", $"/reports/{projectId}"),
             ProjectAction.Delete(),
         ],
-        ProjectStatus.Failed =>
+        ProjectStatus.Failed or ProjectStatus.Canceled =>
         [
             ProjectAction.Link("S", "Agent Team / Worker Status", CreateAgentStatusHref(projectId)),
             ProjectAction.Delete(),

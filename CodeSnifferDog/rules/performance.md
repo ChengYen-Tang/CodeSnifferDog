@@ -1,67 +1,53 @@
-# 1) Repeated Work & Hot Paths
+# 1) Review Scope, Evidence & Applicability
 
-- Repeated parsing, serialization, reflection, model creation, dependency discovery, formatting, allocation, or expensive computation inside loops
-- Repeated full scans where incremental, cached, indexed, narrowed, or precomputed lookup is available
-- Work performed on every request, render, poll, retry, callback, message, or item when it could be done once
-- Duplicate operations caused by nested loops, repeated workflow attempts, per-item service construction, or repeated conversion between representations
-- Hot-path code that performs unnecessary allocation, conversion, sorting, filtering, string formatting, or data copying
+- Focus on observed or plausibly hot paths: complexity, repeated work, I/O, networking, allocation, serialization, blocking, and resource contention. Do not treat every code path as performance-critical by default.
+- Assess recommendations against the language, compiler, runtime, framework, workload, and deployment environment actually in use. Prefer newer platform capabilities only when they demonstrably improve performance, memory use, correctness, or readability.
+- Support system-level recommendations with relevant code, configuration, profiling, tracing, metrics, benchmarks, or production measurements. State the expected benefit and a practical way to validate it.
 
-# 2) I/O, Network & Database Efficiency
+# 2) Work, Complexity & Data Access
 
-- N+1 database, file-system, network, API, subprocess, or external tool calls
-- Large synchronous reads/writes, repeated file opens, repeated directory traversal, repeated archive operations, or repeated process launches
-- Missing batching, pagination, streaming, throttling, caching, indexing, or deduplication for large inputs
-- Loading entire datasets, files, responses, reports, logs, or result sets when only a subset is needed
-- Expensive polling or refresh loops that run when no useful work is available
+- Repeated parsing, serialization, reflection, model creation, dependency discovery, formatting, conversion, allocation, or expensive computation in loops, requests, renders, polls, retries, callbacks, messages, or per-item workflows
+- Repeated full scans, linear lookups, sorting, grouping, joining, filtering, deduplication, or representation conversion when caching, indexing, precomputation, incremental processing, a narrowed query, or a more suitable data structure would avoid the work
+- Avoidable poor complexity, including nested scans, O(n^2) or worse comparisons, exponential search, or recursive, graph, dependency, backtracking, or combinatorial traversal without pruning, memoization, visited tracking, or explicit bounds
+- Data structures that do not match the access pattern, such as list scans where a map, set, index, heap, trie, cache, or precomputed lookup would reduce repeated work
+- Hot paths that perform unnecessary copying, sorting, filtering, formatting, string construction, allocation, or data movement
+- Performance-sensitive logic whose input-size assumptions, operation limits, or expected complexity are not documented or enforced
 
-# 3) Async, Blocking & Concurrency Costs
+# 3) I/O, Network & External Services
 
-- Blocking calls in async flows, sync-over-async, thread starvation risks, or unnecessary task waiting
-- CPU-heavy work running on latency-sensitive request, UI, event-dispatch, lock-held, or callback paths
-- Excessive parallelism, unbounded fan-out, unbounded queues, or missing backpressure
-- Serial execution where independent expensive work should be bounded and parallelized
-- Independent CPU-bound or I/O-bound work that could safely use bounded parallelism but is processed serially despite available CPU cores or I/O capacity
-- Parallel work that uses an unsafe degree of parallelism, causes oversubscription, amplifies contention, exhausts shared resources, or ignores cancellation/backpressure
-- Lock contention, overly broad critical sections, atomic hot spots, or unnecessary synchronization around slow operations
+- N+1 or otherwise repeated database, file-system, network, API, subprocess, or external-tool calls
+- Large synchronous reads or writes; repeated file opens, directory traversal, archive operations, process launches, network connects, or request setup
+- Loading entire datasets, files, responses, reports, logs, or result sets when pagination, projection, streaming, slicing, or incremental processing would suffice
+- Missing batching, deduplication, caching, indexing, throttling, pagination, streaming, or bounded retries for large or repeated external work
+- Polling, refresh, or retry loops that run without useful work, have ineffective cancellation or timeout behavior, or become expensive at scale
 
-# 4) Algorithmic Complexity & Data Structures
+# 4) Async, Concurrency & Coordination
 
-- Algorithms with avoidable poor time complexity, such as nested scans, repeated linear lookup, avoidable O(n^2) or worse behavior, or exponential search
-- Data structures that do not match the access pattern, such as list scans where a map, set, index, heap, trie, cache, or precomputed lookup would avoid repeated work
-- Sorting, grouping, joining, deduplicating, filtering, or searching done repeatedly instead of once at the right boundary
-- Recursion, backtracking, graph traversal, dependency traversal, dynamic programming, or combinatorial logic without clear pruning, memoization, visited tracking, or complexity control
-- Performance-sensitive logic without documented or enforced input-size assumptions
-- Improvements that materially reduce asymptotic complexity, not just constant-factor micro-optimizations
+- Blocking calls in asynchronous flows, sync-over-async, unnecessary task waiting, or CPU-heavy work on latency-sensitive request, UI, event-dispatch, callback, or lock-held paths
+- Serial processing of independent, materially expensive CPU-bound or I/O-bound work when bounded parallelism would provide a clear benefit with the available CPU and I/O capacity
+- Parallel work with no genuine parallel benefit because of serial dependencies, shared locks, a single external bottleneck, insufficient workload, or a constrained execution environment
+- Unbounded fan-out, queues, retries, or degree of parallelism; oversubscription, contention amplification, or exhaustion of connection, CPU, memory, file, or service limits
+- Concurrent operations without cancellation, timeout, bounded concurrency, backpressure, and deterministic cleanup or resource release
+- Shared mutable state without a race-free ownership, synchronization, immutability, or message-passing strategy; overly broad critical sections, atomic hot spots, or synchronization around slow operations
 
-# 5) Memory, Buffering & Data Volume
+# 5) Memory, Serialization & Data Volume
 
-- Unbounded collection growth, buffering, caching, queues, logs, transcripts, diagnostics, or accumulated state
-- Large object allocation or copying where streaming, slicing, pooling, incremental processing, or bounded buffers are expected
-- Holding large intermediate results longer than needed
-- Repeated string concatenation, format expansion, encoding conversion, or large text transformations in loops
-- Memory use that scales with repository size, project count, rule count, task count, file count, issue count, report size, or concurrent users without an explicit bound
+- Unbounded growth in collections, buffers, caches, queues, logs, transcripts, diagnostics, or accumulated state
+- Large allocations, copying, encoding/decoding, format expansion, string concatenation, serialization, deserialization, or text transformation in hot loops or high-frequency paths
+- Holding large intermediate results longer than needed, or materializing complete inputs and outputs when streaming, pooling, slicing, incremental processing, or bounded buffers are appropriate
+- Memory use that scales with repository size, project count, rule count, task count, file count, issue count, report size, message volume, or concurrent users without an explicit bound
+- Size, offset, capacity, page, chunk, buffer, duration, rate, or percentage calculations that overflow, truncate, wrap, lose precision, mix units, or turn boundary values into huge allocations, full scans, or ineffective retries
+- Layout, ABI, marshaling, pinning, native-interop, or representation assumptions that introduce repeated copies, padding, conversions, or compatibility work
 
-# 6) Size, Arithmetic & Layout Calculations
+# 6) Runtime, OS & Deployment Topology
 
-- Size, offset, capacity, page, chunk, or buffer calculations that can overflow, truncate, wrap, or allocate much more than intended
-- Mixed units such as bytes vs characters, encoded vs decoded length, items vs pages, rows vs batches, or signed vs unsigned values
-- Negative, zero, maximum, or boundary values that trigger huge allocations, infinite loops, excessive retries, or full scans
-- Narrowing conversions or precision loss in counts, durations, offsets, sizes, percentages, or rate calculations
-- Layout or ABI assumptions that cause repeated copying, marshaling, padding, conversion, or compatibility work
+- Hot or low-latency paths that create excessive tasks, threads, timers, processes, system calls, context switches, allocations, locks, exceptions, reflection, dynamic dispatch, or runtime marshaling
+- Language or framework conveniences that hide expensive work in tight loops, high-frequency callbacks, serialization paths, or allocation-sensitive code
+- Garbage collection, reference counting, finalization, memory pressure, logging, tracing, metrics, diagnostics, formatting, or stack capture that can create latency spikes without sampling, level checks, or bounded cost
+- For high-throughput, low-latency, real-time, or network-intensive paths only: inspect data-path copying, batching, backpressure, flow control, queueing, interrupt and wakeup behavior, OS/kernel resources, CPU-cache locality, NUMA, and deployment topology
 
-# 7) Runtime, OS & Low-Latency Costs
+# 7) Scaling & Operational Safeguards
 
-- Hot paths or low-latency paths that create excessive tasks, threads, timers, processes, system calls, context switches, allocations, locks, exceptions, reflection calls, dynamic dispatch, or runtime marshaling
-- Language or framework conveniences that hide expensive work in tight loops, latency-sensitive paths, high-frequency callbacks, serialization paths, or allocation-sensitive code
-- OS resource dispatch costs from frequent process launches, file opens, network connects, synchronization primitives, thread creation, wakeups, scheduler handoffs, or kernel transitions
-- Garbage collection, reference counting, finalization, pinning, native interop, or memory pressure that can introduce latency spikes
-- Logging, tracing, metrics, diagnostics, formatting, or stack capture on hot paths without sampling, level checks, or bounded cost
-- Low-latency code that lacks clear allocation, blocking, lock, syscall, scheduling, or runtime-dispatch boundaries
-
-# 8) Scaling Triggers
-
-- Behavior that is acceptable for small projects but degrades for large repositories, many files, many rules, many tasks, many reports, many issues, or concurrent users
-- Work that scales worse than expected for the domain, such as O(n^2) comparisons on large lists
-- Timeout, cancellation, progress, or batching behavior that becomes ineffective under large workloads
-- Performance-sensitive code paths without clear size limits, operation limits, or operational safeguards
-- Formatting, logging, diagnostics, or report generation that becomes expensive when output is large
+- Behavior that is acceptable for small inputs but degrades with large repositories, many files, rules, tasks, reports, issues, messages, concurrent users, or high request volume
+- Missing limits, batching, progress reporting, cancellation, timeout, or overload safeguards that make large workloads slow, opaque, or difficult to recover
+- Formatting, logging, diagnostics, report generation, or observability whose cost grows with output volume without sampling, truncation, aggregation, or a clear operational bound

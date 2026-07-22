@@ -188,6 +188,7 @@
                             <div class="project-link @(item.ProjectId == _state.Ui.SelectedProjectId ? "active" : null)" @key="item.ProjectId">
                                 <a class="project-main"
                                    href="@item.StatusHref"
+                                   title="@item.Name"
                                    aria-current="@(item.ProjectId == _state.Ui.SelectedProjectId ? "page" : null)"
                                    @onclick="() => SelectProjectForNavigation(item.ProjectId)">
                                     <span class="project-name">@item.Name</span>
