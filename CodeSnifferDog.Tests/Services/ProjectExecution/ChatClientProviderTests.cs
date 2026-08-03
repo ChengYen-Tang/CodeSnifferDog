@@ -1,6 +1,10 @@
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using OpenAI.Chat;
+#pragma warning disable OPENAI001
+using OpenAI.Responses;
+#pragma warning restore OPENAI001
 using System.Reflection;
 using System.Text.Json.Nodes;
 
@@ -33,6 +37,86 @@ public sealed class ChatClientProviderTests
         Assert.IsTrue(extraBody["parallel_tool_calls"]?.GetValue<bool>() ?? false);
         Assert.AreEqual("gold", extraBody["metadata"]?["tier"]?.GetValue<string>());
     }
+
+    [TestMethod]
+    public void InferenceOptions_BindsReasoningEffort()
+    {
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{InferenceProviderOptions.SectionName}:ReasoningEffort"] = "high",
+            })
+            .Build();
+
+        InferenceProviderOptions options = new();
+        configuration.GetSection(InferenceProviderOptions.SectionName).Bind(options);
+
+        Assert.AreEqual("high", options.ReasoningEffort);
+    }
+
+    [TestMethod]
+    public void ReasoningEffort_OverridesExtraBodyForChatCompletionRequests()
+    {
+        InferenceProviderOptions options = new()
+        {
+            Provider = "vllm",
+            ReasoningEffort = " high ",
+            OpenAICompatible = new OpenAICompatibleInferenceProviderOptions
+            {
+                Endpoint = "http://localhost:8000/v1",
+                ModelId = "qwen2.5-coder",
+                ExtraBody = new JsonObject
+                {
+                    ["reasoning_effort"] = "low"
+                }
+            }
+        };
+
+        ProjectChatClientProvider chatClientProvider = new(Options.Create(options));
+        MethodInfo configureRawRequest = typeof(ProjectChatClientProvider)
+            .GetMethod("ConfigureRawRequest", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("ConfigureRawRequest method was not found.");
+
+        ChatCompletionOptions configured = (ChatCompletionOptions)(configureRawRequest.Invoke(
+            chatClientProvider,
+            [new ChatCompletionOptions()])
+            ?? throw new InvalidOperationException("ConfigureRawRequest returned null."));
+
+#pragma warning disable SCME0001
+        Assert.AreEqual("high", configured.Patch.GetString("$.reasoning_effort"u8));
+#pragma warning restore SCME0001
+    }
+
+#pragma warning disable OPENAI001
+    [TestMethod]
+    public void ReasoningEffort_UsesResponsesRequestShape()
+    {
+        InferenceProviderOptions options = new()
+        {
+            Provider = "openai",
+            ReasoningEffort = "high",
+            OpenAI = new OpenAIInferenceProviderOptions
+            {
+                ApiKey = "key",
+                ModelId = "o3"
+            }
+        };
+
+        ProjectChatClientProvider chatClientProvider = new(Options.Create(options));
+        MethodInfo configureRawRequest = typeof(ProjectChatClientProvider)
+            .GetMethod("ConfigureRawRequest", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("ConfigureRawRequest method was not found.");
+
+        CreateResponseOptions configured = (CreateResponseOptions)(configureRawRequest.Invoke(
+            chatClientProvider,
+            [new CreateResponseOptions()])
+            ?? throw new InvalidOperationException("ConfigureRawRequest returned null."));
+
+#pragma warning disable SCME0001
+        Assert.AreEqual("high", configured.Patch.GetString("$.reasoning.effort"u8));
+#pragma warning restore SCME0001
+    }
+#pragma warning restore OPENAI001
 
     [TestMethod]
     public void OpenAICompatibleExtraBody_DoesNotApplyToOpenAIProvider()

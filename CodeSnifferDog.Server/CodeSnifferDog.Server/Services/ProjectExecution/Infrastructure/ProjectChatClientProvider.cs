@@ -8,6 +8,7 @@ using OpenAI.Responses;
 using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using CodeSnifferDog.Json;
 
@@ -20,6 +21,7 @@ public sealed class ProjectChatClientProvider(
     IOptions<InferenceProviderOptions> options) : IProjectChatClientProvider
 {
     private readonly InferenceProviderOptions _options = options.Value;
+    private readonly string? _reasoningEffort = NormalizeReasoningEffort(options.Value.ReasoningEffort);
     private readonly JsonObject? _extraBody = IsOpenAICompatibleProvider(options.Value.Provider)
         ? options.Value.OpenAICompatible.ExtraBody
         : null;
@@ -144,7 +146,7 @@ public sealed class ProjectChatClientProvider(
     }
 
     /// <summary>
-    /// Enables parallel tool calls and applies any configured extra request body fields.
+    /// Enables parallel tool calls and applies configured request body fields.
     /// </summary>
     /// <param name="request">Raw request object produced by the underlying SDK.</param>
     /// <returns>The updated request object.</returns>
@@ -153,14 +155,18 @@ public sealed class ProjectChatClientProvider(
         switch (request)
         {
             case ChatCompletionOptions chatCompletionOptions:
-                ApplyExtraBodyPatch(chatCompletionOptions.Patch);
+                ref JsonPatch chatCompletionPatch = ref chatCompletionOptions.Patch;
+                ApplyExtraBodyPatch(ref chatCompletionPatch);
+                ApplyReasoningEffortPatch(ref chatCompletionPatch, "$.reasoning_effort"u8);
                 chatCompletionOptions.AllowParallelToolCalls = true;
-                chatCompletionOptions.Patch.Set("$.parallel_tool_calls"u8, true);
+                chatCompletionPatch.Set("$.parallel_tool_calls"u8, true);
                 return chatCompletionOptions;
             case CreateResponseOptions responseOptions:
-                ApplyExtraBodyPatch(responseOptions.Patch);
+                ref JsonPatch responsePatch = ref responseOptions.Patch;
+                ApplyExtraBodyPatch(ref responsePatch);
+                ApplyReasoningEffortPatch(ref responsePatch, "$.reasoning.effort"u8);
                 responseOptions.ParallelToolCallsEnabled = true;
-                responseOptions.Patch.Set("$.parallel_tool_calls"u8, true);
+                responsePatch.Set("$.parallel_tool_calls"u8, true);
                 return responseOptions;
             default:
                 return request;
@@ -168,10 +174,32 @@ public sealed class ProjectChatClientProvider(
     }
 
     /// <summary>
+    /// Applies the configured reasoning effort to the outgoing provider request.
+    /// </summary>
+    /// <param name="patch">Patch object used to mutate the raw provider request.</param>
+    private void ApplyReasoningEffortPatch(ref JsonPatch patch, ReadOnlySpan<byte> jsonPath)
+    {
+        if (_reasoningEffort is null)
+            return;
+
+        patch.Set(
+            jsonPath,
+            BinaryData.FromString(JsonSerializer.Serialize(_reasoningEffort)));
+    }
+
+    /// <summary>
+    /// Normalizes an optional reasoning effort value while preserving provider-specific values.
+    /// </summary>
+    /// <param name="value">Configured reasoning effort.</param>
+    /// <returns>A trimmed value, or <see langword="null"/> when no value was configured.</returns>
+    private static string? NormalizeReasoningEffort(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
     /// Applies the configured extra request body fields to the outgoing provider request.
     /// </summary>
     /// <param name="patch">Patch object used to mutate the raw provider request.</param>
-    private void ApplyExtraBodyPatch(JsonPatch patch)
+    private void ApplyExtraBodyPatch(ref JsonPatch patch)
     {
         if (_extraBody is null || _extraBody.Count == 0)
             return;

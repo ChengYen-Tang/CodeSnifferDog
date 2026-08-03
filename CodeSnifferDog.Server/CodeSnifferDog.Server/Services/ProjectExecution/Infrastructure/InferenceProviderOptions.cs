@@ -25,6 +25,16 @@ public sealed class InferenceProviderOptions
     public int? RequestTimeoutSeconds { get; init; }
 
     /// <summary>
+    /// Gets the optional reasoning effort sent in provider requests.
+    /// </summary>
+    /// <remarks>
+    /// The value is passed through as <c>reasoning_effort</c> so that both OpenAI
+    /// and OpenAI-compatible providers can support their own available levels.
+    /// Common values include <c>low</c>, <c>medium</c>, and <c>high</c>.
+    /// </remarks>
+    public string? ReasoningEffort { get; init; }
+
+    /// <summary>
     /// Gets the OpenAI-specific configuration.
     /// </summary>
     public OpenAIInferenceProviderOptions OpenAI { get; init; } = new();
