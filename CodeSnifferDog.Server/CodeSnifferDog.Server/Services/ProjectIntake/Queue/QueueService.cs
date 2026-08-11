@@ -44,7 +44,7 @@ internal sealed class QueueService(
         ProjectRecord project = new()
         {
             Id = request.ProjectId,
-            OriginalFileName = Path.GetFileName(request.OriginalFileName),
+            OriginalFileName = NormalizeOriginalFileName(request.OriginalFileName),
             StoredZipRelativePath = request.StoredZipRelativePath.Replace('\\', '/'),
             Status = ProjectProcessingStatus.Queued,
             FileSizeBytes = request.FileSizeBytes,
@@ -72,4 +72,10 @@ internal sealed class QueueService(
             QueueTimestampUtc = project.QueueTimestampUtc,
         };
     }
+
+    /// <summary>
+    /// Extracts the uploaded file name using both Windows and Unix path separators.
+    /// </summary>
+    private static string NormalizeOriginalFileName(string originalFileName)
+        => Path.GetFileName(originalFileName.Replace('\\', '/'));
 }

@@ -17,7 +17,9 @@ public sealed class QueueServiceTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
-    public async Task QueueAsync_CreatesQueuedProjectAndReturnsUploadResult()
+    [DataRow(@"C:\upload\repo.zip")]
+    [DataRow("/upload/repo.zip")]
+    public async Task QueueAsync_CreatesQueuedProjectAndReturnsUploadResult(string originalFileName)
     {
         IDbContextFactory<CodeSnifferDogServerDbContext> dbContextFactory = CreateDbContextFactory();
         QueueService service = CreateService(dbContextFactory);
@@ -25,7 +27,7 @@ public sealed class QueueServiceTests
         DateTimeOffset nowUtc = new(2026, 5, 15, 8, 0, 0, TimeSpan.Zero);
 
         ProjectUploadResult result = await service.QueueAsync(
-            new Request(projectId, @"C:\upload\repo.zip", 123, @"uploads\repo.zip", nowUtc),
+            new Request(projectId, originalFileName, 123, @"uploads\repo.zip", nowUtc),
             TestContext.CancellationToken);
 
         await using CodeSnifferDogServerDbContext dbContext =

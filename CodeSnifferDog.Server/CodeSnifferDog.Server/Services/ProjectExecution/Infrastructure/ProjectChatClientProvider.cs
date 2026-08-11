@@ -164,7 +164,11 @@ public sealed class ProjectChatClientProvider(
             case CreateResponseOptions responseOptions:
                 ref JsonPatch responsePatch = ref responseOptions.Patch;
                 ApplyExtraBodyPatch(ref responsePatch);
-                ApplyReasoningEffortPatch(ref responsePatch, "$.reasoning.effort"u8);
+                if (_reasoningEffort is not null)
+                {
+                    responseOptions.ReasoningOptions ??= new ResponseReasoningOptions();
+                    ApplyReasoningEffortPatch(ref responsePatch, "$.reasoning.effort"u8);
+                }
                 responseOptions.ParallelToolCallsEnabled = true;
                 responsePatch.Set("$.parallel_tool_calls"u8, true);
                 return responseOptions;
