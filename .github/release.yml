@@ -1,0 +1,36 @@
+changelog:
+  categories:
+    - title: "Features"
+      labels:
+        - "enhancement"
+        - "feature"
+
+    - title: "Bug Fixes"
+      labels:
+        - "bug"
+        - "fix"
+
+    - title: "Performance"
+      labels:
+        - "performance"
+
+    - title: "Documentation"
+      labels:
+        - "documentation"
+        - "docs"
+
+    - title: "Maintenance"
+      labels:
+        - "chore"
+        - "refactor"
+        - "dependencies"
+
+    - title: "CI and Release"
+      labels:
+        - "ci"
+        - "github-actions"
+        - "release"
+
+    - title: "Other Changes"
+      labels:
+        - "*"
