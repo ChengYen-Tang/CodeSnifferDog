@@ -1,32 +1,64 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - release
+      - "release/**"
 
 permissions:
   contents: write
 
 env:
-  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "true"
   SERVER_PROJECT: CodeSnifferDog.Server/CodeSnifferDog.Server/CodeSnifferDog.Server.csproj
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
-  create-release:
-    name: Create GitHub release
+  prepare-release:
+    name: Create tag and GitHub release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      target_sha: ${{ steps.release.outputs.target_sha }}
     steps:
-      - name: Create GitHub release
+      - name: Checkout CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Create release tag and GitHub release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: v1.0.0-preview.1
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          # Bump RELEASE_TAG for the next release cycle.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            existing_sha=$(git rev-list -n 1 "$RELEASE_TAG")
+            if [[ "$existing_sha" != "$TARGET_SHA" ]]; then
+              echo "Tag $RELEASE_TAG already points to $existing_sha, not $TARGET_SHA. Bump RELEASE_TAG before releasing another commit." >&2
+              exit 1
+            fi
+          else
+            git tag -a "$RELEASE_TAG" "$TARGET_SHA" -m "Release $RELEASE_TAG"
+            git push origin "$RELEASE_TAG"
+          fi
+
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists; continuing so assets can be refreshed."
           else
@@ -44,9 +76,12 @@ jobs:
             gh release create "${release_args[@]}"
           fi
 
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
   publish:
     name: Publish ${{ matrix.rid }}
-    needs: create-release
+    needs: prepare-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -64,6 +99,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.target_sha }}
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -93,7 +130,7 @@ jobs:
         shell: pwsh
         env:
           RID: ${{ matrix.rid }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         run: |
           $publishDirectory = Join-Path $env:GITHUB_WORKSPACE "artifacts/publish/$env:RID"
           $archive = Join-Path $env:GITHUB_WORKSPACE "CodeSnifferDog.Server-$env:RELEASE_TAG-$env:RID.zip"
@@ -112,7 +149,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
         run: |
           gh release upload $env:RELEASE_TAG "${{ steps.package.outputs.archive }}" `
             --repo $env:GITHUB_REPOSITORY `
