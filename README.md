@@ -1,4 +1,5 @@
 # CodeSnifferDog
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ChengYen-Tang/CodeSnifferDog)
 
 CodeSnifferDog is a self-hosted, AI-assisted code review platform. Upload a zipped repository, let a staged set of agents inspect it against configurable engineering rules, and follow the review from the browser.
 
