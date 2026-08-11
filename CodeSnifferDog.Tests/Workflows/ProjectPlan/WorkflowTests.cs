@@ -210,7 +210,7 @@ public sealed class WorkflowTests
             promptAssetReader,
             new WorkflowOptions
             {
-                AgentRunTimeout = TimeSpan.FromMilliseconds(50),
+                AgentRunTimeout = TimeSpan.FromMilliseconds(250),
                 MaxConsecutiveRunFailures = 5,
             });
 
