@@ -2,18 +2,29 @@
 
 ## Publish
 
-The repository includes a Windows single-file publish profile:
+The repository includes a cross-platform single-file publish profile. Pass the
+target RID through `ReleaseRuntimeIdentifier`; do not pass `-r`/`--runtime`
+globally, because the server references a Blazor WebAssembly client and a
+global server RID is not a valid client runtime package.
 
 ```powershell
 dotnet publish `
   CodeSnifferDog.Server/CodeSnifferDog.Server/CodeSnifferDog.Server.csproj `
   -c Release `
-  -p:PublishProfile=FolderProfile
+  -p:PublishProfile=ReleaseSingleFile `
+  -p:ReleaseRuntimeIdentifier=win-x64
 ```
 
-The profile publishes a self-contained `win-x64` executable to `bin/Release/net10.0/publish/`. Keep the generated `appsettings.json` beside the executable and replace its deployment-specific database and inference settings before starting the server.
+The profile publishes a self-contained single-file executable. Use
+`win-x64`, `linux-x64`, `osx-arm64`, or `osx-x64` for the target platform. Keep
+the generated `appsettings.json` beside the executable and replace its
+deployment-specific database and inference settings before starting the
+server.
 
-For Linux or macOS, publish with the appropriate .NET runtime identifier and ensure the matching bundled `ripgrep` asset is included. The application hosts PowerShell 7 in-process through `Microsoft.PowerShell.SDK`; a separate PowerShell installation is not required by the application.
+The application hosts PowerShell 7 in-process through
+`Microsoft.PowerShell.SDK`; a separate PowerShell installation is not required
+by the application. The matching bundled `ripgrep` assets are included in the
+publish output.
 
 ## Runtime data
 

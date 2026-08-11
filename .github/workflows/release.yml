@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: 'true'
+  SERVER_PROJECT: CodeSnifferDog.Server/CodeSnifferDog.Server/CodeSnifferDog.Server.csproj
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; continuing so assets can be refreshed."
+          else
+            release_args=(
+              "$RELEASE_TAG"
+              --repo "$GITHUB_REPOSITORY"
+              --title "$RELEASE_TAG"
+              --generate-notes
+              --verify-tag
+            )
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              release_args+=(--prerelease)
+            fi
+
+            gh release create "${release_args[@]}"
+          fi
+
+  publish:
+    name: Publish ${{ matrix.rid }}
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: osx-arm64
+            os: macos-14
+          - rid: osx-x64
+            os: macos-13
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish self-contained single-file server
+        shell: pwsh
+        env:
+          RID: ${{ matrix.rid }}
+        run: |
+          $publishDirectory = Join-Path $env:GITHUB_WORKSPACE "artifacts/publish/$env:RID"
+          New-Item -ItemType Directory -Path $publishDirectory -Force | Out-Null
+
+          # ReleaseSingleFile.pubxml owns the server RID. Do not add -r here:
+          # a global RID is propagated to the Blazor WebAssembly project.
+          dotnet publish $env:SERVER_PROJECT `
+            --configuration Release `
+            --nologo `
+            --verbosity minimal `
+            -p:PublishProfile=ReleaseSingleFile `
+            -p:ReleaseRuntimeIdentifier=$env:RID `
+            -p:PublishDir="$publishDirectory/"
+
+      - name: Create release archive
+        id: package
+        shell: pwsh
+        env:
+          RID: ${{ matrix.rid }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $publishDirectory = Join-Path $env:GITHUB_WORKSPACE "artifacts/publish/$env:RID"
+          $archive = Join-Path $env:GITHUB_WORKSPACE "CodeSnifferDog.Server-$env:RELEASE_TAG-$env:RID.zip"
+          if (Test-Path $archive) {
+            Remove-Item -LiteralPath $archive -Force
+          }
+
+          Compress-Archive `
+            -Path (Join-Path $publishDirectory '*') `
+            -DestinationPath $archive `
+            -CompressionLevel Optimal
+
+          "archive=$archive" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload release archive
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release upload $env:RELEASE_TAG "${{ steps.package.outputs.archive }}" `
+            --repo $env:GITHUB_REPOSITORY `
+            --clobber
