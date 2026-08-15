@@ -41,7 +41,7 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: v1.0.0-preview.1
+          RELEASE_TAG: v1.0.0-preview.2
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           # Bump RELEASE_TAG for the next release cycle.
