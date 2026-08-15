@@ -16,22 +16,42 @@ internal static class CommonToolFactory
     public static IList<AITool> CreateTools(CommonToolCallbacks callbacks)
         =>
     [
-        AIFunctionFactory.Create(
+        new CaseInsensitiveAIFunction(AIFunctionFactory.Create(
             callbacks.ReadFileRangeTool,
             "ReadFileRange",
             "Read a bounded line range from one file. Use ReadFileRange, not Shell, for file content. For large files, read smaller ranges with offsetLine/limitLines. The tool name is ReadFileRange, not ReadFile.",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
+            serializerOptions: null)),
+        new CaseInsensitiveAIFunction(AIFunctionFactory.Create(
             callbacks.RunRipgrepCommandTool,
             "Ripgrep",
             "Run one ripgrep search command in the repository root path. Pass only the arguments after rg. Do not include rg in the command text. Example: use \"-n \\\"SystemPrompt\\\" .\" instead of \"rg -n \\\"SystemPrompt\\\" .\".",
-            serializerOptions: null),
-        AIFunctionFactory.Create(
+            serializerOptions: null)),
+        new CaseInsensitiveAIFunction(AIFunctionFactory.Create(
             callbacks.RunShellCommandTool,
             "Shell",
             "Run one PowerShell 7 command in the repository root path. Shell is for narrow, foreground operational commands only. Do not start background or detached work: cancellation stops the hosted PowerShell pipeline but cannot guarantee cleanup of child processes spawned by native commands. Do not use Shell to read file content, run unbounded recursive directory listings such as Get-ChildItem -Recurse, or produce large output. Use Ripgrep to search or list files narrowly, and use ReadFileRange to read files.",
-            serializerOptions: null),
+            serializerOptions: null)),
     ];
+
+    /// <summary>
+    /// Preserves the generated tool metadata while accepting argument names without regard to case.
+    /// </summary>
+    private sealed class CaseInsensitiveAIFunction(AIFunction innerFunction)
+        : DelegatingAIFunction(innerFunction)
+    {
+        protected override ValueTask<object?> InvokeCoreAsync(
+            AIFunctionArguments arguments,
+            CancellationToken cancellationToken)
+        {
+            AIFunctionArguments caseInsensitiveArguments = new(arguments, StringComparer.OrdinalIgnoreCase)
+            {
+                Services = arguments.Services,
+                Context = arguments.Context,
+            };
+
+            return InnerFunction.InvokeAsync(caseInsensitiveArguments, cancellationToken);
+        }
+    }
 }
 
 /// <summary>
