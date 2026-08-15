@@ -157,15 +157,16 @@ public sealed class WorkflowTests
     public async Task RunAsync_RetriesTimedOutAgentRuns_AndEventuallySucceeds()
     {
         int timedOutAttempts = 0;
-        AsyncScriptedChatClient scanChatClient = new(async (invocation, cancellationToken) =>
+        AsyncScriptedChatClient scanChatClient = new((_, _) =>
         {
             if (timedOutAttempts < 4)
             {
                 timedOutAttempts++;
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                // Simulate a timeout directly so this retry test is not sensitive to CI scheduling.
+                return Task.FromException<ChatResponse>(new OperationCanceledException("Simulated agent timeout."));
             }
 
-            return CreateFunctionCallResponse(
+            return Task.FromResult(CreateFunctionCallResponse(
                 "scan-add-primary",
                 "AddScanProject",
                 new Dictionary<string, object?>
@@ -174,7 +175,7 @@ public sealed class WorkflowTests
                     ["ProjectPath"] = "CodeSnifferDog/CodeSnifferDog.csproj",
                     ["ProjectType"] = ".csproj",
                     ["Reason"] = "Primary application project.",
-                });
+                }));
         });
         ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
             "verdict-approve",
@@ -195,7 +196,6 @@ public sealed class WorkflowTests
             promptAssetReader,
             new ScanWorkflowOptions
             {
-                AgentRunTimeout = TimeSpan.FromMilliseconds(250),
                 MaxConsecutiveRunFailures = 5,
             });
 

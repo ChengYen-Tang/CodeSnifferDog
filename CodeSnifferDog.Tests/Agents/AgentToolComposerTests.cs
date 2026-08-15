@@ -43,6 +43,31 @@ public sealed class AgentToolComposerTests
         Assert.AreEqual("Domain description.", composedDomainTool.Description);
     }
 
+    [TestMethod]
+    public async Task Compose_MakesDomainToolArgumentsCaseInsensitive()
+    {
+        string? receivedCommand = null;
+        AgentToolComposer composer = new();
+        AITool domainTool = AIFunctionFactory.Create(
+            (string Command) =>
+            {
+                receivedCommand = Command;
+                return true;
+            },
+            "DomainTool",
+            "Domain tool.",
+            serializerOptions: null);
+
+        AIFunction composedDomainTool = Assert.IsInstanceOfType<AIFunction>(
+            composer.Compose(AppContext.BaseDirectory, [domainTool]).First());
+
+        await composedDomainTool.InvokeAsync(
+            new AIFunctionArguments { ["command"] = "Get-ChildItem" },
+            CancellationToken.None);
+
+        Assert.AreEqual("Get-ChildItem", receivedCommand);
+    }
+
     private static void AssertToolNames(IReadOnlyList<string> expectedToolNames, IEnumerable<AITool> tools)
     {
         string[] actualToolNames = tools.Select(tool => tool.Name).ToArray();
