@@ -73,6 +73,47 @@ public sealed class ToolFactoryTypedSeamTests
     }
 
     [TestMethod]
+    public async Task CommonToolFactory_InvokesTypedCallbacks_WithoutCaseSensitiveArgumentNames()
+    {
+        List<string> invokedCallbacks = [];
+        IList<AITool> tools = CommonToolFactory.CreateTools(new CommonToolCallbacks(
+            (Command, cancellationToken) =>
+            {
+                invokedCallbacks.Add($"shell:{Command}");
+                return ValueTask.FromResult(Succeeded());
+            },
+            (Command, cancellationToken) =>
+            {
+                invokedCallbacks.Add($"ripgrep:{Command}");
+                return ValueTask.FromResult(Succeeded());
+            },
+            (Path, OffsetLine, LimitLines, cancellationToken) =>
+            {
+                invokedCallbacks.Add($"read:{Path}:{OffsetLine}:{LimitLines}");
+                return ValueTask.FromResult(SucceededRead());
+            }));
+
+        AIFunction shellFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "Shell"));
+        AIFunction ripgrepFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "Ripgrep"));
+        AIFunction readFileRangeFunction = Assert.IsInstanceOfType<AIFunction>(tools.Single(tool => tool.Name == "ReadFileRange"));
+
+        await shellFunction.InvokeAsync(new AIFunctionArguments { ["command"] = "Get-ChildItem" }, TestContext.CancellationToken);
+        await ripgrepFunction.InvokeAsync(new AIFunctionArguments { ["COMMAND"] = "-n \"SystemPrompt\" ." }, TestContext.CancellationToken);
+        await readFileRangeFunction.InvokeAsync(
+            new AIFunctionArguments
+            {
+                ["path"] = "Program.cs",
+                ["offsetline"] = 2,
+                ["LIMITLINES"] = 3,
+            },
+            TestContext.CancellationToken);
+
+        CollectionAssert.AreEqual(
+            new[] { "shell:Get-ChildItem", "ripgrep:-n \"SystemPrompt\" .", "read:Program.cs:2:3" },
+            invokedCallbacks.ToArray());
+    }
+
+    [TestMethod]
     public void ScanToolFactory_UsesTypedCallbacks()
     {
         IList<AITool> agentTools = ScanToolFactory.CreateAgentTools(new ScanAgentToolCallbacks(
