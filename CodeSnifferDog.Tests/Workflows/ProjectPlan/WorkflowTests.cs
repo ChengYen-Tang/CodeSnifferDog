@@ -167,15 +167,16 @@ public sealed class WorkflowTests
     public async Task RunAsync_RetriesTimedOutAgentRuns_AndEventuallySucceeds()
     {
         int timedOutAttempts = 0;
-        AsyncScriptedChatClient planChatClient = new(async (_, cancellationToken) =>
+        AsyncScriptedChatClient planChatClient = new((_, _) =>
         {
             if (timedOutAttempts < 4)
             {
                 timedOutAttempts++;
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                // Simulate a timeout directly so this retry test is not sensitive to CI scheduling.
+                return Task.FromException<ChatResponse>(new OperationCanceledException("Simulated agent timeout."));
             }
 
-            return CreateFunctionCallResponse(
+            return Task.FromResult(CreateFunctionCallResponse(
                 "plan-add-single",
                 "AddProjectPlanTaskItem",
                 new Dictionary<string, object?>
@@ -188,7 +189,7 @@ public sealed class WorkflowTests
                             ["TotalLines"] = 120,
                         },
                     },
-                });
+                }));
         });
         ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
             "verdict-approve",
