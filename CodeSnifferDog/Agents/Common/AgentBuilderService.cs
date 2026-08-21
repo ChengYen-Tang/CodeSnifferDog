@@ -2,6 +2,7 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
 using Microsoft.Agents.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using CodeSnifferDog.Models.ContextCompaction.Agents;
@@ -40,22 +41,30 @@ internal sealed class AgentBuilderService(
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Description);
         ArgumentNullException.ThrowIfNull(request.Tools);
 
-        IChatClient chatClient = request.ChatClient;
+        IServiceProvider? agentServices = GetAgentServices();
+        ChatClientBuilder chatClientBuilder = request.ChatClient.AsBuilder();
         if (_compactionOptions.Reducer.Options.Mode == CompactionMode.Standard)
         {
-            chatClient = new FunctionInvokingChatClient(
-                new CompactingChatClient(request.ChatClient, _compactionOptions, _loggerFactory),
-                _loggerFactory,
-                _serviceProvider);
+            // Keep CodeSnifferDog's compaction adapter below the framework-managed
+            // FunctionInvokingChatClient so each function-loop iteration still reaches
+            // the established compaction module.
+            chatClientBuilder.Use(innerClient =>
+                new CompactingChatClient(innerClient, _compactionOptions, _loggerFactory));
         }
 
-        AIAgent agent = chatClient.AsAIAgent(
-            request.SystemPrompt,
-            request.Name,
-            request.Description,
-            request.Tools,
+        ChatClientAgent agent = chatClientBuilder.BuildAIAgent(
+            new ChatClientAgentOptions
+            {
+                Name = request.Name,
+                Description = request.Description,
+                ChatOptions = new ChatOptions
+                {
+                    Instructions = request.SystemPrompt,
+                    Tools = request.Tools,
+                },
+            },
             _loggerFactory,
-            _serviceProvider);
+            agentServices);
 
         AIAgentBuilder agentBuilder = new(agent);
         if (_compactionOptions.Reducer.Options.Mode == CompactionMode.Standard)
@@ -67,9 +76,40 @@ internal sealed class AgentBuilderService(
         {
             Agent = agentBuilder
                 .UseAgentTranscriptEventsIfAvailable(request.EventScope)
-                .Build(_serviceProvider),
+                .Build(agentServices),
             SystemPrompt = request.SystemPrompt,
         };
+    }
+
+    private IServiceProvider? GetAgentServices() =>
+        _loggerFactory is null
+            ? _serviceProvider
+            : new LoggerFactoryServiceProvider(_serviceProvider, _loggerFactory);
+
+    /// <summary>
+    /// Makes the explicitly supplied logger factory visible to Agent Framework middleware
+    /// while forwarding all other service resolution to the composition-root provider.
+    /// </summary>
+    private sealed class LoggerFactoryServiceProvider(
+        IServiceProvider? inner,
+        ILoggerFactory loggerFactory) : IServiceProvider, IKeyedServiceProvider
+    {
+        public object? GetService(Type serviceType) =>
+            serviceType == typeof(ILoggerFactory)
+                ? loggerFactory
+                : inner?.GetService(serviceType);
+
+        public object? GetKeyedService(Type serviceType, object? serviceKey) =>
+            serviceKey is null
+                ? GetService(serviceType)
+                : inner is IKeyedServiceProvider keyedServices
+                    ? keyedServices.GetKeyedService(serviceType, serviceKey)
+                    : null;
+
+        public object GetRequiredKeyedService(Type serviceType, object? serviceKey) =>
+            GetKeyedService(serviceType, serviceKey)
+            ?? throw new InvalidOperationException(
+                $"No service for type '{serviceType}' and key '{serviceKey}' has been registered.");
     }
 }
 
