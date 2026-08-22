@@ -16,16 +16,21 @@ namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 /// <param name="artifactsProvider">Optional provider that reattaches artifact messages after compaction.</param>
 /// <param name="hooks">Optional hooks that run before and after compaction.</param>
 /// <param name="cleanupHandlers">Optional cleanup handlers that run after successful compaction.</param>
+/// <param name="tailSelector">Selector that chooses the recent messages that remain active.</param>
 internal sealed class ReductionPipeline(
     CompactionOptions options,
     ISummaryPromptProvider summaryPromptProvider,
     ISummarizer summarizer,
     ICompactionArtifactsProvider? artifactsProvider,
     IEnumerable<IHook>? hooks,
-    IEnumerable<ICleanupHandler>? cleanupHandlers)
+    IEnumerable<ICleanupHandler>? cleanupHandlers,
+    ICompactionTailSelector? tailSelector = null)
 {
     private readonly CompactionHookDispatcher _hookDispatcher = new(hooks, cleanupHandlers);
-    private readonly CompactionResultBuilder _resultBuilder = new(options, artifactsProvider);
+    private readonly CompactionResultBuilder _resultBuilder = new(
+        options,
+        artifactsProvider,
+        tailSelector ?? new LegacyCompactionTailSelector());
 
     /// <summary>
     /// Compacts using transcript-only token estimation.

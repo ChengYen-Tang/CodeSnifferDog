@@ -6,6 +6,7 @@ using CodeSnifferDog.Models.ContextCompaction.Continuity;
 using CodeSnifferDog.Models.ContextCompaction.Failures;
 using CodeSnifferDog.Models.ContextCompaction.Shrinking;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Compaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Runtime;
@@ -60,6 +61,12 @@ public sealed class ArchitectureTests
         Assert.AreEqual(
             "CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Sessions",
             typeof(CollapseSessionState).Namespace);
+        Assert.AreEqual(
+            "CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Compaction",
+            typeof(FrameworkCompactionTailSelector).Namespace);
+        Assert.IsFalse(
+            typeof(FrameworkCompactionTailSelector).IsPublic,
+            "FrameworkCompactionTailSelector should remain an internal adapter implementation.");
         Assert.AreEqual(
             "CodeSnifferDog.Modules.ContextCompaction.Core.Estimation",
             typeof(TokenEstimator).Namespace);

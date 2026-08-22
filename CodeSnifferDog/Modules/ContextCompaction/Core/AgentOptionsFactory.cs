@@ -1,4 +1,5 @@
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Compaction;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.Prompts;
@@ -54,8 +55,9 @@ public sealed class AgentOptionsFactory(
             new FileSystemSummaryPromptProvider(promptPath),
             _summarizer,
             artifactsProvider: new MetadataCompactionArtifactsProvider(options),
-            hooks,
-            cleanupHandlers);
+            hooks: hooks,
+            cleanupHandlers: cleanupHandlers,
+            tailSelector: new FrameworkCompactionTailSelector(loggerFactory));
 
         return new AgentCompactionOptions
         {

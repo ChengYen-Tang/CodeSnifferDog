@@ -1,6 +1,4 @@
-using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Transcript;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 using CodeSnifferDog.Models.ContextCompaction.Continuity;
@@ -12,9 +10,11 @@ namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 /// </summary>
 /// <param name="options">Compaction settings that control how much recent history is preserved.</param>
 /// <param name="artifactsProvider">Optional provider that reattaches artifact messages after compaction.</param>
+/// <param name="tailSelector">Selector that chooses the recent messages that remain active.</param>
 internal sealed class CompactionResultBuilder(
     CompactionOptions options,
-    ICompactionArtifactsProvider? artifactsProvider)
+    ICompactionArtifactsProvider? artifactsProvider,
+    ICompactionTailSelector tailSelector)
 {
     /// <summary>
     /// Creates a fully compacted result from the original message history and generated summary.
@@ -32,7 +32,9 @@ internal sealed class CompactionResultBuilder(
     {
         List<ChatMessage> preservedSystemMessages = [.. originalMessages.Where(static message => message.Role == ChatRole.System)];
         List<ChatMessage> nonSystemMessages = [.. originalMessages.Where(static message => message.Role != ChatRole.System)];
-        List<ChatMessage> messagesToKeep = SelectMessagesToKeep(nonSystemMessages);
+        List<ChatMessage> messagesToKeep = [.. await tailSelector
+            .SelectAsync(nonSystemMessages, options, cancellationToken)
+            .ConfigureAwait(false)];
         List<CompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, messagesToKeep);
         List<CompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, messagesToKeep);
         ContinuityState continuityState = ContinuityStateBuilder.Build(normalizedSummary);
@@ -180,45 +182,6 @@ internal sealed class CompactionResultBuilder(
         }
 
         return boundaryMessage;
-    }
-
-    /// <summary>
-    /// Selects the youngest non-system suffix that satisfies the configured preserved-tail minimums without exceeding the max-token cutoff.
-    /// The suffix start is expanded when needed so a function call and its result are never split apart.
-    /// </summary>
-    /// <param name="nonSystemMessages">Non-system messages in original transcript order.</param>
-    /// <returns>The non-system messages that should remain active after compaction.</returns>
-    private List<ChatMessage> SelectMessagesToKeep(List<ChatMessage> nonSystemMessages)
-    {
-        if (nonSystemMessages.Count == 0)
-            return [];
-
-        int firstSelectedMessageIndex = nonSystemMessages.Count;
-        int totalTokens = 0;
-        int messageCount = 0;
-
-        for (int index = nonSystemMessages.Count - 1; index >= 0; index--)
-        {
-            ChatMessage message = nonSystemMessages[index];
-            int messageTokens = TokenEstimator.Estimate([message]);
-
-            if (messageCount > 0 && totalTokens >= options.PreservedTailMaxTokens)
-                break;
-
-            firstSelectedMessageIndex = index;
-            totalTokens += messageTokens;
-            messageCount++;
-
-            bool reachedMinimumTail =
-                totalTokens >= options.PreservedTailMinTokens &&
-                messageCount >= options.PreservedTailMinMessages;
-
-            if (reachedMinimumTail)
-                break;
-        }
-
-        int safeStartIndex = ToolCallTranscript.GetSafeTailStartIndex(nonSystemMessages, firstSelectedMessageIndex);
-        return [.. nonSystemMessages.Skip(safeStartIndex)];
     }
 
     /// <summary>
