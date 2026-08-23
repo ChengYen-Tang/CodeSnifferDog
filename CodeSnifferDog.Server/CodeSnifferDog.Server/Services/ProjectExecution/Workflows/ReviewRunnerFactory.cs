@@ -6,6 +6,7 @@ using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam.Compaction;
+using CodeSnifferDog.Workflows.Adapters.AgentFramework.Runtime;
 using Microsoft.Extensions.AI;
 using ProjectPlanRunnerFactoryInterface = CodeSnifferDog.Server.Services.ProjectExecution.Workflows.ProjectPlan.IRunnerFactory;
 using ReportIssueStore = CodeSnifferDog.Modules.Tools.Report.IIssueStore;
@@ -56,7 +57,8 @@ internal sealed class ReviewRunnerFactory : IReviewRunnerFactory
                 promptAssetReader,
                 new ChatClientSummarizer(chatClient)),
             promptAssetReader,
-            agentEventBus);
+            agentEventBus,
+            new WorkflowRuntime());
 
         return new ReviewRunners
         {

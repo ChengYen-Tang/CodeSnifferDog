@@ -8,6 +8,7 @@ using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using CodeSnifferDog.Workflows.Report;
+using CodeSnifferDog.Workflows.Adapters.AgentFramework.Contracts;
 using FluentResults;
 using System.Diagnostics;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
@@ -81,8 +82,17 @@ internal sealed class RunnerFactory(
             agentEventBus: context.AgentEventBus,
             logger: _logger);
 
-        Result<ReportWorkflowResult> result =
-            await workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, cancellationToken).ConfigureAwait(false);
+        Result<ReportWorkflowResult> result = await context.WorkflowRuntime.RunAsync(
+            executorId: "report",
+            input: new ReportRequest(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues),
+            operation: (request, token) => workflow.RunAsync(
+                request.RepositoryRootPath,
+                request.RuleKey,
+                request.RuleMarkdown,
+                request.TaskItem,
+                request.CurrentFlowIssues,
+                token),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         _logger.LogDebug(
             "Rule report workflow completed in {DurationMs} ms for rule {RuleKey}, task item {ProjectPlanTaskItemId}. Success: {Succeeded}; repository issue count: {IssueCount}.",
             stopwatch.ElapsedMilliseconds,

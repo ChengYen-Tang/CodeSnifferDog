@@ -15,6 +15,7 @@ using CodeSnifferDog.Server.Services.ProjectExecution.Worker;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam.Compaction;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
+using CodeSnifferDog.Workflows.Adapters.AgentFramework.Runtime;
 using FluentResults;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,6 +87,7 @@ public sealed class ReviewRunnerFactoryTests
         Assert.AreSame(capturedScan.Context, capturedRuleFlow.Context);
         Assert.AreSame(executionOptions, capturedScan.Context.ExecutionOptions);
         Assert.AreSame(agentEventBus, capturedScan.Context.AgentEventBus);
+        Assert.IsInstanceOfType<WorkflowRuntime>(capturedScan.Context.WorkflowRuntime);
         Assert.AreSame(scanOptions, capturedScan.CompactionOptions);
         Assert.AreSame(projectPlanOptions, capturedProjectPlan.CompactionOptions);
         Assert.AreSame(ruleReviewOptions, capturedRuleFlow.RuleReviewCompactionOptions);

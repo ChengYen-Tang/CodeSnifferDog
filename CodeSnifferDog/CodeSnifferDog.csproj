@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="FluentResults" Version="4.0.0" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.18.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.18.0" />
     <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.6.5" />
     <PackageReference Include="System.Reactive" Version="7.0.0" />
   </ItemGroup>

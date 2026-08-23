@@ -4,6 +4,7 @@ using CodeSnifferDog.Models.RuleFlow;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Workflows.RuleFlow;
+using CodeSnifferDog.Workflows.Adapters.AgentFramework.Contracts;
 using FluentResults;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 using ReviewRunnerFactoryInterface = CodeSnifferDog.Server.Services.ProjectExecution.Workflows.RuleReview.IRunnerFactory;
@@ -44,7 +45,7 @@ internal sealed class RunnerFactory(
                 ruleReportIssueStore,
                 cancellationToken);
 
-    private Task<Result<RuleFlowWorkflowResult>> RunAsync(
+    private async Task<Result<RuleFlowWorkflowResult>> RunAsync(
         WorkflowRuntimeContext context,
         string repositoryRootPath,
         string ruleKey,
@@ -79,6 +80,15 @@ internal sealed class RunnerFactory(
                     ruleReportIssueStore,
                     reportCancellationToken));
 
-        return workflow.RunAsync(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, cancellationToken);
+        return await context.WorkflowRuntime.RunAsync(
+            executorId: "rule-flow",
+            input: new RuleFlowRequest(repositoryRootPath, ruleKey, ruleMarkdown, taskItem),
+            operation: (request, token) => workflow.RunAsync(
+                request.RepositoryRootPath,
+                request.RuleKey,
+                request.RuleMarkdown,
+                request.TaskItem,
+                token),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 }
