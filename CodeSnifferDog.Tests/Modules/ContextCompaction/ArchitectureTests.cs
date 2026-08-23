@@ -63,10 +63,10 @@ public sealed class ArchitectureTests
             typeof(CollapseSessionState).Namespace);
         Assert.AreEqual(
             "CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Compaction",
-            typeof(FrameworkCompactionTailSelector).Namespace);
+            typeof(FrameworkCompactionPlanner).Namespace);
         Assert.IsFalse(
-            typeof(FrameworkCompactionTailSelector).IsPublic,
-            "FrameworkCompactionTailSelector should remain an internal adapter implementation.");
+            typeof(FrameworkCompactionPlanner).IsPublic,
+            "FrameworkCompactionPlanner should remain an internal adapter implementation.");
         Assert.AreEqual(
             "CodeSnifferDog.Modules.ContextCompaction.Core.Estimation",
             typeof(TokenEstimator).Namespace);

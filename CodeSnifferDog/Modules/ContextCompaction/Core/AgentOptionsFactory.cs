@@ -57,7 +57,7 @@ public sealed class AgentOptionsFactory(
             artifactsProvider: new MetadataCompactionArtifactsProvider(options),
             hooks: hooks,
             cleanupHandlers: cleanupHandlers,
-            tailSelector: new FrameworkCompactionTailSelector(loggerFactory));
+            planner: new FrameworkCompactionPlanner(options, loggerFactory));
 
         return new AgentCompactionOptions
         {

@@ -38,7 +38,7 @@ public sealed class ChatReducer : IChatReducer
             artifactsProvider,
             hooks,
             cleanupHandlers,
-            new LegacyCompactionTailSelector())
+            new LegacyCompactionPlanner(options))
     {
     }
 
@@ -49,12 +49,12 @@ public sealed class ChatReducer : IChatReducer
         ICompactionArtifactsProvider? artifactsProvider,
         IEnumerable<IHook>? hooks,
         IEnumerable<ICleanupHandler>? cleanupHandlers,
-        ICompactionTailSelector tailSelector)
+        ICompactionPlanner planner)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(summaryPromptProvider);
         ArgumentNullException.ThrowIfNull(summarizer);
-        ArgumentNullException.ThrowIfNull(tailSelector);
+        ArgumentNullException.ThrowIfNull(planner);
 
         if (options.ModelContextWindowTokens <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "Model context window tokens must be greater than zero.");
@@ -67,7 +67,7 @@ public sealed class ChatReducer : IChatReducer
             artifactsProvider,
             hooks,
             cleanupHandlers,
-            tailSelector);
+            planner);
     }
 
     /// <summary>

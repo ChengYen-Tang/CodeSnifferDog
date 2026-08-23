@@ -1,4 +1,3 @@
-using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Summarizers;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Transcript;
@@ -16,7 +15,7 @@ namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 /// <param name="artifactsProvider">Optional provider that reattaches artifact messages after compaction.</param>
 /// <param name="hooks">Optional hooks that run before and after compaction.</param>
 /// <param name="cleanupHandlers">Optional cleanup handlers that run after successful compaction.</param>
-/// <param name="tailSelector">Selector that chooses the recent messages that remain active.</param>
+/// <param name="planner">Planner that decides whether compaction is needed and selects the preserved tail.</param>
 internal sealed class ReductionPipeline(
     CompactionOptions options,
     ISummaryPromptProvider summaryPromptProvider,
@@ -24,13 +23,11 @@ internal sealed class ReductionPipeline(
     ICompactionArtifactsProvider? artifactsProvider,
     IEnumerable<IHook>? hooks,
     IEnumerable<ICleanupHandler>? cleanupHandlers,
-    ICompactionTailSelector? tailSelector = null)
+    ICompactionPlanner? planner = null)
 {
     private readonly CompactionHookDispatcher _hookDispatcher = new(hooks, cleanupHandlers);
-    private readonly CompactionResultBuilder _resultBuilder = new(
-        options,
-        artifactsProvider,
-        tailSelector ?? new LegacyCompactionTailSelector());
+    private readonly ICompactionPlanner _planner = planner ?? new LegacyCompactionPlanner(options);
+    private readonly CompactionResultBuilder _resultBuilder = new(artifactsProvider);
 
     /// <summary>
     /// Compacts using transcript-only token estimation.
@@ -64,12 +61,16 @@ internal sealed class ReductionPipeline(
 
         List<ChatMessage> materializedMessages = [.. messages];
         CompactionResultBuilder.EnsureMessageIdentities(materializedMessages);
-        if (!ShouldCompact(materializedMessages, reason, additionalEstimatedInputTokens))
-            return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
 
         // A provider cannot accept a summary request or compacted context that splits a function call from its results.
         // Defer compaction until the function-invocation loop has appended the complete result sequence.
         if (!ToolCallTranscript.IsComplete(materializedMessages))
+            return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
+
+        CompactionPlan plan = await _planner
+            .PlanAsync(materializedMessages, reason, additionalEstimatedInputTokens, cancellationToken)
+            .ConfigureAwait(false);
+        if (!plan.ShouldCompact)
             return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
 
         await _hookDispatcher.RunBeforeCompactionAsync(materializedMessages, reason, cancellationToken).ConfigureAwait(false);
@@ -88,7 +89,12 @@ internal sealed class ReductionPipeline(
             SummaryContract.Validate(summary, options);
 
             CompactionResult result = await _resultBuilder
-                .CreateResultAsync(materializedMessages, summary, reason, cancellationToken)
+                .CreateResultAsync(
+                    materializedMessages,
+                    plan.MessagesToKeep,
+                    summary,
+                    reason,
+                    cancellationToken)
                 .ConfigureAwait(false);
             IReadOnlyList<ChatMessage> compactedMessages = CompactionMessageBuilder.Build(result);
             await _hookDispatcher.RunAfterCompactionAsync(materializedMessages, compactedMessages, reason, cancellationToken).ConfigureAwait(false);
@@ -105,22 +111,4 @@ internal sealed class ReductionPipeline(
         }
     }
 
-    /// <summary>
-    /// Determines whether the transcript should be compacted for the current reason.
-    /// </summary>
-    /// <param name="messages">Materialized transcript messages with stable identities.</param>
-    /// <param name="reason">Reason that triggered the compaction evaluation.</param>
-    /// <returns><see langword="true" /> for reactive compaction, or when the automatic threshold is exceeded.</returns>
-    private bool ShouldCompact(
-        IReadOnlyList<ChatMessage> messages,
-        CompactionReason reason,
-        int additionalEstimatedInputTokens)
-    {
-        if (reason == CompactionReason.Reactive)
-            return true;
-
-        long estimatedTokens = TokenEstimator.Estimate(messages);
-        long adjustedEstimate = estimatedTokens + Math.Max(0, additionalEstimatedInputTokens);
-        return adjustedEstimate >= options.GetAutoCompactThreshold();
-    }
 }
