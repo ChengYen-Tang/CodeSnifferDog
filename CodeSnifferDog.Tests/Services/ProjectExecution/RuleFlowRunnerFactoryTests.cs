@@ -11,6 +11,7 @@ using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.RuleReview;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
+using CodeSnifferDog.Workflows.Adapters.AgentFramework.Runtime;
 using FluentResults;
 using Microsoft.Extensions.AI;
 using System.Runtime.CompilerServices;
@@ -42,7 +43,8 @@ public sealed class RuleFlowRunnerFactoryTests
             new ExecutionOptions(),
             CompactionOptionsFactory: null!,
             new PromptAssetReader(),
-            AgentEventBus: null!);
+            AgentEventBus: null!,
+            WorkflowRuntime: new WorkflowRuntime());
         CompactionOptions reviewCompactionOptions = CreateCompactionOptions(12_000);
         CompactionOptions reportCompactionOptions = CreateCompactionOptions(13_000);
         ReviewInMemoryIssueStore reviewIssueStore = new();

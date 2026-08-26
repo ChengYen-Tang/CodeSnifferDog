@@ -16,8 +16,10 @@ internal static class TokenEstimator
     /// </summary>
     /// <param name="messages">Messages whose text and content payloads should be counted.</param>
     /// <returns>A coarse token estimate that never drops below one for a non-empty estimate operation.</returns>
-    public static int Estimate(IReadOnlyList<ChatMessage> messages)
+    public static int Estimate(IEnumerable<ChatMessage> messages)
     {
+        ArgumentNullException.ThrowIfNull(messages);
+
         int byteCount = 0;
 
         foreach (ChatMessage message in messages)

@@ -7,6 +7,7 @@ using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Server.Services.ProjectExecution.Workflows;
 using CodeSnifferDog.Workflows.ProjectPlan;
+using CodeSnifferDog.Workflows.Adapters.AgentFramework.Contracts;
 using FluentResults;
 using System.Diagnostics;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
@@ -79,7 +80,14 @@ internal sealed class RunnerFactory(
             agentEventBus: context.AgentEventBus,
             logger: _logger);
 
-        Result<WorkflowResult> result = await workflow.RunAsync(repositoryRootPath, scanProject, cancellationToken).ConfigureAwait(false);
+        Result<WorkflowResult> result = await context.WorkflowRuntime.RunAsync(
+            executorId: "project-plan",
+            input: new ProjectPlanRequest(repositoryRootPath, scanProject),
+            operation: (request, token) => workflow.RunAsync(
+                request.RepositoryRootPath,
+                request.ScanProject,
+                token),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         _logger.LogDebug(
             "Project plan workflow completed in {DurationMs} ms for project {ProjectName}. Success: {Succeeded}; task item count: {TaskItemCount}.",
             stopwatch.ElapsedMilliseconds,

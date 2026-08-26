@@ -1,6 +1,4 @@
-using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
-using CodeSnifferDog.Modules.ContextCompaction.Core.Transcript;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 using CodeSnifferDog.Models.ContextCompaction.Continuity;
@@ -10,31 +8,42 @@ namespace CodeSnifferDog.Modules.ContextCompaction.Core.Reduction;
 /// <summary>
 /// Builds the compacted transcript payload, including preserved tail messages, references, and carry-forward artifacts.
 /// </summary>
-/// <param name="options">Compaction settings that control how much recent history is preserved.</param>
 /// <param name="artifactsProvider">Optional provider that reattaches artifact messages after compaction.</param>
-internal sealed class CompactionResultBuilder(
-    CompactionOptions options,
-    ICompactionArtifactsProvider? artifactsProvider)
+internal sealed class CompactionResultBuilder(ICompactionArtifactsProvider? artifactsProvider)
 {
     /// <summary>
     /// Creates a fully compacted result from the original message history and generated summary.
     /// </summary>
     /// <param name="originalMessages">Complete message history before compaction.</param>
+    /// <param name="plannedMessagesToKeep">Preselected non-system tail messages that remain active after compaction.</param>
     /// <param name="normalizedSummary">Validated summary text describing the compacted portion of the transcript.</param>
     /// <param name="reason">Reason the current compaction pass was triggered.</param>
     /// <param name="cancellationToken">Cancels artifact retrieval.</param>
     /// <returns>The compacted transcript state that should replace the original history.</returns>
     public async Task<CompactionResult> CreateResultAsync(
         IReadOnlyList<ChatMessage> originalMessages,
+        IReadOnlyList<ChatMessage> plannedMessagesToKeep,
         string normalizedSummary,
         CompactionReason reason,
         CancellationToken cancellationToken)
     {
-        List<ChatMessage> preservedSystemMessages = [.. originalMessages.Where(static message => message.Role == ChatRole.System)];
-        List<ChatMessage> nonSystemMessages = [.. originalMessages.Where(static message => message.Role != ChatRole.System)];
-        List<ChatMessage> messagesToKeep = SelectMessagesToKeep(nonSystemMessages);
-        List<CompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, messagesToKeep);
-        List<CompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, messagesToKeep);
+        ArgumentNullException.ThrowIfNull(originalMessages);
+        ArgumentNullException.ThrowIfNull(plannedMessagesToKeep);
+
+        List<ChatMessage> preservedSystemMessages = [];
+        List<ChatMessage> nonSystemMessages = [];
+        foreach (ChatMessage message in originalMessages)
+        {
+            if (message.Role == ChatRole.System)
+                preservedSystemMessages.Add(message);
+            else
+                nonSystemMessages.Add(message);
+        }
+
+        List<ChatMessage> messagesToKeep = [.. plannedMessagesToKeep];
+        HashSet<ChatMessage> keptMessages = new(messagesToKeep);
+        List<CompactionMessageReference> messageReferences = CreateMessageReferences(nonSystemMessages, keptMessages);
+        List<CompactionMessageReference> archivedMessageReferences = CreateArchivedMessageReferences(nonSystemMessages, keptMessages);
         ContinuityState continuityState = ContinuityStateBuilder.Build(normalizedSummary);
         CompactionArtifacts artifacts = artifactsProvider is null
             ? CompactionArtifacts.Empty
@@ -183,45 +192,6 @@ internal sealed class CompactionResultBuilder(
     }
 
     /// <summary>
-    /// Selects the youngest non-system suffix that satisfies the configured preserved-tail minimums without exceeding the max-token cutoff.
-    /// The suffix start is expanded when needed so a function call and its result are never split apart.
-    /// </summary>
-    /// <param name="nonSystemMessages">Non-system messages in original transcript order.</param>
-    /// <returns>The non-system messages that should remain active after compaction.</returns>
-    private List<ChatMessage> SelectMessagesToKeep(List<ChatMessage> nonSystemMessages)
-    {
-        if (nonSystemMessages.Count == 0)
-            return [];
-
-        int firstSelectedMessageIndex = nonSystemMessages.Count;
-        int totalTokens = 0;
-        int messageCount = 0;
-
-        for (int index = nonSystemMessages.Count - 1; index >= 0; index--)
-        {
-            ChatMessage message = nonSystemMessages[index];
-            int messageTokens = TokenEstimator.Estimate([message]);
-
-            if (messageCount > 0 && totalTokens >= options.PreservedTailMaxTokens)
-                break;
-
-            firstSelectedMessageIndex = index;
-            totalTokens += messageTokens;
-            messageCount++;
-
-            bool reachedMinimumTail =
-                totalTokens >= options.PreservedTailMinTokens &&
-                messageCount >= options.PreservedTailMinMessages;
-
-            if (reachedMinimumTail)
-                break;
-        }
-
-        int safeStartIndex = ToolCallTranscript.GetSafeTailStartIndex(nonSystemMessages, firstSelectedMessageIndex);
-        return [.. nonSystemMessages.Skip(safeStartIndex)];
-    }
-
-    /// <summary>
     /// Creates references for the non-system messages that remain active after compaction.
     /// </summary>
     /// <param name="sourceMessages">All non-system messages in original transcript order.</param>
@@ -229,7 +199,7 @@ internal sealed class CompactionResultBuilder(
     /// <returns>References describing the preserved non-system tail.</returns>
     private static List<CompactionMessageReference> CreateMessageReferences(
         List<ChatMessage> sourceMessages,
-        List<ChatMessage> keptMessages)
+        ISet<ChatMessage> keptMessages)
     {
         List<CompactionMessageReference> references = [];
 
@@ -258,7 +228,7 @@ internal sealed class CompactionResultBuilder(
     /// <returns>References describing the archived non-system messages.</returns>
     private static List<CompactionMessageReference> CreateArchivedMessageReferences(
         List<ChatMessage> sourceMessages,
-        List<ChatMessage> keptMessages)
+        ISet<ChatMessage> keptMessages)
     {
         List<CompactionMessageReference> references = [];
 

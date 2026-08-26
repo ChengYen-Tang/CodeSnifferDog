@@ -31,11 +31,30 @@ public sealed class ChatReducer : IChatReducer
         ISummarizer summarizer,
         ICompactionArtifactsProvider? artifactsProvider = null,
         IEnumerable<IHook>? hooks = null,
-        IEnumerable<ICleanupHandler>? cleanupHandlers = null)
+        IEnumerable<ICleanupHandler>? cleanupHandlers = null) : this(
+            options,
+            summaryPromptProvider,
+            summarizer,
+            artifactsProvider,
+            hooks,
+            cleanupHandlers,
+            new LegacyCompactionPlanner(options))
+    {
+    }
+
+    internal ChatReducer(
+        CompactionOptions options,
+        ISummaryPromptProvider summaryPromptProvider,
+        ISummarizer summarizer,
+        ICompactionArtifactsProvider? artifactsProvider,
+        IEnumerable<IHook>? hooks,
+        IEnumerable<ICleanupHandler>? cleanupHandlers,
+        ICompactionPlanner planner)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(summaryPromptProvider);
         ArgumentNullException.ThrowIfNull(summarizer);
+        ArgumentNullException.ThrowIfNull(planner);
 
         if (options.ModelContextWindowTokens <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "Model context window tokens must be greater than zero.");
@@ -47,7 +66,8 @@ public sealed class ChatReducer : IChatReducer
             summarizer,
             artifactsProvider,
             hooks,
-            cleanupHandlers);
+            cleanupHandlers,
+            planner);
     }
 
     /// <summary>

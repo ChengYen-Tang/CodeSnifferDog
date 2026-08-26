@@ -4,6 +4,7 @@ using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
 using CodeSnifferDog.Server.Services.ProjectExecution.Worker.ReviewTeam;
 using CodeSnifferDog.Workflows.Scan;
+using CodeSnifferDog.Workflows.Adapters.AgentFramework.Contracts;
 using FluentResults;
 using System.Diagnostics;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
@@ -72,7 +73,11 @@ internal sealed class ScanRunnerFactory(
             agentEventBus: context.AgentEventBus,
             logger: _logger);
 
-        Result<ScanWorkflowResult> result = await workflow.RunAsync(repositoryRootPath, cancellationToken).ConfigureAwait(false);
+        Result<ScanWorkflowResult> result = await context.WorkflowRuntime.RunAsync(
+            executorId: "scan",
+            input: new ScanRequest(repositoryRootPath),
+            operation: (request, token) => workflow.RunAsync(request.RepositoryRootPath, token),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         _logger.LogDebug(
             "Scan workflow completed in {DurationMs} ms. Success: {Succeeded}; project count: {ProjectCount}.",
             stopwatch.ElapsedMilliseconds,
