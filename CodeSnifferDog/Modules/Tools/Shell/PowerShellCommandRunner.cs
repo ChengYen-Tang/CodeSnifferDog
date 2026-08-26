@@ -27,6 +27,15 @@ internal sealed class PowerShellCommandRunner : IShellCommandRunner
     private const int OutputLimitExceededExitCode = 1;
 
     /// <summary>
+    /// Identifies the bundled PowerShell module path once per process. The path must be configured before a runspace
+    /// is created because PowerShell resolves its built-in modules during runspace initialization and command
+    /// discovery.
+    /// </summary>
+    private static readonly Lazy<bool> BundledModulePathConfigured = new(
+        ConfigureBundledModulePath,
+        LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>
     /// Cmdlets that detach work from the foreground pipeline and therefore cannot meet the tool's cancellation contract.
     /// </summary>
     private static readonly string[] BackgroundCommandNames =
@@ -141,12 +150,128 @@ internal sealed class PowerShellCommandRunner : IShellCommandRunner
     /// <returns>The session state for one PowerShell tool execution.</returns>
     private static InitialSessionState CreateInitialSessionState()
     {
+        _ = BundledModulePathConfigured.Value;
         InitialSessionState initialSessionState = InitialSessionState.CreateDefault2();
 
         foreach (string commandName in BackgroundCommandNames)
             initialSessionState.Commands.Remove(commandName, type: null);
 
         return initialSessionState;
+    }
+
+    /// <summary>
+    /// Adds the PowerShell SDK's file-backed built-in modules to the process module path.
+    /// </summary>
+    /// <returns><see langword="true"/> when a bundled module path was found; otherwise, <see langword="false"/>.</returns>
+    private static bool ConfigureBundledModulePath()
+    {
+        string? bundledModulePath = FindBundledModulePath();
+
+        if (bundledModulePath is null)
+            return false;
+
+        string? currentModulePath = Environment.GetEnvironmentVariable("PSModulePath");
+        string[] currentPaths = (currentModulePath ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (currentPaths.Any(path => PathsEqual(path, bundledModulePath)))
+            return true;
+
+        string modulePath = string.Join(
+            Path.PathSeparator.ToString(),
+            new[] { bundledModulePath }.Concat(currentPaths));
+        Environment.SetEnvironmentVariable("PSModulePath", modulePath);
+        return true;
+    }
+
+    /// <summary>
+    /// Locates the PowerShell SDK module directory in normal and single-file layouts.
+    /// </summary>
+    /// <returns>The module directory, or <see langword="null"/> when the SDK assets are not present.</returns>
+    private static string? FindBundledModulePath()
+    {
+        string? assemblyDirectory = Path.GetDirectoryName(typeof(PSObject).Assembly.Location);
+        string? modulePath = ValidateModulePath(
+            assemblyDirectory is null ? null : Path.Combine(assemblyDirectory, "Modules"));
+
+        if (modulePath is not null)
+            return modulePath;
+
+        modulePath = ValidateModulePath(Path.Combine(AppContext.BaseDirectory, "Modules"));
+
+        if (modulePath is not null)
+            return modulePath;
+
+        string runtimeFamily = OperatingSystem.IsWindows() ? "win" : "unix";
+        string runtimeLibraryRoot = Path.Combine(AppContext.BaseDirectory, "runtimes", runtimeFamily, "lib");
+
+        if (!Directory.Exists(runtimeLibraryRoot))
+            return null;
+
+        foreach (string targetFrameworkDirectory in Directory.EnumerateDirectories(runtimeLibraryRoot))
+        {
+            modulePath = ValidateModulePath(Path.Combine(targetFrameworkDirectory, "Modules"));
+
+            if (modulePath is not null)
+                return modulePath;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Confirms that a directory contains the SDK's core management module manifest.
+    /// </summary>
+    /// <param name="candidatePath">Candidate module directory.</param>
+    /// <returns>The normalized directory path, or <see langword="null"/> when it is not a valid SDK module path.</returns>
+    private static string? ValidateModulePath(string? candidatePath)
+    {
+        if (string.IsNullOrWhiteSpace(candidatePath))
+            return null;
+
+        try
+        {
+            string fullPath = Path.GetFullPath(candidatePath);
+            string managementManifestPath = Path.Combine(
+                fullPath,
+                "Microsoft.PowerShell.Management",
+                "Microsoft.PowerShell.Management.psd1");
+
+            return File.Exists(managementManifestPath) ? fullPath : null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Compares an existing module path with the normalized bundled path.
+    /// </summary>
+    /// <param name="candidatePath">Existing environment path.</param>
+    /// <param name="bundledPath">Normalized bundled module path.</param>
+    /// <returns><see langword="true"/> when both paths refer to the same directory.</returns>
+    private static bool PathsEqual(string candidatePath, string bundledPath)
+    {
+        try
+        {
+            StringComparison comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return string.Equals(Path.GetFullPath(candidatePath), bundledPath, comparison);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
