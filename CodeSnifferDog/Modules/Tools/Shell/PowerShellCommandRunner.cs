@@ -190,14 +190,7 @@ internal sealed class PowerShellCommandRunner : IShellCommandRunner
     /// <returns>The module directory, or <see langword="null"/> when the SDK assets are not present.</returns>
     private static string? FindBundledModulePath()
     {
-        string? assemblyDirectory = Path.GetDirectoryName(typeof(PSObject).Assembly.Location);
-        string? modulePath = ValidateModulePath(
-            assemblyDirectory is null ? null : Path.Combine(assemblyDirectory, "Modules"));
-
-        if (modulePath is not null)
-            return modulePath;
-
-        modulePath = ValidateModulePath(Path.Combine(AppContext.BaseDirectory, "Modules"));
+        string? modulePath = ValidateModulePath(Path.Combine(AppContext.BaseDirectory, "Modules"));
 
         if (modulePath is not null)
             return modulePath;

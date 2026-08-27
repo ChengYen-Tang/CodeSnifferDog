@@ -29,6 +29,21 @@ public sealed class PowerShellCommandRunnerTests
     }
 
     [TestMethod]
+    public async Task RunAsync_ResolvesBundledManagementModule()
+    {
+        PowerShellCommandRunner runner = new();
+
+        CommandExecutionResult result = await runner.RunAsync(
+            "(Get-Command Set-Location).Source",
+            CreateTemporaryDirectory(),
+            TestContext.CancellationToken);
+
+        Assert.AreEqual(0, result.ExitCode);
+        Assert.AreEqual("Microsoft.PowerShell.Management", result.StandardOutput.Trim());
+        Assert.AreEqual(string.Empty, result.StandardError);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ReturnsPowerShellErrorsAsNonZeroResults()
     {
         PowerShellCommandRunner runner = new();

@@ -52,3 +52,58 @@ jobs:
 
       - name: Test
         run: dotnet test CodeSnifferDog.slnx --configuration Release --no-build --no-restore --verbosity normal
+
+      - name: Publish and run single-file PowerShell smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+          $platform = if ($IsWindows) { "win" } elseif ($IsMacOS) { "osx" } elseif ($IsLinux) { "linux" } else { throw "Unsupported CI operating system." }
+
+          $rid = "$platform-$architecture"
+          $publishDirectory = Join-Path $env:RUNNER_TEMP "CodeSnifferDog.SingleFileSmoke/$rid"
+          New-Item -ItemType Directory -Path $publishDirectory -Force | Out-Null
+
+          dotnet publish CodeSnifferDog.SingleFileSmoke/CodeSnifferDog.SingleFileSmoke.csproj `
+            --configuration Release `
+            --runtime $rid `
+            --self-contained true `
+            --nologo `
+            --verbosity minimal `
+            -p:UseAppHost=true `
+            -p:PublishSingleFile=true `
+            -p:IncludeAllContentForSelfExtract=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:PublishTrimmed=false `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:PublishDir="$publishDirectory/"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Single-file smoke publish failed with exit code $LASTEXITCODE."
+          }
+
+          $executableName = "CodeSnifferDog.SingleFileSmoke"
+          if ($IsWindows) {
+            $executableName += ".exe"
+          }
+
+          $executable = Join-Path $publishDirectory $executableName
+
+          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            throw "Single-file smoke executable was not published: $executable"
+          }
+
+          $publishedItems = @(Get-ChildItem -LiteralPath $publishDirectory -Force)
+          $unexpectedItems = @($publishedItems | Where-Object { $_.Name -ne $executableName })
+          if ($unexpectedItems.Count -ne 0) {
+            $unexpectedNames = $unexpectedItems.Name -join ", "
+            throw "Expected a single-file publish, but found additional output: $unexpectedNames"
+          }
+
+          & $executable
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Single-file PowerShell smoke test failed with exit code $LASTEXITCODE."
+          }
