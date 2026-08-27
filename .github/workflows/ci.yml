@@ -11,9 +11,7 @@ on:
       - ready_for_review
   push:
     branches:
-      - master
-      - release
-      - "release/**"
+      - "**"
   workflow_dispatch:
 
 permissions:
