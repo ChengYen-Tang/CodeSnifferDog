@@ -106,21 +106,21 @@ public sealed class ChatReducer : IChatReducer
     public async Task<CompactionResult> CompactAutomaticAsync(
         IEnumerable<ChatMessage> messages,
         CancellationToken cancellationToken = default) =>
-        await CompactAutomaticAsync(messages, additionalEstimatedInputTokens: 0, cancellationToken: cancellationToken).ConfigureAwait(false);
+        await CompactAutomaticAsync(messages, inputTokenAdjustmentTokens: 0, cancellationToken: cancellationToken).ConfigureAwait(false);
 
     /// <summary>
-    /// Runs automatic compaction with request-level input tokens that are not represented by transcript messages.
+    /// Runs automatic compaction with a provider-aware adjustment to the local transcript estimate.
     /// </summary>
     /// <param name="messages">Transcript messages to evaluate for automatic compaction.</param>
-    /// <param name="additionalEstimatedInputTokens">A non-negative provider-request overhead estimate.</param>
+    /// <param name="inputTokenAdjustmentTokens">The signed difference between the provider-aware prediction and the local transcript estimate.</param>
     /// <param name="cancellationToken">Cancels the compaction attempt.</param>
     /// <returns>The detailed compaction result for the automatic pass.</returns>
     public async Task<CompactionResult> CompactAutomaticAsync(
         IEnumerable<ChatMessage> messages,
-        int additionalEstimatedInputTokens,
+        int inputTokenAdjustmentTokens,
         CancellationToken cancellationToken = default) =>
         await _pipeline
-            .CompactAsync(messages, CompactionReason.AutomaticThreshold, additionalEstimatedInputTokens, cancellationToken)
+            .CompactAsync(messages, CompactionReason.AutomaticThreshold, inputTokenAdjustmentTokens, cancellationToken)
             .ConfigureAwait(false);
 
     /// <summary>
@@ -133,7 +133,7 @@ public sealed class ChatReducer : IChatReducer
         IEnumerable<ChatMessage> messages,
         CancellationToken cancellationToken = default) =>
         await _pipeline
-            .CompactAsync(messages, CompactionReason.Reactive, additionalEstimatedInputTokens: 0, cancellationToken: cancellationToken)
+            .CompactAsync(messages, CompactionReason.Reactive, inputTokenAdjustmentTokens: 0, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
     /// <summary>

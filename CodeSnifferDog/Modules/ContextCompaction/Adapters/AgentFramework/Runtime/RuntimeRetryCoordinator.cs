@@ -42,7 +42,7 @@ internal static class RuntimeRetryCoordinator
         {
             return StagedProjectionRetryResult<T>.Success(await runAsync(committedProjectionMessages).ConfigureAwait(false));
         }
-        catch (ModelInvocationException retryEx) when (ReactiveRetryService.ShouldRetry(options, retryEx))
+        catch (Exception retryEx) when (ReactiveRetryService.ShouldRetry(options, retryEx))
         {
             return StagedProjectionRetryResult<T>.NotRun();
         }

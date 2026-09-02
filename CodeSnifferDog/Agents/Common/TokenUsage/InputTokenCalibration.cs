@@ -1,7 +1,7 @@
 namespace CodeSnifferDog.Agents.Common.TokenUsage;
 
 /// <summary>
-/// Learns a conservative per-attempt offset between locally estimated and provider-reported input tokens.
+/// Learns a conservative per-run offset between locally estimated and provider-reported input tokens.
 /// </summary>
 internal sealed class InputTokenCalibration
 {
@@ -11,7 +11,7 @@ internal sealed class InputTokenCalibration
     private int _biasTokens;
 
     /// <summary>
-    /// Gets the conservative input-token offset currently learned for this attempt.
+    /// Gets the conservative input-token offset currently learned for this logical run.
     /// </summary>
     public int BiasTokens
     {

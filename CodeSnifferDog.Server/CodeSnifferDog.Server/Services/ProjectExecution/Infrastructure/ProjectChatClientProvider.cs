@@ -1,5 +1,6 @@
 using Azure;
 using Azure.AI.OpenAI;
+using CodeSnifferDog.Agents.Common.TokenUsage;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using OpenAI;
@@ -57,14 +58,15 @@ public sealed class ProjectChatClientProvider(
         if (IsAzureOpenAIProvider(provider))
         {
             AzureOpenAIInferenceProviderOptions azureOptions = _options.AzureOpenAI;
+            string deploymentId = azureOptions.DeploymentName!.Trim();
             AzureOpenAIClientOptions azureClientOptions = new();
             ApplyNetworkTimeout(azureClientOptions);
-            return ConfigureChatClient(new AzureOpenAIClient(
+            return ChatClientIdentity.Attach(ConfigureChatClient(new AzureOpenAIClient(
                     new Uri(azureOptions.Endpoint!.Trim()),
                     new AzureKeyCredential(azureOptions.ApiKey!.Trim()),
                     azureClientOptions)
-                .GetChatClient(azureOptions.DeploymentName!.Trim())
-                .AsIChatClient());
+                .GetChatClient(deploymentId)
+                .AsIChatClient()), deploymentId);
         }
 
         OpenAIClientOptions clientOptions = new();
@@ -86,9 +88,9 @@ public sealed class ProjectChatClientProvider(
             clientOptions.Endpoint = new Uri(compatibleOptions.Endpoint!.Trim());
         }
 
-        return ConfigureChatClient(new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions)
+        return ChatClientIdentity.Attach(ConfigureChatClient(new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions)
             .GetChatClient(modelId)
-            .AsIChatClient());
+            .AsIChatClient()), modelId);
     }
 
     /// <summary>

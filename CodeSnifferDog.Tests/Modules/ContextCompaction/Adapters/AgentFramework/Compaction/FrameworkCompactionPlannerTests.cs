@@ -27,7 +27,7 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan plan = await planner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.IsTrue(plan.ShouldCompact);
@@ -55,7 +55,7 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan plan = await planner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         // The atomic tool group is estimated once, so its two short messages consume one token together.
@@ -86,7 +86,7 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan plan = await planner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.HasCount(4, plan.MessagesToKeep);
@@ -120,7 +120,7 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan plan = await planner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.HasCount(4, plan.MessagesToKeep);
@@ -151,12 +151,12 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan frameworkPlan = await frameworkPlanner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
         CompactionPlan legacyPlan = await legacyPlanner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.AreEqual(legacyPlan.ShouldCompact, frameworkPlan.ShouldCompact);
@@ -174,7 +174,7 @@ public sealed class FrameworkCompactionPlannerTests
                 new ChatMessage(ChatRole.Assistant, "small response"),
             ],
             CompactionReason.AutomaticThreshold,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.IsFalse(plan.ShouldCompact);
@@ -182,7 +182,7 @@ public sealed class FrameworkCompactionPlannerTests
     }
 
     [TestMethod]
-    public async Task PlanAsync_TriggersAutomaticCompaction_WhenProviderInputTokenBiasReachesThreshold()
+    public async Task PlanAsync_TriggersAutomaticCompaction_WhenPositiveInputTokenAdjustmentReachesThreshold()
     {
         ChatMessage[] messages =
         [
@@ -204,16 +204,45 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan withoutBias = await planner.PlanAsync(
             messages,
             CompactionReason.AutomaticThreshold,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
         CompactionPlan withBias = await planner.PlanAsync(
             messages,
             CompactionReason.AutomaticThreshold,
-            additionalEstimatedInputTokens: 1,
+            inputTokenAdjustmentTokens: 1,
             TestContext.CancellationToken);
 
         Assert.IsFalse(withoutBias.ShouldCompact);
         Assert.IsTrue(withBias.ShouldCompact);
+    }
+
+    [TestMethod]
+    public async Task PlanAsync_DoesNotTriggerAutomaticCompaction_WhenNegativeInputTokenAdjustmentDropsBelowThreshold()
+    {
+        ChatMessage[] messages =
+        [
+            new(ChatRole.User, "request"),
+            new(ChatRole.Assistant, "response"),
+        ];
+        int transcriptTokens = TokenEstimator.Estimate(messages);
+        CompactionOptions options = new()
+        {
+            ModelContextWindowTokens = transcriptTokens + 2,
+            SummaryReservedOutputTokens = 1,
+            AutoCompactBufferTokens = 1,
+            PreservedTailMinTokens = 1,
+            PreservedTailMinMessages = 1,
+            PreservedTailMaxTokens = 100_000,
+        };
+        FrameworkCompactionPlanner planner = new(options);
+
+        CompactionPlan plan = await planner.PlanAsync(
+            messages,
+            CompactionReason.AutomaticThreshold,
+            inputTokenAdjustmentTokens: -1,
+            TestContext.CancellationToken);
+
+        Assert.IsFalse(plan.ShouldCompact);
     }
 
     [TestMethod]
@@ -245,7 +274,7 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan plan = await planner.PlanAsync(
             messages,
             CompactionReason.AutomaticThreshold,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.IsTrue(plan.ShouldCompact);
@@ -262,12 +291,12 @@ public sealed class FrameworkCompactionPlannerTests
         CompactionPlan frameworkPlan = await frameworkPlanner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
         CompactionPlan legacyPlan = await legacyPlanner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.AreEqual(legacyPlan.ShouldCompact, frameworkPlan.ShouldCompact);
@@ -285,7 +314,7 @@ public sealed class FrameworkCompactionPlannerTests
                 new ChatMessage(ChatRole.Assistant, "small response"),
             ],
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.IsTrue(plan.ShouldCompact);
@@ -305,7 +334,7 @@ public sealed class FrameworkCompactionPlannerTests
         _ = await planner.PlanAsync(
             messages,
             CompactionReason.Reactive,
-            additionalEstimatedInputTokens: 0,
+            inputTokenAdjustmentTokens: 0,
             TestContext.CancellationToken);
 
         Assert.IsNotEmpty(loggerFactory.Entries);

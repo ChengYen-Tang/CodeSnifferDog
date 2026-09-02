@@ -1,4 +1,5 @@
 using CodeSnifferDog.Models.ReviewAgentTeam;
+using CodeSnifferDog.Agents.Common.TokenUsage;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ReviewAgentTeam.Transcript;
 using Microsoft.Agents.AI;
@@ -61,6 +62,7 @@ internal sealed class AgentBuilderService(
                 {
                     Instructions = request.SystemPrompt,
                     Tools = request.Tools,
+                    ModelId = ChatClientIdentity.TryGetModelId(request.ChatClient),
                 },
             },
             _loggerFactory,

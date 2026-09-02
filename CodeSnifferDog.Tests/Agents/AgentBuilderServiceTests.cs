@@ -1,4 +1,5 @@
 using CodeSnifferDog.Agents.Common;
+using CodeSnifferDog.Agents.Common.TokenUsage;
 using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using CodeSnifferDog.Modules.ContextCompaction.Core;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Providers;
@@ -49,6 +50,27 @@ public sealed class AgentBuilderServiceTests
         Assert.AreEqual("ok", response.Text);
         Assert.AreEqual("system prompt", chatClient.LastOptions?.Instructions);
         CollectionAssert.AreEqual(new[] { "TestTool" }, chatClient.LastOptions?.Tools?.Select(tool => tool.Name).ToArray());
+    }
+
+    [TestMethod]
+    public async Task Create_WithConfiguredModelIdentity_PropagatesItToDefaultChatOptions()
+    {
+        RecordingChatClient innerChatClient = new();
+        AgentBuilderService service = new(CreateCompactionOptions());
+
+        AgentCreationResult result = service.Create(new AgentBuildRequest(
+            ChatClientIdentity.Attach(innerChatClient, "model-a"),
+            "system prompt",
+            "Test Agent",
+            "Test agent description.",
+            [],
+            EventScope: null));
+
+        _ = await result.Agent.RunAsync(
+            [new ChatMessage(ChatRole.User, "hello")],
+            cancellationToken: TestContext.CancellationToken);
+
+        Assert.AreEqual("model-a", innerChatClient.LastOptions?.ModelId);
     }
 
     [TestMethod]

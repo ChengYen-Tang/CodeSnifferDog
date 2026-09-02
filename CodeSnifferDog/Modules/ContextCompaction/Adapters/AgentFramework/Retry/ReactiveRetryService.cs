@@ -1,8 +1,10 @@
 using CodeSnifferDog.Modules.ContextCompaction.Core;
+using CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction.Agents;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
+using CodeSnifferDog.Workflows.Common;
 
 namespace CodeSnifferDog.Modules.ContextCompaction.Adapters.AgentFramework.Retry;
 
@@ -33,7 +35,7 @@ internal static class ReactiveRetryService
         {
             await next(messages, cancellationToken).ConfigureAwait(false);
         }
-        catch (ModelInvocationException ex) when (ShouldRetry(options, ex))
+        catch (Exception ex) when (ShouldRetry(options, ex))
         {
             ReactiveRetryPreparation retryPreparation = await PrepareAsync(
                 messages,
@@ -45,7 +47,9 @@ internal static class ReactiveRetryService
             if (MessageEquivalenceComparer.AreEquivalent(messages, compactedMessages))
                 throw;
 
-            await next(compactedMessages, cancellationToken).ConfigureAwait(false);
+            await AgentRunAttemptContext
+                .RunWithPreCompactedContextAsync(() => next(compactedMessages, cancellationToken))
+                .ConfigureAwait(false);
         }
     }
 
@@ -60,6 +64,26 @@ internal static class ReactiveRetryService
         ModelInvocationException exception) =>
         options.EnableReactiveCompactionRetry &&
         options.ReactiveExceptionDecider.ShouldRetryWithReactiveCompaction(exception);
+
+    /// <summary>
+    /// Determines whether a provider-specific exception should trigger reactive compaction after normalization.
+    /// </summary>
+    /// <param name="options">Compaction options that expose the retry toggle and exception decider.</param>
+    /// <param name="exception">Raw provider or normalized model exception.</param>
+    /// <returns><see langword="true" /> when reactive retry is enabled and the failure indicates context overflow.</returns>
+    public static bool ShouldRetry(
+        AgentCompactionOptions options,
+        Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (exception is ModelInvocationException modelInvocationException)
+            return ShouldRetry(options, modelInvocationException);
+
+        return ModelInvocationFailureClassifier.IsContextWindowExceeded(exception) &&
+            ShouldRetry(options, ModelInvocationFailureClassifier.NormalizeContextWindowExceeded(exception));
+    }
 
     /// <summary>
     /// Prepares the retry transcript for reactive compaction.

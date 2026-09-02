@@ -40,7 +40,7 @@ internal sealed class ReductionPipeline(
         IEnumerable<ChatMessage> messages,
         CompactionReason reason,
         CancellationToken cancellationToken) =>
-        CompactAsync(messages, reason, additionalEstimatedInputTokens: 0, cancellationToken: cancellationToken);
+        CompactAsync(messages, reason, inputTokenAdjustmentTokens: 0, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Compacts the supplied transcript when the selected reason or thresholds require it.
@@ -54,7 +54,7 @@ internal sealed class ReductionPipeline(
     public async Task<CompactionResult> CompactAsync(
         IEnumerable<ChatMessage> messages,
         CompactionReason reason,
-        int additionalEstimatedInputTokens,
+        int inputTokenAdjustmentTokens,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -68,12 +68,16 @@ internal sealed class ReductionPipeline(
             return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
 
         CompactionPlan plan = await _planner
-            .PlanAsync(materializedMessages, reason, additionalEstimatedInputTokens, cancellationToken)
+            .PlanAsync(materializedMessages, reason, inputTokenAdjustmentTokens, cancellationToken)
             .ConfigureAwait(false);
         if (!plan.ShouldCompact)
             return CompactionResultBuilder.CreatePassthroughResult(materializedMessages);
 
         await _hookDispatcher.RunBeforeCompactionAsync(materializedMessages, reason, cancellationToken).ConfigureAwait(false);
+
+        IReadOnlyList<ChatMessage> messagesToSummarize = GetMessagesToSummarize(
+            materializedMessages,
+            plan.MessagesToKeep);
 
         string summaryPrompt = SummaryContract.BuildPrompt(
             await summaryPromptProvider.GetPromptAsync(cancellationToken).ConfigureAwait(false),
@@ -84,7 +88,7 @@ internal sealed class ReductionPipeline(
 
         try
         {
-            string summary = await summarizer.SummarizeAsync(materializedMessages, summaryPrompt, options, cancellationToken).ConfigureAwait(false);
+            string summary = await summarizer.SummarizeAsync(messagesToSummarize, summaryPrompt, options, cancellationToken).ConfigureAwait(false);
             summary = SummaryContract.Normalize(summary);
             SummaryContract.Validate(summary, options);
 
@@ -109,6 +113,39 @@ internal sealed class ReductionPipeline(
         {
             throw new CompactionException("Operational context compaction summary generation failed.", ex);
         }
+    }
+
+    /// <summary>
+    /// Excludes the retained tail from the summary request. The tail remains in the provider context after compaction,
+    /// so including it in both places only makes the summary call larger and can prevent the recovery from succeeding.
+    /// </summary>
+    private static IReadOnlyList<ChatMessage> GetMessagesToSummarize(
+        IReadOnlyList<ChatMessage> messages,
+        IReadOnlyList<ChatMessage> messagesToKeep)
+    {
+        if (messagesToKeep.Count == 0)
+            return messages;
+
+        int latestCandidateStart = messages.Count - messagesToKeep.Count;
+        for (int start = 0; start <= latestCandidateStart; start++)
+        {
+            bool matches = true;
+            for (int offset = 0; offset < messagesToKeep.Count; offset++)
+            {
+                if (ReferenceEquals(messages[start + offset], messagesToKeep[offset]))
+                    continue;
+
+                matches = false;
+                break;
+            }
+
+            if (matches)
+                return [.. messages.Take(start)];
+        }
+
+        // Custom planners may return cloned messages. Preserve existing behavior in that case rather than risk
+        // omitting transcript content from the summary.
+        return messages;
     }
 
 }

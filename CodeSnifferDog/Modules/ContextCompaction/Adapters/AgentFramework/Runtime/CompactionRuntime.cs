@@ -3,6 +3,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.ContextCompaction.Agents;
 using CodeSnifferDog.Modules.ContextCompaction.Core.Estimation;
+using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -40,7 +41,7 @@ internal static class CompactionRuntime
             collapseTracker.CommitNew();
             return response;
         }
-        catch (ModelInvocationException ex) when (ReactiveRetryService.ShouldRetry(options, ex))
+        catch (Exception ex) when (ReactiveRetryService.ShouldRetry(options, ex))
         {
             IReadOnlyList<ChatMessage> originalMessages = [.. messages];
             logger.LogDebug(
@@ -88,7 +89,10 @@ internal static class CompactionRuntime
 
             try
             {
-                AgentResponse response = await innerAgent.RunAsync(compactedMessages, session, runOptions, cancellationToken).ConfigureAwait(false);
+                AgentResponse response = await AgentRunAttemptContext
+                    .RunWithPreCompactedContextAsync(
+                        () => innerAgent.RunAsync(compactedMessages, session, runOptions, cancellationToken))
+                    .ConfigureAwait(false);
                 logger.LogDebug("Reactive deep compaction retry succeeded.");
                 collapseTracker.CommitNew();
                 return response;
@@ -141,7 +145,7 @@ internal static class CompactionRuntime
                 await pump.PumpAsync(messages).ConfigureAwait(false);
                 collapseTracker.CommitNew();
             }
-            catch (ModelInvocationException ex) when (ReactiveRetryService.ShouldRetry(options, ex))
+            catch (Exception ex) when (ReactiveRetryService.ShouldRetry(options, ex))
             {
                 try
                 {
@@ -195,7 +199,9 @@ internal static class CompactionRuntime
 
                     try
                     {
-                        await pump.PumpAsync(compactedMessages).ConfigureAwait(false);
+                        await AgentRunAttemptContext
+                            .RunWithPreCompactedContextAsync(() => pump.PumpAsync(compactedMessages))
+                            .ConfigureAwait(false);
                         logger.LogDebug("Reactive streaming deep compaction retry succeeded.");
                         collapseTracker.CommitNew();
                     }

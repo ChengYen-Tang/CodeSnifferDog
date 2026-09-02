@@ -157,6 +157,31 @@ public sealed class WorkflowAgentRunServiceTests
             eventScope.Events.ToArray());
     }
 
+    [TestMethod]
+    public async Task RunAsync_Retry_PreservesLogicalRunStateAcrossRecreatedAgents()
+    {
+        RecordingAgentEventScope eventScope = new();
+        object stateKey = new();
+        List<object> observedStates = [];
+        AIAgent succeedingAgent = new LogicalRunStateAgent(stateKey, observedStates, shouldThrow: false);
+
+        (Result result, _, _) = await WorkflowAgentRunService.RunAsync(
+            new LogicalRunStateAgent(stateKey, observedStates, shouldThrow: true),
+            () => succeedingAgent,
+            static _ => new AttemptState(),
+            static state => state.Restored = true,
+            [new ChatMessage(ChatRole.User, "scan")],
+            eventScope,
+            publishedMessageCount: 0,
+            timeout: TimeSpan.FromSeconds(5),
+            maxConsecutiveFailures: 2,
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess);
+        Assert.HasCount(2, observedStates);
+        Assert.AreSame(observedStates[0], observedStates[1]);
+    }
+
     private static AIAgent CreateStreamingAgent(
         IAgentEventScope eventScope,
         IReadOnlyList<AgentResponseUpdate> updates) =>
@@ -315,6 +340,51 @@ public sealed class WorkflowAgentRunServiceTests
 #pragma warning disable CS0162
             yield break;
 #pragma warning restore CS0162
+        }
+    }
+
+    private sealed class LogicalRunStateAgent(
+        object stateKey,
+        List<object> observedStates,
+        bool shouldThrow) : AIAgent
+    {
+        protected override ValueTask<AgentSession> CreateSessionCoreAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<AgentSession>(new TestSession());
+
+        protected override ValueTask<JsonElement> SerializeSessionCoreAsync(
+            AgentSession session,
+            JsonSerializerOptions? jsonSerializerOptions = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        protected override ValueTask<AgentSession> DeserializeSessionCoreAsync(
+            JsonElement serializedState,
+            JsonSerializerOptions? jsonSerializerOptions = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        protected override Task<AgentResponse> RunCoreAsync(
+            IEnumerable<ChatMessage> messages,
+            AgentSession? session = null,
+            AgentRunOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            object? state = AgentRunAttemptContext.GetOrCreateLogicalRunState(stateKey, static () => new object());
+            Assert.IsNotNull(state);
+            observedStates.Add(state);
+
+            if (shouldThrow)
+                throw new InvalidOperationException("first attempt failed");
+
+            return Task.FromResult(new AgentResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        }
+
+        protected override async IAsyncEnumerable<AgentResponseUpdate> RunCoreStreamingAsync(
+            IEnumerable<ChatMessage> messages,
+            AgentSession? session = null,
+            AgentRunOptions? options = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
         }
     }
 

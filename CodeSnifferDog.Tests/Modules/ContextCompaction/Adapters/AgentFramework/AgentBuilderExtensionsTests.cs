@@ -138,12 +138,15 @@ public sealed class AgentBuilderExtensionsTests
             new(ChatRole.Assistant, [new FunctionCallContent("call-3", "RunShellCommand", new Dictionary<string, object?>())]),
             new(ChatRole.Tool, [new FunctionResultContent("call-3", "result-3")]),
         ];
+        List<IReadOnlyList<ChatMessage>> invocations = [];
 
         await AgentBuilderExtensions.InvokeWithReactiveCompactionRetryAsync(
             originalMessages,
             options,
             (messages, cancellationToken) =>
             {
+                invocations.Add(messages);
+
                 if (messages.SequenceEqual(originalMessages))
                     throw new ModelInvocationException(
                         ModelInvocationFailureKind.ContextWindowExceeded,
@@ -156,8 +159,14 @@ public sealed class AgentBuilderExtensionsTests
         string[] summarizedCallIds = [.. summarizer.LastMessages!
             .SelectMany(static message => message.Contents.OfType<FunctionCallContent>())
             .Select(static call => call.CallId)];
+        string[] retriedCallIds = [.. invocations[1]
+            .SelectMany(static message => message.Contents.OfType<FunctionCallContent>())
+            .Select(static call => call.CallId)];
 
-        CollectionAssert.AreEqual(Call3Only, summarizedCallIds);
+        // The retained tool-call/result group is already present in the retry context, so the summary request
+        // contains only history that will be removed. This keeps the summary request below the recovery budget.
+        Assert.IsEmpty(summarizedCallIds);
+        CollectionAssert.AreEqual(Call3Only, retriedCallIds);
     }
 
     [TestMethod]

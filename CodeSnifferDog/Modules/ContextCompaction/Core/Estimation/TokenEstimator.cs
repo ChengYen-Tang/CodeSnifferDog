@@ -20,7 +20,28 @@ internal static class TokenEstimator
     {
         ArgumentNullException.ThrowIfNull(messages);
 
-        int byteCount = 0;
+        return EstimateByteCount(GetByteCount(messages));
+    }
+
+    /// <summary>
+    /// Applies a provider-aware adjustment to a local input-token estimate.
+    /// </summary>
+    /// <param name="estimatedTokens">The local transcript estimate.</param>
+    /// <param name="adjustmentTokens">The signed difference between the provider-aware prediction and the local estimate.</param>
+    /// <returns>A non-negative estimate bounded by <see cref="int.MaxValue" />.</returns>
+    public static int ApplyTokenAdjustment(int estimatedTokens, int adjustmentTokens) =>
+        (int)Math.Clamp((long)estimatedTokens + adjustmentTokens, 0, int.MaxValue);
+
+    /// <summary>
+    /// Gets the UTF-8-equivalent byte count for a message sequence without converting it to a token estimate.
+    /// </summary>
+    /// <param name="messages">Messages whose text and content payloads should be counted.</param>
+    /// <returns>The aggregate byte count represented by the supplied messages.</returns>
+    public static long GetByteCount(IEnumerable<ChatMessage> messages)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        long byteCount = 0;
 
         foreach (ChatMessage message in messages)
         {
@@ -30,7 +51,60 @@ internal static class TokenEstimator
                 byteCount += EstimateContentBytes(content);
         }
 
-        return Math.Max(1, SharedTokenEstimator.EstimateBytes(byteCount));
+        return byteCount;
+    }
+
+    /// <summary>
+    /// Gets the UTF-8-equivalent byte count for a materialized message suffix.
+    /// </summary>
+    /// <param name="messages">Materialized messages whose suffix should be counted.</param>
+    /// <param name="startIndex">Zero-based index of the first message to include.</param>
+    /// <returns>The aggregate byte count represented by the selected suffix.</returns>
+    public static long GetByteCount(IReadOnlyList<ChatMessage> messages, int startIndex)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        if ((uint)startIndex > (uint)messages.Count)
+            throw new ArgumentOutOfRangeException(nameof(startIndex));
+
+        long byteCount = 0;
+        for (int index = startIndex; index < messages.Count; index++)
+        {
+            ChatMessage message = messages[index];
+            byteCount += GetStringByteCount(message.Text);
+
+            foreach (AIContent content in message.Contents)
+                byteCount += EstimateContentBytes(content);
+        }
+
+        return byteCount;
+    }
+
+    /// <summary>
+    /// Converts a positive byte count to the local token estimate used for a non-empty message operation.
+    /// </summary>
+    /// <param name="byteCount">UTF-8-equivalent byte count.</param>
+    /// <returns>A token estimate that is at least one.</returns>
+    public static int EstimateByteCount(long byteCount) =>
+        Math.Max(1, SharedTokenEstimator.EstimateBytes(byteCount));
+
+    /// <summary>
+    /// Estimates the token cost of a message suffix without allocating a slice.
+    /// </summary>
+    /// <param name="messages">Materialized messages whose suffix should be counted.</param>
+    /// <param name="startIndex">Zero-based index of the first message to include.</param>
+    /// <returns>A coarse estimate that is zero for an empty range.</returns>
+    public static int EstimateRange(IReadOnlyList<ChatMessage> messages, int startIndex)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        if ((uint)startIndex > (uint)messages.Count)
+            throw new ArgumentOutOfRangeException(nameof(startIndex));
+
+        if (startIndex == messages.Count)
+            return 0;
+
+        return EstimateByteCount(GetByteCount(messages, startIndex));
     }
 
     /// <summary>

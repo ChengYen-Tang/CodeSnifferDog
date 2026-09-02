@@ -1,5 +1,7 @@
+using CodeSnifferDog.Agents.Common.TokenUsage;
 using CodeSnifferDog.Server.Services.ProjectExecution.Infrastructure;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using OpenAI.Chat;
 #pragma warning disable OPENAI001
@@ -205,6 +207,24 @@ public sealed class ChatClientProviderTests
 
             Assert.AreEqual(expectedIsReady, chatClientProvider.IsReady);
         }
+    }
+
+    [TestMethod]
+    public void CreateChatClient_ExposesConfiguredModelIdentity()
+    {
+        ProjectChatClientProvider chatClientProvider = new(Options.Create(new InferenceProviderOptions
+        {
+            Provider = "openai-compatible",
+            OpenAICompatible = new OpenAICompatibleInferenceProviderOptions
+            {
+                Endpoint = "http://localhost:8000/v1",
+                ModelId = "qwen2.5-coder",
+            },
+        }));
+
+        using IChatClient chatClient = chatClientProvider.CreateChatClient();
+
+        Assert.AreEqual("qwen2.5-coder", ChatClientIdentity.TryGetModelId(chatClient));
     }
 
     [TestMethod]

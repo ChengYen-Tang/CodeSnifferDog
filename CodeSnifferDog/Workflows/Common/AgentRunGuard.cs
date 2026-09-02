@@ -51,78 +51,84 @@ internal static class AgentRunGuard
         if (maxConsecutiveFailures < 0)
             throw new ArgumentOutOfRangeException(nameof(maxConsecutiveFailures), "Max consecutive failures must be zero or greater.");
 
-        Exception? lastException = null;
-
-        for (int attempt = 1; maxConsecutiveFailures == 0 || attempt <= maxConsecutiveFailures; attempt++)
+        return await AgentRunAttemptContext.RunLogicalRunAsync(
+            eventScope.GroupKey,
+            eventScope.AgentKey,
+            async () =>
         {
-            Guid attemptId = Guid.CreateVersion7();
-            TSnapshot snapshot = prepareAttempt(attemptId);
-            DateTimeOffset attemptRunStartedAtUtc = DateTimeOffset.MinValue;
+            Exception? lastException = null;
 
-            try
+            for (int attempt = 1; maxConsecutiveFailures == 0 || attempt <= maxConsecutiveFailures; attempt++)
             {
-                publishedMessageCount = await PublishPendingUserMessagesAsync(
-                    messages,
-                    eventScope,
-                    publishedMessageCount,
-                    cancellationToken).ConfigureAwait(false);
+                Guid attemptId = Guid.CreateVersion7();
+                TSnapshot snapshot = prepareAttempt(attemptId);
+                DateTimeOffset attemptRunStartedAtUtc = DateTimeOffset.MinValue;
 
-                using CancellationTokenSource timeoutTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeoutTokenSource.CancelAfter(timeout);
-
-                attemptRunStartedAtUtc = DateTimeOffset.UtcNow;
-                AgentResponse response = await AgentRunAttemptContext.RunAsync(
-                    attemptId,
-                    eventScope.GroupKey,
-                    eventScope.AgentKey,
-                    () => agent.RunAsync(
-                        messages,
-                        session: null,
-                        options: null,
-                        timeoutTokenSource.Token)).ConfigureAwait(false);
-
-                bool transcriptEventsPublished =
-                    AgentBuilderExtensions.HasPublishedTranscriptEvents(response);
-
-                foreach (ChatMessage message in response.Messages)
+                try
                 {
-                    messages.Add(message);
-                    if (transcriptEventsPublished)
-                        continue;
+                    publishedMessageCount = await PublishPendingUserMessagesAsync(
+                        messages,
+                        eventScope,
+                        publishedMessageCount,
+                        cancellationToken).ConfigureAwait(false);
 
-                    await AgentToolEventPublisher.PublishAsync(message, eventScope, cancellationToken).ConfigureAwait(false);
-                    if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
-                        await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
+                    using CancellationTokenSource timeoutTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    timeoutTokenSource.CancelAfter(timeout);
+
+                    attemptRunStartedAtUtc = DateTimeOffset.UtcNow;
+                    AgentResponse response = await AgentRunAttemptContext.RunAsync(
+                        attemptId,
+                        eventScope.GroupKey,
+                        eventScope.AgentKey,
+                        () => agent.RunAsync(
+                            messages,
+                            session: null,
+                            options: null,
+                            timeoutTokenSource.Token)).ConfigureAwait(false);
+
+                    bool transcriptEventsPublished =
+                        AgentBuilderExtensions.HasPublishedTranscriptEvents(response);
+
+                    foreach (ChatMessage message in response.Messages)
+                    {
+                        messages.Add(message);
+                        if (transcriptEventsPublished)
+                            continue;
+
+                        await AgentToolEventPublisher.PublishAsync(message, eventScope, cancellationToken).ConfigureAwait(false);
+                        if (message.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(message.Text))
+                            await eventScope.PublishAssistantMessageAsync(message.Text, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    return (Result.Ok(), messages.Count, agent);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    restoreAttempt(snapshot);
+                    throw;
+                }
+                catch (OperationCanceledException ex)
+                {
+                    restoreAttempt(snapshot);
+                    await ClearAttemptTranscriptAsync(eventScope, attemptRunStartedAtUtc, cancellationToken).ConfigureAwait(false);
+                    lastException = new TimeoutException(
+                        $"Agent run attempt {attempt} timed out after {timeout}.",
+                        ex);
+                }
+                catch (Exception ex)
+                {
+                    restoreAttempt(snapshot);
+                    await ClearAttemptTranscriptAsync(eventScope, attemptRunStartedAtUtc, cancellationToken).ConfigureAwait(false);
+                    lastException = ex;
                 }
 
-                return (Result.Ok(), messages.Count, agent);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                restoreAttempt(snapshot);
-                throw;
-            }
-            catch (OperationCanceledException ex)
-            {
-                restoreAttempt(snapshot);
-                await ClearAttemptTranscriptAsync(eventScope, attemptRunStartedAtUtc, cancellationToken).ConfigureAwait(false);
-                lastException = new TimeoutException(
-                    $"Agent run attempt {attempt} timed out after {timeout}.",
-                    ex);
-            }
-            catch (Exception ex)
-            {
-                restoreAttempt(snapshot);
-                await ClearAttemptTranscriptAsync(eventScope, attemptRunStartedAtUtc, cancellationToken).ConfigureAwait(false);
-                lastException = ex;
+                agent = agentFactory();
             }
 
-            agent = agentFactory();
-        }
-
-        return (Result.Fail(new ExceptionalError(
-            $"Agent run failed after {maxConsecutiveFailures} consecutive attempts: {lastException}",
-            lastException!)), publishedMessageCount, agent);
+            return (Result.Fail(new ExceptionalError(
+                $"Agent run failed after {maxConsecutiveFailures} consecutive attempts: {lastException}",
+                lastException!)), publishedMessageCount, agent);
+        }).ConfigureAwait(false);
     }
 
     /// <summary>

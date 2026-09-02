@@ -27,13 +27,13 @@ internal sealed class FrameworkCompactionPlanner(
     public async ValueTask<CompactionPlan> PlanAsync(
         IReadOnlyList<ChatMessage> messages,
         CompactionReason reason,
-        int additionalEstimatedInputTokens,
+        int inputTokenAdjustmentTokens,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(messages);
         cancellationToken.ThrowIfCancellationRequested();
 
-        RecordingTrigger trigger = new(CreateTrigger(reason, additionalEstimatedInputTokens));
+        RecordingTrigger trigger = new(CreateTrigger(reason, inputTokenAdjustmentTokens));
         FrameworkTailPlanningStrategy strategy = new(_options, trigger.Evaluate);
 
         _ = await CompactionProvider
@@ -49,7 +49,7 @@ internal sealed class FrameworkCompactionPlanner(
         if (!trigger.WasEvaluated)
         {
             return await _legacyPlanner
-                .PlanAsync(messages, reason, additionalEstimatedInputTokens, cancellationToken)
+                .PlanAsync(messages, reason, inputTokenAdjustmentTokens, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -63,13 +63,13 @@ internal sealed class FrameworkCompactionPlanner(
     /// </summary>
     private CompactionTrigger CreateTrigger(
         CompactionReason reason,
-        int additionalEstimatedInputTokens) =>
+        int inputTokenAdjustmentTokens) =>
         reason == CompactionReason.Reactive
             ? CompactionTriggers.Always
             : index =>
             {
-                long estimatedTokens = TokenEstimator.Estimate(index.GetIncludedMessages());
-                long adjustedEstimate = estimatedTokens + Math.Max(0, additionalEstimatedInputTokens);
+                int estimatedTokens = TokenEstimator.Estimate(index.GetIncludedMessages());
+                int adjustedEstimate = TokenEstimator.ApplyTokenAdjustment(estimatedTokens, inputTokenAdjustmentTokens);
                 return adjustedEstimate >= _options.GetAutoCompactThreshold();
             };
 

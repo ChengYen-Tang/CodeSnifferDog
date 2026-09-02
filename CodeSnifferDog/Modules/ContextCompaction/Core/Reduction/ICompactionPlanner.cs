@@ -13,12 +13,12 @@ internal interface ICompactionPlanner
     /// </summary>
     /// <param name="messages">Complete transcript messages in original order.</param>
     /// <param name="reason">Reason that initiated this evaluation.</param>
-    /// <param name="additionalEstimatedInputTokens">Provider-request overhead not represented by transcript messages.</param>
+    /// <param name="inputTokenAdjustmentTokens">Signed difference between the provider-aware prediction and the local transcript estimate.</param>
     /// <param name="cancellationToken">Cancels the evaluation.</param>
     /// <returns>The compaction decision and, when needed, its preserved non-system tail.</returns>
     ValueTask<CompactionPlan> PlanAsync(
         IReadOnlyList<ChatMessage> messages,
         CompactionReason reason,
-        int additionalEstimatedInputTokens,
+        int inputTokenAdjustmentTokens,
         CancellationToken cancellationToken);
 }

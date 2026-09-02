@@ -16,13 +16,13 @@ internal sealed class LegacyCompactionPlanner(CompactionOptions options) : IComp
     public ValueTask<CompactionPlan> PlanAsync(
         IReadOnlyList<ChatMessage> messages,
         CompactionReason reason,
-        int additionalEstimatedInputTokens,
+        int inputTokenAdjustmentTokens,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(messages);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!ShouldCompact(messages, reason, additionalEstimatedInputTokens))
+        if (!ShouldCompact(messages, reason, inputTokenAdjustmentTokens))
             return ValueTask.FromResult(CompactionPlan.Skip);
 
         List<ChatMessage> nonSystemMessages = new(messages.Count);
@@ -79,18 +79,18 @@ internal sealed class LegacyCompactionPlanner(CompactionOptions options) : IComp
     }
 
     /// <summary>
-    /// Retains the existing automatic threshold and provider input-token bias calculation.
+    /// Retains the existing automatic threshold calculation with a provider-aware input-token adjustment.
     /// </summary>
     private bool ShouldCompact(
         IEnumerable<ChatMessage> messages,
         CompactionReason reason,
-        int additionalEstimatedInputTokens)
+        int inputTokenAdjustmentTokens)
     {
         if (reason == CompactionReason.Reactive)
             return true;
 
-        long estimatedTokens = TokenEstimator.Estimate(messages);
-        long adjustedEstimate = estimatedTokens + Math.Max(0, additionalEstimatedInputTokens);
+        int estimatedTokens = TokenEstimator.Estimate(messages);
+        int adjustedEstimate = TokenEstimator.ApplyTokenAdjustment(estimatedTokens, inputTokenAdjustmentTokens);
         return adjustedEstimate >= _options.GetAutoCompactThreshold();
     }
 }

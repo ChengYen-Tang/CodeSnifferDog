@@ -34,28 +34,36 @@ public sealed class ContextPreparationService
     }
 
     /// <summary>Applies snip, micro-compaction, collapse, and automatic compaction without changing their rules.</summary>
+    /// <param name="skipFullCompaction">Skips the reducer when a retry runtime already supplied a compacted transcript.</param>
     public async Task<IReadOnlyList<ChatMessage>> PrepareAsync(
         IEnumerable<ChatMessage> messages,
         AgentSession? session,
         ContextPreparationState? unscopedState = null,
         CancellationToken cancellationToken = default,
-        int inputTokenBiasTokens = 0)
+        int inputTokenAdjustmentTokens = 0,
+        bool forceCompaction = false,
+        int? precomputedRawEstimatedTokens = null,
+        bool skipFullCompaction = false)
     {
         ArgumentNullException.ThrowIfNull(messages);
         IReadOnlyList<ChatMessage> requestMessages = messages as IReadOnlyList<ChatMessage> ?? [.. messages];
-        int rawEstimatedTokens = TokenEstimator.Estimate(requestMessages);
-        int normalizedBiasTokens = Math.Max(0, inputTokenBiasTokens);
+        int rawEstimatedTokens = precomputedRawEstimatedTokens ?? TokenEstimator.Estimate(requestMessages);
         _logger.LogDebug(
-            "Preparing model context. Mode: {CompactionMode}; MessageCount: {MessageCount}; RawEstimatedTokens: {RawEstimatedTokens}; InputTokenBiasTokens: {InputTokenBiasTokens}; CalibratedEstimatedTokens: {CalibratedEstimatedTokens}; AutomaticThreshold: {AutomaticThreshold}; EffectiveContextWindowTokens: {EffectiveContextWindowTokens}.",
+            "Preparing model context. Mode: {CompactionMode}; MessageCount: {MessageCount}; RawEstimatedTokens: {RawEstimatedTokens}; InputTokenAdjustmentTokens: {InputTokenAdjustmentTokens}; CalibratedEstimatedTokens: {CalibratedEstimatedTokens}; ForceCompaction: {ForceCompaction}; SkipFullCompaction: {SkipFullCompaction}; AutomaticThreshold: {AutomaticThreshold}; EffectiveContextWindowTokens: {EffectiveContextWindowTokens}.",
             _options.Mode,
             requestMessages.Count,
             rawEstimatedTokens,
-            normalizedBiasTokens,
-            AddTokenBias(rawEstimatedTokens, normalizedBiasTokens),
+            inputTokenAdjustmentTokens,
+            TokenEstimator.ApplyTokenAdjustment(rawEstimatedTokens, inputTokenAdjustmentTokens),
+            forceCompaction,
+            skipFullCompaction,
             _options.GetAutoCompactThreshold(),
             _options.GetEffectiveContextWindowTokens());
         requestMessages = MessageShrinker.ApplySnip(requestMessages, _options).Messages;
         requestMessages = MessageShrinker.ApplyMicroCompaction(requestMessages, _options).Messages;
+        if (skipFullCompaction)
+            return requestMessages;
+
         if (_options.Mode == CompactionMode.ContextCollapse)
         {
             if (_collapseController is null) throw new InvalidOperationException("ContextCollapse mode requires an CollapseController.");
@@ -66,15 +74,25 @@ public sealed class ContextPreparationService
                 return [.. _collapseController.PrepareMessages(requestMessages, session)];
             }
         }
-        if (!_options.EnableAutomaticCompaction || _options.Mode != CompactionMode.Standard) return requestMessages;
+        if (_options.Mode != CompactionMode.Standard ||
+            (!_options.EnableAutomaticCompaction && !forceCompaction))
+            return requestMessages;
         ContextPreparationState stateScope = unscopedState ?? _fallbackState;
         AutomaticCompactionState state = session is null ? stateScope.Get() : _sessionState.Get(session);
-        if (state.CircuitBreakerOpen) return requestMessages;
+        if (state.CircuitBreakerOpen && !forceCompaction) return requestMessages;
         try
         {
+            int automaticCompactionAdjustmentTokens = forceCompaction
+                ? GetForcedCompactionAdjustmentTokens(requestMessages, inputTokenAdjustmentTokens)
+                : inputTokenAdjustmentTokens;
             CompactionResult result = await _reducer
-                .CompactAutomaticAsync(requestMessages, normalizedBiasTokens, cancellationToken)
+                .CompactAutomaticAsync(requestMessages, automaticCompactionAdjustmentTokens, cancellationToken)
                 .ConfigureAwait(false);
+            if (forceCompaction && !result.WasCompacted)
+            {
+                throw new CompactionException(
+                    "Context recovery was required, but automatic compaction could not produce a replacement transcript.");
+            }
             if (result.WasCompacted) { if (session is null) stateScope.Reset(); else _sessionState.Reset(session); }
             return ChatReducer.BuildMessages(result);
         }
@@ -86,13 +104,32 @@ public sealed class ContextPreparationService
                 failureState = stateScope.RecordFailure(_options);
             }
             else failureState = _sessionState.RecordFailure(session, _options);
+            bool contextWindowExceeded = ModelInvocationFailureClassifier.IsContextWindowExceeded(exception);
+            if (forceCompaction || contextWindowExceeded)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Automatic compaction failed while context recovery is required. Blocking the un-compacted context. ConsecutiveFailures: {ConsecutiveFailures}; CircuitBreakerOpen: {CircuitBreakerOpen}; ForceCompaction: {ForceCompaction}; ContextWindowExceeded: {ContextWindowExceeded}.",
+                    failureState.ConsecutiveFailures,
+                    failureState.CircuitBreakerOpen,
+                    forceCompaction,
+                    contextWindowExceeded);
+                throw;
+            }
+
             _logger.LogWarning(exception, "Automatic compaction failed. Returning un-compacted context. ConsecutiveFailures: {ConsecutiveFailures}; CircuitBreakerOpen: {CircuitBreakerOpen}.", failureState.ConsecutiveFailures, failureState.CircuitBreakerOpen);
             return requestMessages;
         }
     }
 
-    private static int AddTokenBias(int rawEstimatedTokens, int inputTokenBiasTokens) =>
-        (int)Math.Min(int.MaxValue, Math.Max(0L, (long)rawEstimatedTokens + inputTokenBiasTokens));
+    private int GetForcedCompactionAdjustmentTokens(
+        IReadOnlyList<ChatMessage> messages,
+        int inputTokenAdjustmentTokens)
+    {
+        int rawEstimatedTokens = TokenEstimator.Estimate(messages);
+        int requiredAdjustmentTokens = _options.GetAutoCompactThreshold() - rawEstimatedTokens;
+        return Math.Max(inputTokenAdjustmentTokens, requiredAdjustmentTokens);
+    }
 }
 
 /// <summary>Thread-safe automatic-compaction state for a non-agent-session invocation scope.</summary>
