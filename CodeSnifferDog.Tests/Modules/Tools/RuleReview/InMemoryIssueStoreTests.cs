@@ -30,8 +30,8 @@ public sealed class InMemoryIssueStoreTests
         await store.AddAsync(secondFlow, CreateIssue("LateParallel.cs"), CancellationToken.None);
         lease.Restore();
 
-        IReadOnlyList<StoredIssue> firstFlowIssues = await store.ListAsync(firstFlow, CancellationToken.None);
-        IReadOnlyList<StoredIssue> secondFlowIssues = await store.ListAsync(secondFlow, CancellationToken.None);
+        IReadOnlyList<StoredIssue> firstFlowIssues = await store.ListAllAsync(firstFlow, CancellationToken.None);
+        IReadOnlyList<StoredIssue> secondFlowIssues = await store.ListAllAsync(secondFlow, CancellationToken.None);
 
         Assert.HasCount(1, firstFlowIssues);
         Assert.AreEqual("Program.cs", firstFlowIssues[0].FileOrFunction);
@@ -64,7 +64,7 @@ public sealed class InMemoryIssueStoreTests
             return 0;
         });
 
-        IReadOnlyList<StoredIssue> issues = await store.ListAsync(flow, CancellationToken.None);
+        IReadOnlyList<StoredIssue> issues = await store.ListAllAsync(flow, CancellationToken.None);
 
         Assert.HasCount(1, issues);
         Assert.AreEqual("Program.cs", issues[0].FileOrFunction);

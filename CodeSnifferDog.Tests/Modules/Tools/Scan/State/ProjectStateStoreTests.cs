@@ -29,7 +29,7 @@ public sealed class ProjectStateStoreTests
         StoredScanProject storedDuplicate = store.Add(duplicate);
 
         Assert.AreSame(storedFirst, storedDuplicate);
-        Assert.HasCount(1, store.List());
+        Assert.HasCount(1, store.ListAll());
     }
 
     [TestMethod]
@@ -44,7 +44,7 @@ public sealed class ProjectStateStoreTests
         store.Add(ScanProjectStateStore.CreateStoredProject(CreateProject("other"), "other-id"));
         store.Clear();
 
-        Assert.IsEmpty(store.List());
+        Assert.IsEmpty(store.ListAll());
     }
 
     [TestMethod]
@@ -57,7 +57,7 @@ public sealed class ProjectStateStoreTests
         store.Add(ScanProjectStateStore.CreateStoredProject(CreateProject("stale"), "stale-id"));
         store.Restore(snapshot);
 
-        IReadOnlyList<StoredScanProject> projects = store.List();
+        IReadOnlyList<StoredScanProject> projects = store.ListAll();
         Assert.HasCount(1, projects);
         Assert.AreEqual("repo", projects[0].ProjectName);
     }

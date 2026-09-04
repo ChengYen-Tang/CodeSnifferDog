@@ -23,7 +23,7 @@ public sealed class InMemoryProjectStoreTests
 
         lease.Restore();
 
-        IReadOnlyList<StoredScanProject> projects = await store.ListAsync(CancellationToken.None);
+        IReadOnlyList<StoredScanProject> projects = await store.ListAllAsync(CancellationToken.None);
         Assert.HasCount(1, projects);
         Assert.AreEqual("repo", projects[0].ProjectName);
     }
@@ -40,7 +40,7 @@ public sealed class InMemoryProjectStoreTests
         StoredScanProject generatedProject = await AgentRunAttemptContext.RunAsync(attemptId, async () =>
             await store.AddAsync(CreateProject("late"), CancellationToken.None));
 
-        IReadOnlyList<StoredScanProject> projects = await store.ListAsync(CancellationToken.None);
+        IReadOnlyList<StoredScanProject> projects = await store.ListAllAsync(CancellationToken.None);
         Assert.AreEqual("late", generatedProject.ProjectName);
         Assert.HasCount(1, projects);
         Assert.AreEqual("repo", projects[0].ProjectName);
@@ -62,7 +62,7 @@ public sealed class InMemoryProjectStoreTests
             return 0;
         });
 
-        Assert.HasCount(1, await store.ListAsync(CancellationToken.None));
+        Assert.HasCount(1, await store.ListAllAsync(CancellationToken.None));
     }
 
     private static ScanProject CreateProject(string projectName) =>

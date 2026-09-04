@@ -50,10 +50,15 @@ Use the provided tools as your only mechanism for maintaining project plan resul
 - `AddProjectPlanTaskItems`
 - `DeleteProjectPlanTaskItem`
 - `ListProjectPlanTaskItems`
+- `ListProjectPlanTaskItemFiles`
 
 If you identify a task item that should be kept, add it through the tools.
 If an earlier task item should not be kept, delete it through the tools.
 If you need to inspect the current stored task items, use the list tool.
+`ListProjectPlanTaskItems` returns one bounded page of task indexes; when
+`HasMore` is true, pass `NextCursor` back as `Cursor` to inspect the following
+page. Use `ListProjectPlanTaskItemFiles` to inspect a selected task item's
+files in bounded pages.
 
 Do not produce a free-form task-item list instead of using the tools.
 

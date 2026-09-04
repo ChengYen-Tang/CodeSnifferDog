@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Models.RuleReview.Tools.Listing;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
@@ -52,7 +53,7 @@ public sealed class ToolSet
         ToolFactory.CreateAgentTools(new AgentToolCallbacks(
             CreateRuleReviewIssueToolAsync,
             GetRuleReviewIssueToolAsync,
-            ListRuleReviewIssuesAsync,
+            ListRuleReviewIssuesToolAsync,
             UpdateRuleReviewIssueToolAsync,
             DeleteRuleReviewIssueToolAsync,
             SubmitNoIssueConclusionToolAsync));
@@ -116,6 +117,21 @@ public sealed class ToolSet
             new GetRuleReviewIssueArgs
             {
                 RuleReviewIssueId = RuleReviewIssueId,
+            },
+            cancellationToken);
+
+    [Description("List one bounded page of review issue indexes. Use GetRuleReviewIssue for the complete issue details.")]
+    private ValueTask<IssuePage> ListRuleReviewIssuesToolAsync(
+        [Description("The continuation cursor returned by the preceding page. Omit it to start from the first page.")]
+        string? Cursor = null,
+        [Description("The number of issue indexes to return. Defaults to 10 and cannot exceed 20.")]
+        int PageSize = IssuePage.DefaultPageSize,
+        CancellationToken cancellationToken = default) =>
+        ListRuleReviewIssuesAsync(
+            new ListIssuesArgs
+            {
+                Cursor = Cursor,
+                PageSize = PageSize,
             },
             cancellationToken);
 
@@ -229,11 +245,13 @@ public sealed class ToolSet
         _issueToolService.GetRuleReviewIssueAsync(args, cancellationToken);
 
     /// <summary>
-    /// Lists the stored rule-review issues.
+    /// Lists one bounded page of rule-review issue indexes.
     /// </summary>
-    public ValueTask<IReadOnlyList<StoredIssue>> ListRuleReviewIssuesAsync(CancellationToken cancellationToken)
+    public ValueTask<IssuePage> ListRuleReviewIssuesAsync(
+        ListIssuesArgs args,
+        CancellationToken cancellationToken)
         =>
-        _issueToolService.ListRuleReviewIssuesAsync(cancellationToken);
+        _issueToolService.ListRuleReviewIssuesAsync(args, cancellationToken);
 
     /// <summary>
     /// Gets the submitted no-issue conclusion, if one exists.

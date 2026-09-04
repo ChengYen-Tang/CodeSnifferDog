@@ -1,5 +1,7 @@
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ProjectPlan.Tools;
+using CodeSnifferDog.Models.ProjectPlan.Tools.Listing;
+using CodeSnifferDog.Modules.Tools.ProjectPlan.Listing;
 
 namespace CodeSnifferDog.Modules.Tools.ProjectPlan;
 
@@ -68,11 +70,50 @@ internal sealed class TaskItemToolService(ITaskItemStore taskItemStore)
     }
 
     /// <summary>
-    /// Lists all stored project-plan task items.
+    /// Lists one bounded page of project-plan task item indexes.
     /// </summary>
-    public ValueTask<IReadOnlyList<StoredTaskItem>> ListProjectPlanTaskItemsAsync(CancellationToken cancellationToken)
-        =>
-        _taskItemStore.ListAsync(cancellationToken);
+    public async ValueTask<TaskItemPage> ListProjectPlanTaskItemsAsync(
+        ListTaskItemsArgs args,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        int pageSize = args.PageSize ?? TaskItemPage.DefaultPageSize;
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, TaskItemPage.MaxPageSize);
+
+        string? cursor = string.IsNullOrWhiteSpace(args.Cursor)
+            ? null
+            : args.Cursor.Trim();
+        IReadOnlyList<StoredTaskItem> storedTaskItems = await _taskItemStore.ListPageAsync(
+            cursor,
+            pageSize + 1,
+            cancellationToken).ConfigureAwait(false);
+
+        return TaskItemPageFactory.Create(storedTaskItems, pageSize);
+    }
+
+    /// <summary>
+    /// Lists one bounded page of file indexes for a selected project-plan task item.
+    /// </summary>
+    public async ValueTask<FilePage> ListProjectPlanTaskItemFilesAsync(
+        ListFilesArgs args,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        ArgumentException.ThrowIfNullOrWhiteSpace(args.ProjectPlanTaskItemId);
+
+        int offset = args.Offset ?? 0;
+        ArgumentOutOfRangeException.ThrowIfLessThan(offset, 0);
+        int pageSize = args.PageSize ?? FilePage.DefaultPageSize;
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, FilePage.MaxPageSize);
+
+        StoredTaskItem taskItem = await _taskItemStore.GetAsync(
+            args.ProjectPlanTaskItemId.Trim(),
+            cancellationToken).ConfigureAwait(false);
+        return FilePageFactory.Create(taskItem, offset, pageSize);
+    }
 
     /// <summary>
     /// Creates a normalized task item from tool arguments.

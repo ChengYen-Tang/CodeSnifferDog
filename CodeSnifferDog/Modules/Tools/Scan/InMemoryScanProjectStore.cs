@@ -64,10 +64,22 @@ public sealed class InMemoryScanProjectStore : IScanProjectStore
     }
 
     /// <inheritdoc />
-    public ValueTask<IReadOnlyList<StoredScanProject>> ListAsync(CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<StoredScanProject>> ListAllAsync(CancellationToken _)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult(_stateStore.List());
+            return ValueTask.FromResult(_stateStore.ListAll());
+    }
+
+    /// <inheritdoc />
+    public ValueTask<IReadOnlyList<StoredScanProject>> ListPageAsync(
+        string? cursor,
+        int take,
+        CancellationToken _)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+
+        lock (_syncRoot)
+            return ValueTask.FromResult(_stateStore.ListPage(cursor, take));
     }
 
     /// <inheritdoc />

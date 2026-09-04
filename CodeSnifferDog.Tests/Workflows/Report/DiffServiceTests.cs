@@ -249,10 +249,17 @@ public sealed class DiffServiceTests
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public ValueTask<IReadOnlyList<StoredIssue>> ListAsync(
+        public ValueTask<IReadOnlyList<StoredIssue>> ListAllAsync(
             RuleFlowKey ruleFlowKey,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(CurrentIssues);
+
+        public ValueTask<IReadOnlyList<StoredIssue>> ListPageAsync(
+            RuleFlowKey ruleFlowKey,
+            string? cursor,
+            int take,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
 
         public ValueTask<StoredIssue> UpdateAsync(
             RuleFlowKey ruleFlowKey,

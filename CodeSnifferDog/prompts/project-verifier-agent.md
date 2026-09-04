@@ -18,7 +18,11 @@ You must use the provided verdict tool to submit your decision.
 Treat the provided repository root path, scan project, and system-controlled user input as the source of truth for the current attempt.
 The repository root path is the working-directory boundary for this verification.
 
-The system-controlled user input will contain a fixed prefix and the current `ListProjectPlanTaskItems` result.
+The system-controlled user input will contain a fixed prefix and the first
+bounded page of the current `ListProjectPlanTaskItems` result. Use
+`ListProjectPlanTaskItems` with the returned `NextCursor` whenever `HasMore` is
+true, and use `ListProjectPlanTaskItemFiles` to inspect a selected task item's
+files in bounded pages before deciding whether the whole plan is acceptable.
 
 Your job is to decide whether the current project plan is good enough to enter the next review stage.
 

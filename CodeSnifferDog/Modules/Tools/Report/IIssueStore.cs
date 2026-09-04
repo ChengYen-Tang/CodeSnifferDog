@@ -36,10 +36,20 @@ public interface IIssueStore : CodeSnifferDog.Workflows.Common.IScopedRetrySafeA
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lists the repository-level issues in the working report.
+    /// Lists all repository-level issues in the working report for internal aggregation and diff processing.
+    /// This operation is not exposed as an agent tool.
     /// </summary>
-    ValueTask<IReadOnlyList<ReportStoredIssue>> ListAsync(
+    ValueTask<IReadOnlyList<ReportStoredIssue>> ListAllAsync(
         RuleFlowKey ruleFlowKey,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists at most <paramref name="take"/> repository-level issues after <paramref name="cursor"/>.
+    /// </summary>
+    ValueTask<IReadOnlyList<ReportStoredIssue>> ListPageAsync(
+        RuleFlowKey ruleFlowKey,
+        string? cursor,
+        int take,
         CancellationToken cancellationToken);
 
     /// <summary>

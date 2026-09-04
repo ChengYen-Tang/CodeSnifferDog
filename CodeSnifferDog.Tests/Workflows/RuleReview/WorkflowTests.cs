@@ -576,7 +576,7 @@ public sealed class WorkflowTests
         string verdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsEmpty(await issueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsEmpty(await issueStore.ListAllAsync(ruleFlowKey, TestContext.CancellationToken));
         Assert.IsNull(await issueStore.GetNoIssueConclusionAsync(ruleFlowKey, TestContext.CancellationToken));
         Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
     }
@@ -609,7 +609,7 @@ public sealed class WorkflowTests
         string verdictScopeKey = RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsFailed);
-        Assert.IsEmpty(await issueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsEmpty(await issueStore.ListAllAsync(ruleFlowKey, TestContext.CancellationToken));
         Assert.IsNull(await issueStore.GetNoIssueConclusionAsync(ruleFlowKey, TestContext.CancellationToken));
         Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
     }

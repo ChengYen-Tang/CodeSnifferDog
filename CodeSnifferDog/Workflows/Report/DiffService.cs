@@ -27,7 +27,7 @@ internal sealed class DiffService(IIssueStore reportIssueStore)
         IReadOnlyList<StoredIssue> previousSnapshot =
             await _reportIssueStore.GetLatestSnapshotAsync(ruleReportKey, cancellationToken).ConfigureAwait(false);
         IReadOnlyList<StoredIssue> currentIssues =
-            await _reportIssueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
+            await _reportIssueStore.ListAllAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
         Diff diff = BuildDiff(previousSnapshot, currentIssues);
         await _reportIssueStore.SetLatestDiffAsync(ruleFlowKey, diff, cancellationToken).ConfigureAwait(false);

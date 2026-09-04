@@ -1,5 +1,7 @@
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
+using CodeSnifferDog.Modules.Tools.Scan.Listing;
 
 namespace CodeSnifferDog.Modules.Tools.Scan;
 
@@ -81,13 +83,30 @@ internal sealed class ScanProjectToolService(IScanProjectStore scanProjectStore)
     }
 
     /// <summary>
-    /// Lists all stored scan projects.
+    /// Lists one bounded page of scan-project indexes.
     /// </summary>
     /// <param name="cancellationToken">Token that cancels the operation.</param>
-    /// <returns>The stored scan projects.</returns>
-    public ValueTask<IReadOnlyList<StoredScanProject>> ListScanProjectsAsync(CancellationToken cancellationToken)
-        =>
-        _scanProjectStore.ListAsync(cancellationToken);
+    /// <returns>The bounded scan-project index page.</returns>
+    public async ValueTask<ProjectPage> ListScanProjectsAsync(
+        ListProjectsArgs args,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        int pageSize = args.PageSize ?? ProjectPage.DefaultPageSize;
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, ProjectPage.MaxPageSize);
+
+        string? cursor = string.IsNullOrWhiteSpace(args.Cursor)
+            ? null
+            : args.Cursor.Trim();
+        IReadOnlyList<StoredScanProject> storedProjects = await _scanProjectStore.ListPageAsync(
+            cursor,
+            pageSize + 1,
+            cancellationToken).ConfigureAwait(false);
+
+        return ProjectPageFactory.Create(storedProjects, pageSize);
+    }
 
     /// <summary>
     /// Creates a normalized scan project from tool arguments.

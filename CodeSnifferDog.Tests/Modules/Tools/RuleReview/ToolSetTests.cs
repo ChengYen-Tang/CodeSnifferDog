@@ -1,8 +1,11 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Models.RuleReview.Tools.Listing;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.RuleReview;
+using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.RuleReview;
 
@@ -106,7 +109,7 @@ public sealed class ToolSetTests
                 RuleReviewIssueId = $" {created.RuleReviewIssueId} ",
             },
             TestContext.CancellationToken);
-        IReadOnlyList<StoredIssue> issues = await toolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
+        IssuePage issues = await toolSet.ListRuleReviewIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
         bool deleted = await toolSet.DeleteRuleReviewIssueAsync(
             new DeleteRuleReviewIssueArgs
             {
@@ -124,7 +127,7 @@ public sealed class ToolSetTests
         ReviewVerdict? verdict = verdictBuffer.GetLatest(RuleScopeKeyFactory.CreateReviewVerdictScopeKey(ruleFlowKey));
         Assert.AreEqual(created.RuleReviewIssueId, fetched.RuleReviewIssueId);
         Assert.AreEqual("Program.cs", fetched.FileOrFunction);
-        Assert.HasCount(1, issues);
+        Assert.HasCount(1, issues.Items);
         Assert.IsTrue(deleted);
         Assert.IsTrue(verdictSubmitted);
         Assert.IsNull(verdictBuffer.Latest);
@@ -157,10 +160,10 @@ public sealed class ToolSetTests
             },
             TestContext.CancellationToken);
 
-        IReadOnlyList<StoredIssue> issues = await toolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
+        IssuePage issues = await toolSet.ListRuleReviewIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, issues);
-        Assert.AreEqual(Severity.High, issues[0].Severity);
+        Assert.HasCount(1, issues.Items);
+        Assert.AreEqual(Severity.High, issues.Items[0].Severity);
     }
 
     [TestMethod]
@@ -246,19 +249,143 @@ public sealed class ToolSetTests
             },
             TestContext.CancellationToken);
 
-        IReadOnlyList<StoredIssue> firstIssues =
-            await firstToolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
-        IReadOnlyList<StoredIssue> secondIssues =
-            await secondToolSet.ListRuleReviewIssuesAsync(TestContext.CancellationToken);
+        IssuePage firstIssues = await firstToolSet.ListRuleReviewIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
+        IssuePage secondIssues = await secondToolSet.ListRuleReviewIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, firstIssues);
-        Assert.IsEmpty(secondIssues);
+        Assert.HasCount(1, firstIssues.Items);
+        Assert.IsEmpty(secondIssues.Items);
     }
 
-    private static CreateRuleReviewIssueArgs CreateIssueArgs(string severity, string fileOrFunction) =>
+    [TestMethod]
+    public async Task ListRuleReviewIssuesAsync_ReturnsBoundedIndexesAndContinuation()
+    {
+        ToolSet toolSet = new(
+            new InMemoryIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+
+        for (int index = 0; index < 11; index++)
+            await toolSet.CreateRuleReviewIssueAsync(
+                CreateIssueArgs("High", $"File{index:D2}.cs"),
+                TestContext.CancellationToken);
+
+        IssuePage firstPage = await toolSet.ListRuleReviewIssuesAsync(
+            new ListIssuesArgs(),
+            TestContext.CancellationToken);
+        IssuePage secondPage = await toolSet.ListRuleReviewIssuesAsync(
+            new ListIssuesArgs
+            {
+                Cursor = firstPage.NextCursor,
+            },
+            TestContext.CancellationToken);
+
+        Assert.HasCount(IssuePage.DefaultPageSize, firstPage.Items);
+        Assert.IsTrue(firstPage.HasMore);
+        Assert.IsNotNull(firstPage.NextCursor);
+        Assert.HasCount(1, secondPage.Items);
+        Assert.IsFalse(secondPage.HasMore);
+        Assert.IsNull(secondPage.NextCursor);
+    }
+
+    [TestMethod]
+    public async Task ListRuleReviewIssuesAsync_ReturnsBoundedPreviewsAndLeavesDetailsToGet()
+    {
+        ToolSet toolSet = new(
+            new InMemoryIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+        string issueType = new('T', 300);
+        string location = new('L', 300);
+
+        CreateRuleReviewIssueResult created = await toolSet.CreateRuleReviewIssueAsync(
+            CreateIssueArgs("High", location, issueType),
+            TestContext.CancellationToken);
+        IssuePage page = await toolSet.ListRuleReviewIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
+        StoredIssue detail = await toolSet.GetRuleReviewIssueAsync(
+            new GetRuleReviewIssueArgs
+            {
+                RuleReviewIssueId = created.RuleReviewIssueId,
+            },
+            TestContext.CancellationToken);
+
+        IssueListItem item = page.Items[0];
+        Assert.AreEqual(120, item.IssueTypePreview.Length);
+        Assert.AreEqual(160, item.LocationPreview.Length);
+        Assert.IsTrue(item.IssueTypePreview.EndsWith('…'));
+        Assert.IsTrue(item.LocationPreview.EndsWith('…'));
+        Assert.AreEqual(issueType, detail.IssueType);
+        Assert.AreEqual(location, detail.FileOrFunction);
+    }
+
+    [TestMethod]
+    public async Task ListRuleReviewIssuesAsync_DoesNotSplitSurrogatePairsAtPreviewBoundary()
+    {
+        ToolSet toolSet = new(
+            new InMemoryIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+        string issueType = new string('T', 118) + "😀tail";
+
+        await toolSet.CreateRuleReviewIssueAsync(
+            CreateIssueArgs("High", "Program.cs", issueType),
+            TestContext.CancellationToken);
+
+        IssuePage page = await toolSet.ListRuleReviewIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
+        IssueListItem item = page.Items[0];
+
+        Assert.AreEqual(new string('T', 118) + "…", item.IssueTypePreview);
+        Assert.AreEqual(119, item.IssueTypePreview.Length);
+    }
+
+    [TestMethod]
+    public async Task ListRuleReviewIssuesAsync_RejectsPageSizesAboveTheBound()
+    {
+        ToolSet toolSet = new(
+            new InMemoryIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => toolSet.ListRuleReviewIssuesAsync(
+            new ListIssuesArgs
+            {
+                PageSize = IssuePage.MaxPageSize + 1,
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
+    public async Task ListRuleReviewIssuesToolAsync_UsesPagedIndexContract()
+    {
+        ToolSet toolSet = new(
+            new InMemoryIssueStore(),
+            new ReviewVerdictBuffer(),
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", RuleFileName));
+
+        await toolSet.CreateRuleReviewIssueAsync(
+            CreateIssueArgs("High", "Program.cs"),
+            TestContext.CancellationToken);
+        AIFunction tool = Assert.IsInstanceOfType<AIFunction>(
+            toolSet.CreateRuleReviewAgentTools().Single(candidate => candidate.Name == "ListRuleReviewIssues"));
+
+        JsonElement result = Assert.IsInstanceOfType<JsonElement>(await tool.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.CancellationToken));
+        JsonElement item = result.GetProperty("items")[0];
+
+        Assert.IsTrue(item.TryGetProperty("ruleReviewIssueId", out _));
+        Assert.IsTrue(item.TryGetProperty("severity", out _));
+        Assert.IsTrue(item.TryGetProperty("issueTypePreview", out _));
+        Assert.IsTrue(item.TryGetProperty("locationPreview", out _));
+        Assert.IsFalse(item.TryGetProperty("whyThisIsAProblem", out _));
+    }
+
+    private static CreateRuleReviewIssueArgs CreateIssueArgs(
+        string severity,
+        string fileOrFunction,
+        string issueType = "Performance") =>
         new()
         {
-            IssueType = "Performance",
+            IssueType = issueType,
             Severity = severity,
             FileOrFunction = fileOrFunction,
             RelevantCodePatternOrExpression = "Repeated synchronous call",

@@ -1,5 +1,6 @@
 using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
 using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.AI;
 
@@ -33,14 +34,14 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         new(ChatRole.User, _messageTemplates.MissingScanSubmissionMessage);
 
     /// <summary>
-    /// Creates verifier messages for the projects returned by the scan agent.
+    /// Creates verifier messages for the first bounded page of projects returned by the scan agent.
     /// </summary>
-    /// <param name="projects">Projects submitted by the scan agent.</param>
+    /// <param name="projectPage">Bounded scan-project indexes submitted by the scan agent.</param>
     /// <returns>The verifier conversation messages.</returns>
-    public List<ChatMessage> CreateVerifierMessages(IReadOnlyList<StoredScanProject> projects)
+    public List<ChatMessage> CreateVerifierMessages(ProjectPage projectPage)
         =>
     [
-        new(ChatRole.User, BuildVerifierInput(projects)),
+        new(ChatRole.User, BuildVerifierInput(projectPage)),
     ];
 
     /// <summary>
@@ -61,11 +62,11 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         $"{_messageTemplates.ScanInputPrefix}{Environment.NewLine}{Environment.NewLine}{repositoryRootPath}";
 
     /// <summary>
-    /// Builds the verifier payload from serialized scan projects.
+    /// Builds the verifier payload from serialized bounded scan-project indexes.
     /// </summary>
-    /// <param name="projects">Projects submitted by the scan agent.</param>
+    /// <param name="projectPage">Bounded scan-project indexes submitted by the scan agent.</param>
     /// <returns>The formatted verifier input.</returns>
-    private string BuildVerifierInput(IReadOnlyList<StoredScanProject> projects)
+    private string BuildVerifierInput(ProjectPage projectPage)
         =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projects)}";
+        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projectPage)}";
 }

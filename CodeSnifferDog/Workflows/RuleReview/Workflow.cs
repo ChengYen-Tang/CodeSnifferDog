@@ -143,7 +143,9 @@ public sealed class Workflow(
                 if (runReviewResult.IsFailed)
                     return runReviewResult.ToResult<WorkflowResult>();
 
-                IReadOnlyList<StoredIssue> issues = await _issueStore.ListAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<StoredIssue> issues = await _issueStore.ListAllAsync(
+                    ruleFlowKey,
+                    cancellationToken).ConfigureAwait(false);
                 NoIssueConclusion? noIssueConclusion = await _issueStore.GetNoIssueConclusionAsync(ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
                 if (issues.Count == 0 && noIssueConclusion is null)

@@ -53,12 +53,25 @@ public sealed class InMemoryIssueStore : IIssueStore
     }
 
     /// <inheritdoc />
-    public ValueTask<IReadOnlyList<StoredIssue>> ListAsync(
+    public ValueTask<IReadOnlyList<StoredIssue>> ListAllAsync(
         RuleFlowKey ruleFlowKey,
         CancellationToken _)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult(_stateStore.List(ruleFlowKey));
+            return ValueTask.FromResult(_stateStore.ListAll(ruleFlowKey));
+    }
+
+    /// <inheritdoc />
+    public ValueTask<IReadOnlyList<StoredIssue>> ListPageAsync(
+        RuleFlowKey ruleFlowKey,
+        string? cursor,
+        int take,
+        CancellationToken _)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+
+        lock (_syncRoot)
+            return ValueTask.FromResult(_stateStore.ListPage(ruleFlowKey, cursor, take));
     }
 
     /// <inheritdoc />

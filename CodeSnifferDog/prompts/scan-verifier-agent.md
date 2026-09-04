@@ -15,7 +15,10 @@ You must use the provided verdict tool to submit your decision.
 Treat the provided repository root path and system-controlled user input as the source of truth for the current attempt.
 The repository root path is the working-directory boundary for this verification.
 
-The system-controlled user input will contain a fixed prefix and the current `ListScanProjects` result.
+The system-controlled user input will contain a fixed prefix and the first bounded
+page of the current `ListScanProjects` result. Use `ListScanProjects` with the
+returned `NextCursor` whenever `HasMore` is true before deciding whether the
+whole scan result is acceptable.
 
 Your job is to decide whether the current scan result is good enough to enter the next planning stage.
 

@@ -1,7 +1,9 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Models.RuleReview.Tools.Listing;
 using CodeSnifferDog.Modules.Tools.Issues;
+using CodeSnifferDog.Modules.Tools.Listing;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
@@ -12,6 +14,9 @@ internal sealed class IssueToolService(
     IIssueStore issueStore,
     RuleFlowKey ruleFlowKey)
 {
+    private const int IssueTypePreviewLength = 120;
+    private const int LocationPreviewLength = 160;
+
     private readonly IIssueStore _issueStore = issueStore;
     private readonly RuleFlowKey _ruleFlowKey = ruleFlowKey;
 
@@ -47,11 +52,43 @@ internal sealed class IssueToolService(
     }
 
     /// <summary>
-    /// Lists the stored rule-review issues.
+    /// Lists one bounded page of rule-review issue indexes.
     /// </summary>
-    public ValueTask<IReadOnlyList<StoredIssue>> ListRuleReviewIssuesAsync(CancellationToken cancellationToken)
-        =>
-        _issueStore.ListAsync(_ruleFlowKey, cancellationToken);
+    public async ValueTask<IssuePage> ListRuleReviewIssuesAsync(
+        ListIssuesArgs args,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        int pageSize = args.PageSize ?? IssuePage.DefaultPageSize;
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, IssuePage.MaxPageSize);
+
+        string? cursor = string.IsNullOrWhiteSpace(args.Cursor)
+            ? null
+            : args.Cursor.Trim();
+        IReadOnlyList<StoredIssue> storedIssues = await _issueStore.ListPageAsync(
+            _ruleFlowKey,
+            cursor,
+            pageSize + 1,
+            cancellationToken).ConfigureAwait(false);
+
+        bool hasMore = storedIssues.Count > pageSize;
+        int itemCount = Math.Min(storedIssues.Count, pageSize);
+        IssueListItem[] items = new IssueListItem[itemCount];
+
+        for (int index = 0; index < itemCount; index++)
+            items[index] = CreateListItem(storedIssues[index]);
+
+        return new IssuePage
+        {
+            Items = items,
+            HasMore = hasMore,
+            NextCursor = hasMore
+                ? storedIssues[itemCount - 1].RuleReviewIssueId
+                : null,
+        };
+    }
 
     /// <summary>
     /// Gets the submitted no-issue conclusion, if one exists.
@@ -138,4 +175,16 @@ internal sealed class IssueToolService(
             args.ScopeCoverage,
             args.CrossScopeAnalysis,
             args.ReviewStrategy);
+
+    /// <summary>
+    /// Creates the compact index representation of one stored issue.
+    /// </summary>
+    private static IssueListItem CreateListItem(StoredIssue issue) =>
+        new()
+        {
+            RuleReviewIssueId = issue.RuleReviewIssueId,
+            Severity = issue.Severity,
+            IssueTypePreview = TextPreview.Create(issue.IssueType, IssueTypePreviewLength),
+            LocationPreview = TextPreview.Create(issue.FileOrFunction, LocationPreviewLength),
+        };
 }

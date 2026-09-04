@@ -1,6 +1,7 @@
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
@@ -43,7 +44,7 @@ public sealed class ScanToolSet
             AddScanProjectToolAsync,
             AddScanProjectsToolAsync,
             DeleteScanProjectToolAsync,
-            ListScanProjectsAsync));
+            ListScanProjectsToolAsync));
 
     /// <summary>
     /// Creates the tools used by scan verifiers.
@@ -52,7 +53,7 @@ public sealed class ScanToolSet
     public IList<AITool> CreateVerifierTools()
         =>
         ScanToolFactory.CreateVerifierTools(new ScanVerifierToolCallbacks(
-            ListScanProjectsAsync,
+            ListScanProjectsToolAsync,
             SubmitReviewVerdictToolAsync));
 
     [Description("Add one discovered project unit to the current scan result.")]
@@ -97,6 +98,21 @@ public sealed class ScanToolSet
             new DeleteScanProjectArgs
             {
                 ScanProjectId = ScanProjectId,
+            },
+            cancellationToken);
+
+    [Description("List one bounded page of scan-project indexes.")]
+    private ValueTask<ProjectPage> ListScanProjectsToolAsync(
+        [Description("The continuation cursor returned by the preceding page. Omit it to start from the first page.")]
+        string? Cursor = null,
+        [Description("The number of project indexes to return. Defaults to 10 and cannot exceed 20.")]
+        int PageSize = ProjectPage.DefaultPageSize,
+        CancellationToken cancellationToken = default) =>
+        ListScanProjectsAsync(
+            new ListProjectsArgs
+            {
+                Cursor = Cursor,
+                PageSize = PageSize,
             },
             cancellationToken);
 
@@ -147,13 +163,15 @@ public sealed class ScanToolSet
         _projectToolService.DeleteScanProjectAsync(args, cancellationToken);
 
     /// <summary>
-    /// Lists all stored scan projects.
+    /// Lists one bounded page of scan-project indexes.
     /// </summary>
     /// <param name="cancellationToken">Token that cancels the operation.</param>
-    /// <returns>The stored scan projects.</returns>
-    public ValueTask<IReadOnlyList<StoredScanProject>> ListScanProjectsAsync(CancellationToken cancellationToken)
+    /// <returns>The bounded scan-project index page.</returns>
+    public ValueTask<ProjectPage> ListScanProjectsAsync(
+        ListProjectsArgs args,
+        CancellationToken cancellationToken)
         =>
-        _projectToolService.ListScanProjectsAsync(cancellationToken);
+        _projectToolService.ListScanProjectsAsync(args, cancellationToken);
 
     /// <summary>
     /// Stores the verifier verdict for the current scan attempt.

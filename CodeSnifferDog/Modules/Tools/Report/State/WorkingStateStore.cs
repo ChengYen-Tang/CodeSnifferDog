@@ -24,6 +24,10 @@ internal sealed class WorkingStateStore
         foreach (ReportStoredIssue issue in snapshotIssues)
             flowState.WorkingIssues.Add(RuleIssueStoreMapper.Clone(issue));
 
+        flowState.WorkingIssues.Sort(static (left, right) => string.CompareOrdinal(
+            left.RuleReportIssueId,
+            right.RuleReportIssueId));
+
         flowState.LatestDiff = CreateEmptyDiff();
     }
 
@@ -39,23 +43,48 @@ internal sealed class WorkingStateStore
             return existingIssue;
 
         ReportStoredIssue storedIssue = RuleIssueStoreMapper.CreateReportIssue(normalizedIssue, issueId);
-        flowState.WorkingIssues.Add(storedIssue);
+        flowState.WorkingIssues.Insert(
+            FindInsertionIndex(flowState.WorkingIssues, storedIssue.RuleReportIssueId),
+            storedIssue);
         return storedIssue;
     }
 
     /// <summary>
     /// Gets one stored working issue by identifier.
     /// </summary>
-    public ReportStoredIssue Get(RuleFlowKey ruleFlowKey, string ruleReportIssueId) =>
-        GetOrCreate(ruleFlowKey).WorkingIssues
-            .FirstOrDefault(item => item.RuleReportIssueId == ruleReportIssueId.Trim())
-        ?? throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}");
+    public ReportStoredIssue Get(RuleFlowKey ruleFlowKey, string ruleReportIssueId)
+    {
+        List<ReportStoredIssue> issues = GetOrCreate(ruleFlowKey).WorkingIssues;
+        int index = FindIndex(issues, ruleReportIssueId.Trim());
+
+        return index >= 0
+            ? issues[index]
+            : throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}");
+    }
 
     /// <summary>
     /// Lists the working issues for one rule flow.
     /// </summary>
-    public IReadOnlyList<ReportStoredIssue> List(RuleFlowKey ruleFlowKey) =>
+    public IReadOnlyList<ReportStoredIssue> ListAll(RuleFlowKey ruleFlowKey) =>
         [.. GetOrCreate(ruleFlowKey).WorkingIssues];
+
+    /// <summary>
+    /// Lists at most <paramref name="take"/> working issues after <paramref name="cursor"/>.
+    /// </summary>
+    public IReadOnlyList<ReportStoredIssue> ListPage(RuleFlowKey ruleFlowKey, string? cursor, int take)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+
+        List<ReportStoredIssue> issues = GetOrCreate(ruleFlowKey).WorkingIssues;
+        int startIndex = string.IsNullOrWhiteSpace(cursor)
+            ? 0
+            : FindFirstAfter(issues, cursor.Trim());
+        int count = Math.Min(take, issues.Count - startIndex);
+
+        return count == 0
+            ? []
+            : issues.GetRange(startIndex, count);
+    }
 
     /// <summary>
     /// Updates one stored working issue by identifier.
@@ -63,7 +92,7 @@ internal sealed class WorkingStateStore
     public ReportStoredIssue Update(RuleFlowKey ruleFlowKey, string ruleReportIssueId, NormalizedRuleIssue normalizedIssue)
     {
         FlowState flowState = GetOrCreate(ruleFlowKey);
-        int index = flowState.WorkingIssues.FindIndex(item => item.RuleReportIssueId == ruleReportIssueId.Trim());
+        int index = FindIndex(flowState.WorkingIssues, ruleReportIssueId.Trim());
 
         if (index < 0)
             throw new KeyNotFoundException($"Rule report issue was not found: {ruleReportIssueId}");
@@ -81,12 +110,12 @@ internal sealed class WorkingStateStore
     public bool Delete(RuleFlowKey ruleFlowKey, string ruleReportIssueId)
     {
         FlowState flowState = GetOrCreate(ruleFlowKey);
-        ReportStoredIssue? issue = flowState.WorkingIssues.FirstOrDefault(item => item.RuleReportIssueId == ruleReportIssueId.Trim());
+        int index = FindIndex(flowState.WorkingIssues, ruleReportIssueId.Trim());
 
-        if (issue is null)
+        if (index < 0)
             return false;
 
-        flowState.WorkingIssues.Remove(issue);
+        flowState.WorkingIssues.RemoveAt(index);
         return true;
     }
 
@@ -174,5 +203,59 @@ internal sealed class WorkingStateStore
         state = new FlowState();
         _flowStates.Add(ruleFlowKey, state);
         return state;
+    }
+
+    /// <summary>
+    /// Finds the index of the specified issue identifier.
+    /// </summary>
+    private static int FindIndex(List<ReportStoredIssue> issues, string ruleReportIssueId)
+    {
+        int index = FindInsertionIndex(issues, ruleReportIssueId);
+        return index < issues.Count && string.Equals(
+            issues[index].RuleReportIssueId,
+            ruleReportIssueId,
+            StringComparison.Ordinal)
+            ? index
+            : -1;
+    }
+
+    /// <summary>
+    /// Finds the first insertion position for an issue identifier.
+    /// </summary>
+    private static int FindInsertionIndex(List<ReportStoredIssue> issues, string ruleReportIssueId)
+    {
+        int low = 0;
+        int high = issues.Count;
+
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (string.CompareOrdinal(issues[middle].RuleReportIssueId, ruleReportIssueId) < 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
+
+    /// <summary>
+    /// Finds the first issue whose identifier sorts after the supplied cursor.
+    /// </summary>
+    private static int FindFirstAfter(List<ReportStoredIssue> issues, string cursor)
+    {
+        int low = 0;
+        int high = issues.Count;
+
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (string.CompareOrdinal(issues[middle].RuleReportIssueId, cursor) <= 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
     }
 }

@@ -40,12 +40,12 @@ public sealed class ToolMetadataCompatibilityTests
                 ("AddScanProject", "Add one discovered project unit to the current scan result."),
                 ("AddScanProjects", "Add multiple discovered project units to the current scan result."),
                 ("DeleteScanProject", "Delete an existing scan project from the current scan result by its id."),
-                ("ListScanProjects", "List all scan projects currently stored for this scan attempt."),
+                ("ListScanProjects", "List one bounded page of scan-project indexes."),
             ]);
         ToolMetadataAssertions.AssertToolMetadata(
             toolSet.CreateVerifierTools(),
             [
-                ("ListScanProjects", "List all scan projects currently stored for this scan attempt."),
+                ("ListScanProjects", "List one bounded page of scan-project indexes."),
                 ("SubmitReviewVerdict", "Submit the verifier approval or rejection for the current scan result."),
             ]);
     }
@@ -61,12 +61,14 @@ public sealed class ToolMetadataCompatibilityTests
                 ("AddProjectPlanTaskItem", "Add one task item to the current project planning result."),
                 ("AddProjectPlanTaskItems", "Add multiple task items to the current project planning result."),
                 ("DeleteProjectPlanTaskItem", "Delete an existing task item from the current project planning result by its id."),
-                ("ListProjectPlanTaskItems", "List all task items currently stored for this project planning attempt."),
+                ("ListProjectPlanTaskItems", "List one bounded page of project-plan task item indexes. Use ListProjectPlanTaskItemFiles for a selected task item's files."),
+                ("ListProjectPlanTaskItemFiles", "List one bounded page of files for a selected project-plan task item."),
             ]);
         ToolMetadataAssertions.AssertToolMetadata(
             toolSet.CreateVerifierTools(),
             [
-                ("ListProjectPlanTaskItems", "List all task items currently stored for this project planning attempt."),
+                ("ListProjectPlanTaskItems", "List one bounded page of project-plan task item indexes. Use ListProjectPlanTaskItemFiles for a selected task item's files."),
+                ("ListProjectPlanTaskItemFiles", "List one bounded page of files for a selected project-plan task item."),
                 ("SubmitReviewVerdict", "Submit the verifier approval or rejection for the current project planning result."),
             ]);
     }
@@ -84,7 +86,7 @@ public sealed class ToolMetadataCompatibilityTests
             [
                 ("CreateRuleReviewIssue", "Create one new review issue for the current rule review attempt."),
                 ("GetRuleReviewIssue", "Get one stored review issue by its id from the current rule review attempt."),
-                ("ListRuleReviewIssues", "List all stored review issues for the current rule review attempt."),
+                ("ListRuleReviewIssues", "List one bounded page of review issue indexes. Use GetRuleReviewIssue for complete issue details."),
                 ("UpdateRuleReviewIssue", "Update one existing review issue by its id for the current rule review attempt."),
                 ("DeleteRuleReviewIssue", "Delete one existing review issue by its id from the current rule review attempt."),
                 ("SubmitNoIssueConclusion", "Submit a no-issue conclusion for the current rule review attempt when no issues exist."),
@@ -109,7 +111,7 @@ public sealed class ToolMetadataCompatibilityTests
             toolSet.CreateReportAggregatorTools(),
             [
                 ("GetRuleReportIssue", "Get one stored repository-level rule report issue by its id."),
-                ("ListRuleReportIssues", "List all repository-level rule report issues for the current rule."),
+                ("ListRuleReportIssues", "List one bounded page of repository-level rule report issue indexes. Use GetRuleReportIssue for complete issue details."),
                 ("CreateRuleReportIssue", "Create one new repository-level rule report issue for the current rule."),
                 ("UpdateRuleReportIssue", "Update one existing repository-level rule report issue by its id."),
                 ("DeleteRuleReportIssue", "Delete one existing repository-level rule report issue by its id."),
@@ -147,6 +149,14 @@ public sealed class ToolMetadataCompatibilityTests
             new Dictionary<string, string>
             {
                 ["ScanProjectId"] = "The id of the stored scan project to delete from the current scan result.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<ScanToolSet>(
+            "ListScanProjectsToolAsync",
+            "List one bounded page of scan-project indexes.",
+            new Dictionary<string, string>
+            {
+                ["Cursor"] = "The continuation cursor returned by the preceding page. Omit it to start from the first page.",
+                ["PageSize"] = "The number of project indexes to return. Defaults to 10 and cannot exceed 20.",
             });
         AssertVerdictAdapter<ScanToolSet>(
             "Submit the verifier approval or rejection for the current scan result.",
@@ -205,6 +215,23 @@ public sealed class ToolMetadataCompatibilityTests
             new Dictionary<string, string>
             {
                 ["ProjectPlanTaskItemId"] = "The id of the stored task item to delete from the current project planning result.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<ProjectPlanToolSet>(
+            "ListProjectPlanTaskItemsToolAsync",
+            "List one bounded page of project-plan task item indexes. Use ListProjectPlanTaskItemFiles for a selected task item's files.",
+            new Dictionary<string, string>
+            {
+                ["Cursor"] = "The continuation cursor returned by the preceding page. Omit it to start from the first page.",
+                ["PageSize"] = "The number of task item indexes to return. Defaults to 10 and cannot exceed 20.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<ProjectPlanToolSet>(
+            "ListProjectPlanTaskItemFilesToolAsync",
+            "List one bounded page of files for a selected project-plan task item.",
+            new Dictionary<string, string>
+            {
+                ["ProjectPlanTaskItemId"] = "The id of the stored task item whose files should be listed.",
+                ["Offset"] = "The zero-based file offset returned by the preceding page. Omit it to start from the first file.",
+                ["PageSize"] = "The number of file indexes to return. Defaults to 10 and cannot exceed 20.",
             });
         AssertVerdictAdapter<ProjectPlanToolSet>(
             "Submit the verifier approval or rejection for the current project planning result.",
@@ -273,6 +300,14 @@ public sealed class ToolMetadataCompatibilityTests
             new Dictionary<string, string>
             {
                 ["RuleReportIssueId"] = "The id of the stored repository-level rule report issue to retrieve.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<ReportToolSet>(
+            "ListRuleReportIssuesToolAsync",
+            "List one bounded page of repository-level rule report issue indexes. Use GetRuleReportIssue for complete issue details.",
+            new Dictionary<string, string>
+            {
+                ["Cursor"] = "The continuation cursor returned by the preceding page. Omit it to start from the first page.",
+                ["PageSize"] = "The number of issue indexes to return. Defaults to 10 and cannot exceed 20.",
             });
         ToolMetadataAssertions.AssertAdapterDescription<ReportToolSet>(
             "CreateRuleReportIssueToolAsync",

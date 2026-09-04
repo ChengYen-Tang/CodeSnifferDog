@@ -1,12 +1,15 @@
 using CodeSnifferDog.Models.Common.Tools;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ProjectPlan.Tools;
+using CodeSnifferDog.Models.ProjectPlan.Tools.Listing;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Models.RuleReview.Tools.Listing;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
 using CodeSnifferDog.Modules.Tools.Common;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 using CodeSnifferDog.Modules.Tools.Scan;
@@ -18,6 +21,7 @@ using RuleReviewToolFactory = CodeSnifferDog.Modules.Tools.RuleReview.ToolFactor
 using RuleReviewAgentToolCallbacks = CodeSnifferDog.Modules.Tools.RuleReview.AgentToolCallbacks;
 using RuleReviewVerifierToolCallbacks = CodeSnifferDog.Modules.Tools.RuleReview.VerifierToolCallbacks;
 using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using ReportIssuePage = CodeSnifferDog.Models.Report.Tools.Listing.IssuePage;
 using ReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Tests.Modules.Tools;
@@ -140,16 +144,18 @@ public sealed class ToolFactoryTypedSeamTests
             AddProjectPlanTaskItemTool,
             AddProjectPlanTaskItemsTool,
             DeleteProjectPlanTaskItemTool,
-            ListProjectPlanTaskItemsTool));
+            ListProjectPlanTaskItemsTool,
+            ListProjectPlanTaskItemFilesTool));
         IList<AITool> verifierTools = ToolFactory.CreateVerifierTools(new ProjectPlanVerifierToolCallbacks(
             ListProjectPlanTaskItemsTool,
+            ListProjectPlanTaskItemFilesTool,
             SubmitReviewVerdictTool));
 
         CollectionAssert.AreEqual(
-            new[] { "AddProjectPlanTaskItem", "AddProjectPlanTaskItems", "DeleteProjectPlanTaskItem", "ListProjectPlanTaskItems" },
+            new[] { "AddProjectPlanTaskItem", "AddProjectPlanTaskItems", "DeleteProjectPlanTaskItem", "ListProjectPlanTaskItems", "ListProjectPlanTaskItemFiles" },
             agentTools.Select(tool => tool.Name).ToArray());
         CollectionAssert.AreEqual(
-            new[] { "ListProjectPlanTaskItems", "SubmitReviewVerdict" },
+            new[] { "ListProjectPlanTaskItems", "ListProjectPlanTaskItemFiles", "SubmitReviewVerdict" },
             verifierTools.Select(tool => tool.Name).ToArray());
     }
 
@@ -219,8 +225,15 @@ public sealed class ToolFactoryTypedSeamTests
     private static ValueTask<bool> DeleteScanProjectTool(string ScanProjectId, CancellationToken cancellationToken) =>
         ValueTask.FromResult(true);
 
-    private static ValueTask<IReadOnlyList<StoredScanProject>> ListScanProjectsTool(CancellationToken cancellationToken) =>
-        ValueTask.FromResult<IReadOnlyList<StoredScanProject>>([]);
+    private static ValueTask<ProjectPage> ListScanProjectsTool(
+        string? Cursor,
+        int PageSize,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ProjectPage
+        {
+            Items = [],
+            HasMore = false,
+        });
 
     private static ValueTask<AddProjectPlanTaskItemResult> AddProjectPlanTaskItemTool(
         IReadOnlyList<PlanFile> Files,
@@ -235,8 +248,27 @@ public sealed class ToolFactoryTypedSeamTests
     private static ValueTask<bool> DeleteProjectPlanTaskItemTool(string ProjectPlanTaskItemId, CancellationToken cancellationToken) =>
         ValueTask.FromResult(true);
 
-    private static ValueTask<IReadOnlyList<StoredTaskItem>> ListProjectPlanTaskItemsTool(CancellationToken cancellationToken) =>
-        ValueTask.FromResult<IReadOnlyList<StoredTaskItem>>([]);
+    private static ValueTask<TaskItemPage> ListProjectPlanTaskItemsTool(
+        string? Cursor,
+        int PageSize,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new TaskItemPage
+        {
+            Items = [],
+            HasMore = false,
+        });
+
+    private static ValueTask<FilePage> ListProjectPlanTaskItemFilesTool(
+        string ProjectPlanTaskItemId,
+        int Offset,
+        int PageSize,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new FilePage
+        {
+            ProjectPlanTaskItemId = ProjectPlanTaskItemId,
+            Items = [],
+            HasMore = false,
+        });
 
     private static ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueTool(
         string IssueType,
@@ -256,8 +288,15 @@ public sealed class ToolFactoryTypedSeamTests
     private static ValueTask<ReviewStoredIssue> GetRuleReviewIssueTool(string RuleReviewIssueId, CancellationToken cancellationToken) =>
         ValueTask.FromResult(new ReviewStoredIssue { RuleReviewIssueId = RuleReviewIssueId, IssueType = "", Severity = Severity.Low, FileOrFunction = "", RelevantCodePatternOrExpression = "", WhyThisIsAProblem = "", Confidence = "", FollowUpFiles = "", SuggestedFixDirection = "", ScopeCoverage = "", CrossScopeAnalysis = "", ReviewStrategy = "" });
 
-    private static ValueTask<IReadOnlyList<ReviewStoredIssue>> ListRuleReviewIssuesTool(CancellationToken cancellationToken) =>
-        ValueTask.FromResult<IReadOnlyList<ReviewStoredIssue>>([]);
+    private static ValueTask<IssuePage> ListRuleReviewIssuesTool(
+        string? Cursor,
+        int PageSize,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new IssuePage
+        {
+            Items = [],
+            HasMore = false,
+        });
 
     private static ValueTask<ReviewStoredIssue> UpdateRuleReviewIssueTool(
         string RuleReviewIssueId,
@@ -289,8 +328,15 @@ public sealed class ToolFactoryTypedSeamTests
     private static ValueTask<ReportStoredIssue> GetRuleReportIssueTool(string RuleReportIssueId, CancellationToken cancellationToken) =>
         ValueTask.FromResult(new ReportStoredIssue { RuleReportIssueId = RuleReportIssueId, IssueType = "", Severity = Severity.Low, FileOrFunction = "", RelevantCodePatternOrExpression = "", WhyThisIsAProblem = "", Confidence = "", FollowUpFiles = "", SuggestedFixDirection = "", ScopeCoverage = "", CrossScopeAnalysis = "", ReviewStrategy = "" });
 
-    private static ValueTask<IReadOnlyList<ReportStoredIssue>> ListRuleReportIssuesTool(CancellationToken cancellationToken) =>
-        ValueTask.FromResult<IReadOnlyList<ReportStoredIssue>>([]);
+    private static ValueTask<ReportIssuePage> ListRuleReportIssuesTool(
+        string? Cursor,
+        int PageSize,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ReportIssuePage
+        {
+            Items = [],
+            HasMore = false,
+        });
 
     private static ValueTask<CreateRuleReportIssueResult> CreateRuleReportIssueTool(
         string IssueType,

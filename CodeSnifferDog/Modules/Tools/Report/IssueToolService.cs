@@ -1,8 +1,10 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
+using CodeSnifferDog.Models.Report.Tools.Listing;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Tools.Issues;
+using CodeSnifferDog.Modules.Tools.Report.Listing;
 using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
@@ -30,11 +32,29 @@ internal sealed class IssueToolService(
     }
 
     /// <summary>
-    /// Lists the repository-level issues in the working report.
+    /// Lists one bounded page of repository-level issue indexes.
     /// </summary>
-    public ValueTask<IReadOnlyList<ReportStoredIssue>> ListRuleReportIssuesAsync(CancellationToken cancellationToken)
-        =>
-        _reportIssueStore.ListAsync(_ruleFlowKey, cancellationToken);
+    public async ValueTask<IssuePage> ListRuleReportIssuesAsync(
+        ListIssuesArgs args,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        int pageSize = args.PageSize ?? IssuePage.DefaultPageSize;
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, IssuePage.MaxPageSize);
+
+        string? cursor = string.IsNullOrWhiteSpace(args.Cursor)
+            ? null
+            : args.Cursor.Trim();
+        IReadOnlyList<ReportStoredIssue> storedIssues = await _reportIssueStore.ListPageAsync(
+            _ruleFlowKey,
+            cursor,
+            pageSize + 1,
+            cancellationToken).ConfigureAwait(false);
+
+        return IssuePageFactory.Create(storedIssues, pageSize);
+    }
 
     /// <summary>
     /// Creates one stored repository-level issue.

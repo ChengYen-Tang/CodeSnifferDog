@@ -92,7 +92,7 @@ public sealed class WorkflowTests
         IReadOnlyList<ReportStoredIssue> latestSnapshot = await reportIssueStore.GetLatestSnapshotAsync(
             RuleScopeKeyFactory.CreateRuleReportKey(TestRepositoryPaths.RootPath, RuleFileName),
             TestContext.CancellationToken);
-        IReadOnlyList<ReportStoredIssue> clearedWorkingIssues = await reportIssueStore.ListAsync(
+        IReadOnlyList<ReportStoredIssue> clearedWorkingIssues = await reportIssueStore.ListAllAsync(
             RuleScopeKeyFactory.CreateRuleFlowKey(TestRepositoryPaths.RootPath, "task-item-1", RuleFileName),
             TestContext.CancellationToken);
 
@@ -401,7 +401,7 @@ public sealed class WorkflowTests
         string verdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsEmpty(await reportIssueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsEmpty(await reportIssueStore.ListAllAsync(ruleFlowKey, TestContext.CancellationToken));
         Assert.IsEmpty((await reportIssueStore.GetLatestDiffAsync(ruleFlowKey, TestContext.CancellationToken)).CreatedIssues);
         Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
     }
@@ -435,7 +435,7 @@ public sealed class WorkflowTests
         string verdictScopeKey = RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey);
 
         Assert.IsTrue(result.IsFailed);
-        Assert.IsEmpty(await reportIssueStore.ListAsync(ruleFlowKey, TestContext.CancellationToken));
+        Assert.IsEmpty(await reportIssueStore.ListAllAsync(ruleFlowKey, TestContext.CancellationToken));
         Assert.IsEmpty((await reportIssueStore.GetLatestDiffAsync(ruleFlowKey, TestContext.CancellationToken)).CreatedIssues);
         Assert.IsNull(verdictBuffer.GetLatest(verdictScopeKey));
     }
@@ -615,7 +615,7 @@ public sealed class WorkflowTests
             RuleFlowKey ruleFlowKey =
                 RuleScopeKeyFactory.CreateRuleFlowKey(TestRepositoryPaths.RootPath, "task-item-1", RuleFileName);
             IReadOnlyList<ReportStoredIssue> workingIssues =
-                reportIssueStore.ListAsync(ruleFlowKey, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+                reportIssueStore.ListAllAsync(ruleFlowKey, CancellationToken.None).AsTask().GetAwaiter().GetResult();
 
             return CreateFunctionCallResponse(
                 "update-report-issue",

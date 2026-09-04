@@ -4,6 +4,8 @@ using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Review;
 using CodeSnifferDog.Modules.Tools.Scan;
+using CodeSnifferDog.Modules.Tools.Scan.Listing;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
 using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
@@ -112,9 +114,12 @@ public sealed class Workflow(
             if (runScanResult.IsFailed)
                 return runScanResult.ToResult<ScanWorkflowResult>();
 
-            IReadOnlyList<StoredScanProject> projects = await _scanProjectStore.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<StoredScanProject> verifierProjects = await _scanProjectStore.ListPageAsync(
+                cursor: null,
+                take: ProjectPage.DefaultPageSize + 1,
+                cancellationToken).ConfigureAwait(false);
 
-            if (projects.Count == 0)
+            if (verifierProjects.Count == 0)
             {
                 missingSubmissionAttempts++;
 
@@ -141,7 +146,8 @@ public sealed class Workflow(
             }
 
             missingSubmissionAttempts = 0;
-            List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(projects);
+            ProjectPage projectPage = ProjectPageFactory.Create(verifierProjects, ProjectPage.DefaultPageSize);
+            List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(projectPage);
             int verifierPublishedMessageCount = 0;
             int verifierMissingVerdictAttempts = 0;
 
@@ -181,30 +187,44 @@ public sealed class Workflow(
                 }
 
                 if (verdict.Approved)
-                    return Result.Ok(ResultFactory.Create(
-                        projects,
+                    return Result.Ok(await CreateResultAsync(
                         verdict,
                         scanAttempts,
                         verifierAttempts,
-                        scanAgentResetCount));
+                        scanAgentResetCount,
+                        cancellationToken).ConfigureAwait(false));
 
                 verifierRejectionAttempts++;
 
                 if (RetryLimit.IsReached(verifierRejectionAttempts, _options.MaxVerifierRejectionAttempts))
                 {
                     await scanVerifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    return Result.Ok(ResultFactory.Create(
-                        projects,
+                    return Result.Ok(await CreateResultAsync(
                         verdict,
                         scanAttempts,
                         verifierAttempts,
-                        scanAgentResetCount));
+                        scanAgentResetCount,
+                        cancellationToken).ConfigureAwait(false));
                 }
 
                 scanMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Creates the final scan result from the complete stored project set after verification concludes.
+    /// </summary>
+    private async ValueTask<ScanWorkflowResult> CreateResultAsync(
+        ReviewVerdict verdict,
+        int scanAttempts,
+        int verifierAttempts,
+        int scanAgentResetCount,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<StoredScanProject> projects = await _scanProjectStore.ListAllAsync(cancellationToken).ConfigureAwait(false);
+        return ResultFactory.Create(projects, verdict, scanAttempts, verifierAttempts, scanAgentResetCount);
     }
 
     /// <summary>

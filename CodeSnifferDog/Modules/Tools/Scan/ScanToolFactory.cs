@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
 
 namespace CodeSnifferDog.Modules.Tools.Scan;
 
@@ -35,7 +36,7 @@ internal static class ScanToolFactory
         AIFunctionFactory.Create(
             callbacks.ListScanProjectsTool,
             "ListScanProjects",
-            "List all scan projects currently stored for this scan attempt.",
+            "List one bounded page of scan-project indexes.",
             serializerOptions: null),
     ];
 
@@ -50,7 +51,7 @@ internal static class ScanToolFactory
         AIFunctionFactory.Create(
             callbacks.ListScanProjectsTool,
             "ListScanProjects",
-            "List all scan projects currently stored for this scan attempt.",
+            "List one bounded page of scan-project indexes.",
             serializerOptions: null),
         AIFunctionFactory.Create(
             callbacks.SubmitReviewVerdictTool,
@@ -109,8 +110,10 @@ internal delegate ValueTask<bool> DeleteScanProjectToolCallback(
 /// <summary>
 /// Represents the callback used to list stored scan projects.
 /// </summary>
-internal delegate ValueTask<IReadOnlyList<StoredScanProject>> ListScanProjectsToolCallback(
-    CancellationToken cancellationToken);
+internal delegate ValueTask<ProjectPage> ListScanProjectsToolCallback(
+    string? Cursor = null,
+    int PageSize = ProjectPage.DefaultPageSize,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Represents the callback used to submit the verifier verdict.

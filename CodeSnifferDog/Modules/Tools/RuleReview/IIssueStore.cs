@@ -19,9 +19,19 @@ public interface IIssueStore : CodeSnifferDog.Workflows.Common.IScopedRetrySafeA
     ValueTask<StoredIssue> GetAsync(RuleFlowKey ruleFlowKey, string ruleReviewIssueId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lists the stored issues for the specified rule flow.
+    /// Gets all stored issues for internal workflow aggregation and verifier preparation.
+    /// This operation is not exposed as an agent tool.
     /// </summary>
-    ValueTask<IReadOnlyList<StoredIssue>> ListAsync(RuleFlowKey ruleFlowKey, CancellationToken cancellationToken);
+    ValueTask<IReadOnlyList<StoredIssue>> ListAllAsync(RuleFlowKey ruleFlowKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists at most <paramref name="take"/> stored issues after <paramref name="cursor"/> for the specified rule flow.
+    /// </summary>
+    ValueTask<IReadOnlyList<StoredIssue>> ListPageAsync(
+        RuleFlowKey ruleFlowKey,
+        string? cursor,
+        int take,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Updates one stored issue by identifier.

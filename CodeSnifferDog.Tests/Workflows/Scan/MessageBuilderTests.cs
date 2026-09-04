@@ -1,5 +1,6 @@
 using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.Scan;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Workflows.Common;
 using CodeSnifferDog.Workflows.Scan;
@@ -36,28 +37,32 @@ public sealed class MessageBuilderTests
     }
 
     [TestMethod]
-    public void CreateVerifierMessages_UsesUserRolePrefixAndSerializedProjects()
+    public void CreateVerifierMessages_UsesUserRolePrefixAndSerializedProjectPage()
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
-        StoredScanProject[] projects =
-        [
+        ProjectPage projectPage = new()
+        {
+            Items =
+            [
             new()
             {
                 ScanProjectId = "scan-1",
-                ProjectName = "Core",
-                ProjectPath = "CodeSnifferDog",
-                ProjectType = "Library",
-                Reason = "Contains workflow logic.",
+                ProjectNamePreview = "Core",
+                ProjectPathPreview = "CodeSnifferDog",
+                ProjectTypePreview = "Library",
+                ReasonPreview = "Contains workflow logic.",
             },
-        ];
+            ],
+            HasMore = false,
+        };
 
-        List<ChatMessage> messages = builder.CreateVerifierMessages(projects);
+        List<ChatMessage> messages = builder.CreateVerifierMessages(projectPage);
 
         Assert.HasCount(1, messages);
         Assert.AreEqual(ChatRole.User, messages[0].Role);
         Assert.AreEqual(
-            $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projects)}",
+            $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(projectPage)}",
             messages[0].Text);
     }
 

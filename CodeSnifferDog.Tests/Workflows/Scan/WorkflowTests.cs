@@ -45,8 +45,54 @@ public sealed class WorkflowTests
         Assert.AreEqual(0, result.Value.ScanAgentResetCount);
         Assert.IsTrue(result.Value.Verdict.Approved);
         Assert.HasCount(2, result.Value.Projects);
-        Assert.AreEqual("CodeSnifferDog", result.Value.Projects[0].ProjectName);
-        Assert.AreEqual("CodeSnifferDog.Tests", result.Value.Projects[1].ProjectName);
+        string[] projectNames = [.. result.Value.Projects.Select(project => project.ProjectName)];
+        Assert.Contains("CodeSnifferDog", projectNames);
+        Assert.Contains("CodeSnifferDog.Tests", projectNames);
+    }
+
+    [TestMethod]
+    public async Task RunAsync_PreservesAllProjects_WhenVerifierReceivesOnlyTheFirstPage()
+    {
+        Workflow workflow = CreateWorkflow(
+            invocation =>
+            {
+                if (HasFunctionResult(invocation.Messages, "scan-add-many"))
+                    return CreateAssistantResponse("All projects recorded.");
+
+                return CreateFunctionCallResponse(
+                    "scan-add-many",
+                    "AddScanProjects",
+                    new Dictionary<string, object?>
+                    {
+                        ["Projects"] = Enumerable.Range(0, 12).Select(index => new Dictionary<string, object?>
+                        {
+                            ["ProjectName"] = $"Project{index:D2}",
+                            ["ProjectPath"] = $"src/Project{index:D2}.csproj",
+                            ["ProjectType"] = ".csproj",
+                            ["Reason"] = "Discovered project.",
+                        }).ToArray(),
+                    });
+            },
+            invocation =>
+            {
+                if (HasFunctionResult(invocation.Messages, "verdict-approve"))
+                    return CreateAssistantResponse("Scan approved.");
+
+                return CreateFunctionCallResponse(
+                    "verdict-approve",
+                    "SubmitReviewVerdict",
+                    new Dictionary<string, object?>
+                    {
+                        ["Approved"] = true,
+                        ["Message"] = "The scan result is acceptable.",
+                    });
+            });
+
+        Result<ScanWorkflowResult> result = await workflow.RunAsync(TestRepositoryPaths.RootPath, TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.HasCount(12, result.Value.Projects);
+        Assert.Contains("Project11", result.Value.Projects.Select(project => project.ProjectName).ToArray());
     }
 
     [TestMethod]
@@ -316,7 +362,7 @@ public sealed class WorkflowTests
 
         Result<ScanWorkflowResult> result = await workflow.RunAsync(TestRepositoryPaths.RootPath, TestContext.CancellationToken);
         await staleWriteObserved.Task.WaitAsync(TestContext.CancellationToken);
-        IReadOnlyList<StoredScanProject> persistedProjects = await scanProjectStore.ListAsync(TestContext.CancellationToken);
+        IReadOnlyList<StoredScanProject> persistedProjects = await scanProjectStore.ListAllAsync(TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
         Assert.AreEqual(1, timedOutAttempts);

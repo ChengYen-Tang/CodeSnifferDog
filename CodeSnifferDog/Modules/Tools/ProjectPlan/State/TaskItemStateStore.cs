@@ -19,8 +19,20 @@ internal sealed class TaskItemStateStore
         if (existingTaskItem is not null)
             return existingTaskItem;
 
-        _taskItems.Add(storedTaskItem);
+        _taskItems.Insert(FindInsertionIndex(storedTaskItem.ProjectPlanTaskItemId), storedTaskItem);
         return storedTaskItem;
+    }
+
+    /// <summary>
+    /// Gets one stored task item by its identifier.
+    /// </summary>
+    public StoredTaskItem Get(string projectPlanTaskItemId)
+    {
+        int index = FindIndex(projectPlanTaskItemId.Trim());
+
+        return index >= 0
+            ? _taskItems[index]
+            : throw new KeyNotFoundException($"Project plan task item was not found: {projectPlanTaskItemId}");
     }
 
     /// <summary>
@@ -28,21 +40,37 @@ internal sealed class TaskItemStateStore
     /// </summary>
     public bool Delete(string projectPlanTaskItemId)
     {
-        StoredTaskItem? existingTaskItem =
-            _taskItems.FirstOrDefault(taskItem => taskItem.ProjectPlanTaskItemId == projectPlanTaskItemId);
+        int index = FindIndex(projectPlanTaskItemId.Trim());
 
-        if (existingTaskItem is null)
+        if (index < 0)
             return false;
 
-        _taskItems.Remove(existingTaskItem);
+        _taskItems.RemoveAt(index);
         return true;
     }
 
     /// <summary>
-    /// Lists the stored task items in insertion order.
+    /// Lists all stored task items for internal workflow aggregation.
     /// </summary>
-    public IReadOnlyList<StoredTaskItem> List() =>
+    public IReadOnlyList<StoredTaskItem> ListAll() =>
         [.. _taskItems];
+
+    /// <summary>
+    /// Lists at most <paramref name="take"/> stored task items after <paramref name="cursor"/>.
+    /// </summary>
+    public IReadOnlyList<StoredTaskItem> ListPage(string? cursor, int take)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+
+        int startIndex = string.IsNullOrWhiteSpace(cursor)
+            ? 0
+            : FindFirstAfter(cursor.Trim());
+        int count = Math.Min(take, _taskItems.Count - startIndex);
+
+        return count == 0
+            ? []
+            : _taskItems.GetRange(startIndex, count);
+    }
 
     /// <summary>
     /// Clears all stored task items.
@@ -63,6 +91,9 @@ internal sealed class TaskItemStateStore
     {
         _taskItems.Clear();
         _taskItems.AddRange(snapshot.Select(CloneStoredTaskItem));
+        _taskItems.Sort(static (left, right) => string.CompareOrdinal(
+            left.ProjectPlanTaskItemId,
+            right.ProjectPlanTaskItemId));
     }
 
     /// <summary>
@@ -140,4 +171,58 @@ internal sealed class TaskItemStateStore
                 TotalLines = file.TotalLines,
             })],
         };
+
+    /// <summary>
+    /// Finds the index of the specified task item identifier.
+    /// </summary>
+    private int FindIndex(string projectPlanTaskItemId)
+    {
+        int index = FindInsertionIndex(projectPlanTaskItemId);
+        return index < _taskItems.Count && string.Equals(
+            _taskItems[index].ProjectPlanTaskItemId,
+            projectPlanTaskItemId,
+            StringComparison.Ordinal)
+            ? index
+            : -1;
+    }
+
+    /// <summary>
+    /// Finds the first insertion position for a task item identifier.
+    /// </summary>
+    private int FindInsertionIndex(string projectPlanTaskItemId)
+    {
+        int low = 0;
+        int high = _taskItems.Count;
+
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (string.CompareOrdinal(_taskItems[middle].ProjectPlanTaskItemId, projectPlanTaskItemId) < 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
+
+    /// <summary>
+    /// Finds the first task item whose identifier sorts after the supplied cursor.
+    /// </summary>
+    private int FindFirstAfter(string cursor)
+    {
+        int low = 0;
+        int high = _taskItems.Count;
+
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (string.CompareOrdinal(_taskItems[middle].ProjectPlanTaskItemId, cursor) <= 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
 }

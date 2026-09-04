@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ProjectPlan.Tools;
+using CodeSnifferDog.Models.ProjectPlan.Tools.Listing;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.ProjectPlan;
@@ -17,7 +18,7 @@ public sealed class TaskItemToolServiceTests
             CreateArgs(" Program.cs "),
             CancellationToken.None);
 
-        IReadOnlyList<StoredTaskItem> taskItems = await store.ListAsync(CancellationToken.None);
+        IReadOnlyList<StoredTaskItem> taskItems = await store.ListAllAsync(CancellationToken.None);
         Assert.IsFalse(string.IsNullOrWhiteSpace(result.ProjectPlanTaskItemId));
         Assert.HasCount(1, taskItems);
         Assert.AreEqual(result.ProjectPlanTaskItemId, taskItems[0].ProjectPlanTaskItemId);
@@ -39,7 +40,7 @@ public sealed class TaskItemToolServiceTests
             CancellationToken.None);
 
         Assert.HasCount(2, result.ProjectPlanTaskItemIds);
-        Assert.HasCount(2, await store.ListAsync(CancellationToken.None));
+        Assert.HasCount(2, await store.ListAllAsync(CancellationToken.None));
     }
 
     [TestMethod]
@@ -81,7 +82,7 @@ public sealed class TaskItemToolServiceTests
         TaskItemToolService service = new(store);
         AddProjectPlanTaskItemResult result = await service.AddProjectPlanTaskItemAsync(CreateArgs("Program.cs"), CancellationToken.None);
 
-        IReadOnlyList<StoredTaskItem> beforeDelete = await service.ListProjectPlanTaskItemsAsync(CancellationToken.None);
+        TaskItemPage beforeDelete = await service.ListProjectPlanTaskItemsAsync(new ListTaskItemsArgs(), CancellationToken.None);
         bool deleted = await service.DeleteProjectPlanTaskItemAsync(
             new DeleteProjectPlanTaskItemArgs
             {
@@ -89,9 +90,9 @@ public sealed class TaskItemToolServiceTests
             },
             CancellationToken.None);
 
-        Assert.HasCount(1, beforeDelete);
+        Assert.HasCount(1, beforeDelete.Items);
         Assert.IsTrue(deleted);
-        Assert.IsEmpty(await service.ListProjectPlanTaskItemsAsync(CancellationToken.None));
+        Assert.IsEmpty((await service.ListProjectPlanTaskItemsAsync(new ListTaskItemsArgs(), CancellationToken.None)).Items);
     }
 
     private static AddProjectPlanTaskItemArgs CreateArgs(string filePath, int totalLines = 10) =>

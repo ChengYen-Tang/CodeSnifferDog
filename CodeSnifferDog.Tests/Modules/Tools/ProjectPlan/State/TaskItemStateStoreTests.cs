@@ -31,7 +31,7 @@ public sealed class TaskItemStateStoreTests
         StoredTaskItem storedDuplicate = store.Add(duplicate);
 
         Assert.AreSame(storedFirst, storedDuplicate);
-        Assert.HasCount(1, store.List());
+        Assert.HasCount(1, store.ListAll());
     }
 
     [TestMethod]
@@ -42,7 +42,7 @@ public sealed class TaskItemStateStoreTests
         store.Add(TaskItemStateStore.CreateStoredTaskItem(CreateTaskItem("Program.cs", "Cache.cs"), "first"));
         store.Add(TaskItemStateStore.CreateStoredTaskItem(CreateTaskItem("Cache.cs", "Program.cs"), "second"));
 
-        Assert.HasCount(2, store.List());
+        Assert.HasCount(2, store.ListAll());
     }
 
     [TestMethod]
@@ -56,10 +56,10 @@ public sealed class TaskItemStateStoreTests
         Assert.IsFalse(store.Delete(taskItem.ProjectPlanTaskItemId));
 
         store.Restore(snapshot);
-        Assert.HasCount(1, store.List());
+        Assert.HasCount(1, store.ListAll());
 
         store.Clear();
-        Assert.IsEmpty(store.List());
+        Assert.IsEmpty(store.ListAll());
     }
 
     private static TaskItem CreateTaskItem(params string[] filePaths) =>

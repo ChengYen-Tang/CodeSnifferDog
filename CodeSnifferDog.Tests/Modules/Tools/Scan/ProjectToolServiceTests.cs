@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Models.Scan.Tools;
+using CodeSnifferDog.Models.Scan.Tools.Listing;
 using CodeSnifferDog.Modules.Tools.Scan;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.Scan;
@@ -15,7 +16,7 @@ public sealed class ProjectToolServiceTests
 
         AddScanProjectResult result = await service.AddScanProjectAsync(CreateArgs(" repo "), CancellationToken.None);
 
-        IReadOnlyList<StoredScanProject> projects = await store.ListAsync(CancellationToken.None);
+        IReadOnlyList<StoredScanProject> projects = await store.ListAllAsync(CancellationToken.None);
         Assert.IsFalse(string.IsNullOrWhiteSpace(result.ScanProjectId));
         Assert.HasCount(1, projects);
         Assert.AreEqual(result.ScanProjectId, projects[0].ScanProjectId);
@@ -39,7 +40,7 @@ public sealed class ProjectToolServiceTests
             CancellationToken.None);
 
         Assert.HasCount(2, result.ScanProjectIds);
-        Assert.HasCount(2, await store.ListAsync(CancellationToken.None));
+        Assert.HasCount(2, await store.ListAllAsync(CancellationToken.None));
     }
 
     [TestMethod]
@@ -80,7 +81,7 @@ public sealed class ProjectToolServiceTests
         ScanProjectToolService service = new(store);
         AddScanProjectResult result = await service.AddScanProjectAsync(CreateArgs("repo"), CancellationToken.None);
 
-        IReadOnlyList<StoredScanProject> beforeDelete = await service.ListScanProjectsAsync(CancellationToken.None);
+        ProjectPage beforeDelete = await service.ListScanProjectsAsync(new ListProjectsArgs(), CancellationToken.None);
         bool deleted = await service.DeleteScanProjectAsync(
             new DeleteScanProjectArgs
             {
@@ -88,9 +89,9 @@ public sealed class ProjectToolServiceTests
             },
             CancellationToken.None);
 
-        Assert.HasCount(1, beforeDelete);
+        Assert.HasCount(1, beforeDelete.Items);
         Assert.IsTrue(deleted);
-        Assert.IsEmpty(await service.ListScanProjectsAsync(CancellationToken.None));
+        Assert.IsEmpty((await service.ListScanProjectsAsync(new ListProjectsArgs(), CancellationToken.None)).Items);
     }
 
     private static AddScanProjectArgs CreateArgs(string projectName) =>

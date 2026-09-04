@@ -23,7 +23,7 @@ public sealed class InMemoryTaskItemStoreTests
 
         lease.Restore();
 
-        IReadOnlyList<StoredTaskItem> taskItems = await store.ListAsync(CancellationToken.None);
+        IReadOnlyList<StoredTaskItem> taskItems = await store.ListAllAsync(CancellationToken.None);
         Assert.HasCount(1, taskItems);
         Assert.AreEqual("Program.cs", taskItems[0].Files[0].FilePath);
     }
@@ -40,7 +40,7 @@ public sealed class InMemoryTaskItemStoreTests
         StoredTaskItem generatedTaskItem = await AgentRunAttemptContext.RunAsync(attemptId, async () =>
             await store.AddAsync(CreateTaskItem("Late.cs"), CancellationToken.None));
 
-        IReadOnlyList<StoredTaskItem> taskItems = await store.ListAsync(CancellationToken.None);
+        IReadOnlyList<StoredTaskItem> taskItems = await store.ListAllAsync(CancellationToken.None);
         Assert.AreEqual("Late.cs", generatedTaskItem.Files[0].FilePath);
         Assert.HasCount(1, taskItems);
         Assert.AreEqual("Program.cs", taskItems[0].Files[0].FilePath);
@@ -62,7 +62,7 @@ public sealed class InMemoryTaskItemStoreTests
             return 0;
         });
 
-        Assert.HasCount(1, await store.ListAsync(CancellationToken.None));
+        Assert.HasCount(1, await store.ListAllAsync(CancellationToken.None));
     }
 
     private static TaskItem CreateTaskItem(string filePath) =>

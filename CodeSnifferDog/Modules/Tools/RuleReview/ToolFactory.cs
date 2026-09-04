@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Models.RuleReview.Tools.Listing;
 
 namespace CodeSnifferDog.Modules.Tools.RuleReview;
 
@@ -30,7 +31,7 @@ internal static class ToolFactory
         AIFunctionFactory.Create(
             callbacks.ListRuleReviewIssuesTool,
             "ListRuleReviewIssues",
-            "List all stored review issues for the current rule review attempt.",
+            "List one bounded page of review issue indexes. Use GetRuleReviewIssue for complete issue details.",
             serializerOptions: null),
         AIFunctionFactory.Create(
             callbacks.UpdateRuleReviewIssueTool,
@@ -114,10 +115,12 @@ internal delegate ValueTask<StoredIssue> GetRuleReviewIssueToolCallback(
     CancellationToken cancellationToken);
 
 /// <summary>
-/// Represents the callback used to list stored rule-review issues.
+/// Represents the callback used to list one bounded page of rule-review issue indexes.
 /// </summary>
-internal delegate ValueTask<IReadOnlyList<StoredIssue>> ListRuleReviewIssuesToolCallback(
-    CancellationToken cancellationToken);
+internal delegate ValueTask<IssuePage> ListRuleReviewIssuesToolCallback(
+    string? Cursor = null,
+    int PageSize = IssuePage.DefaultPageSize,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Represents the callback used to update one stored rule-review issue.

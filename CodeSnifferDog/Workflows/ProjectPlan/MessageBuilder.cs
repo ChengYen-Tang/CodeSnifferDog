@@ -1,5 +1,6 @@
 using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
+using CodeSnifferDog.Models.ProjectPlan.Tools.Listing;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.AI;
@@ -34,14 +35,14 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         new(ChatRole.User, _messageTemplates.MissingProjectPlanSubmissionMessage);
 
     /// <summary>
-    /// Creates verifier messages for the task items returned by the planner.
+    /// Creates verifier messages for the first bounded page of task items returned by the planner.
     /// </summary>
-    /// <param name="taskItems">Task items submitted by the planner.</param>
+    /// <param name="taskItemPage">Bounded task item indexes submitted by the planner.</param>
     /// <returns>The verifier conversation messages.</returns>
-    public List<ChatMessage> CreateVerifierMessages(IReadOnlyList<StoredTaskItem> taskItems)
+    public List<ChatMessage> CreateVerifierMessages(TaskItemPage taskItemPage)
         =>
     [
-        new(ChatRole.User, BuildVerifierInput(taskItems)),
+        new(ChatRole.User, BuildVerifierInput(taskItemPage)),
     ];
 
     /// <summary>
@@ -62,11 +63,11 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         $"{_messageTemplates.PlanInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(scanProject)}";
 
     /// <summary>
-    /// Builds the verifier payload from serialized task items.
+    /// Builds the verifier payload from serialized bounded task item indexes.
     /// </summary>
-    /// <param name="taskItems">Task items submitted by the planner.</param>
+    /// <param name="taskItemPage">Bounded task item indexes submitted by the planner.</param>
     /// <returns>The formatted verifier input.</returns>
-    private string BuildVerifierInput(IReadOnlyList<StoredTaskItem> taskItems)
+    private string BuildVerifierInput(TaskItemPage taskItemPage)
         =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItems)}";
+        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItemPage)}";
 }

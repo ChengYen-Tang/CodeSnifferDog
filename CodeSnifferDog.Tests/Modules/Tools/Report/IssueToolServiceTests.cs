@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
+using CodeSnifferDog.Models.Report.Tools.Listing;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Tools.Report;
@@ -49,7 +50,7 @@ public sealed class IssueToolServiceTests
                 ReviewStrategy = "Reviewed the hot path first.",
             },
             TestContext.CancellationToken);
-        IReadOnlyList<StoredIssue> issues = await service.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+        IssuePage issues = await service.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
         bool deleted = await service.DeleteRuleReportIssueAsync(
             new DeleteRuleReportIssueArgs
             {
@@ -61,7 +62,7 @@ public sealed class IssueToolServiceTests
         Assert.AreEqual(Severity.High, fetched.Severity);
         Assert.AreEqual("Program.cs", fetched.FileOrFunction);
         Assert.AreEqual(Severity.Low, updated.Severity);
-        Assert.HasCount(1, issues);
+        Assert.HasCount(1, issues.Items);
         Assert.IsTrue(deleted);
     }
 
@@ -96,8 +97,8 @@ public sealed class IssueToolServiceTests
 
         await first.CreateRuleReportIssueAsync(CreateIssueArgs("High", "Program.cs"), TestContext.CancellationToken);
 
-        Assert.HasCount(1, await first.ListRuleReportIssuesAsync(TestContext.CancellationToken));
-        Assert.IsEmpty(await second.ListRuleReportIssuesAsync(TestContext.CancellationToken));
+        Assert.HasCount(1, (await first.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken)).Items);
+        Assert.IsEmpty((await second.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken)).Items);
     }
 
     [TestMethod]

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
+using CodeSnifferDog.Models.Report.Tools.Listing;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
@@ -23,7 +24,7 @@ internal static class ToolFactory
         AIFunctionFactory.Create(
             callbacks.ListRuleReportIssuesTool,
             "ListRuleReportIssues",
-            "List all repository-level rule report issues for the current rule.",
+            "List one bounded page of repository-level rule report issue indexes. Use GetRuleReportIssue for complete issue details.",
             serializerOptions: null),
         AIFunctionFactory.Create(
             callbacks.CreateRuleReportIssueTool,
@@ -82,8 +83,10 @@ internal delegate ValueTask<StoredIssue> GetRuleReportIssueToolCallback(
 /// <summary>
 /// Represents the callback used to list stored report issues.
 /// </summary>
-internal delegate ValueTask<IReadOnlyList<StoredIssue>> ListRuleReportIssuesToolCallback(
-    CancellationToken cancellationToken);
+internal delegate ValueTask<IssuePage> ListRuleReportIssuesToolCallback(
+    string? Cursor = null,
+    int PageSize = IssuePage.DefaultPageSize,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Represents the callback used to create one report issue.

@@ -4,7 +4,9 @@ using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.Scan;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.ProjectPlan;
+using CodeSnifferDog.Modules.Tools.ProjectPlan.Listing;
 using CodeSnifferDog.Modules.Tools.Review;
+using CodeSnifferDog.Models.ProjectPlan.Tools.Listing;
 using CodeSnifferDog.Workflows.Common;
 using FluentResults;
 using Microsoft.Agents.AI;
@@ -119,10 +121,12 @@ public sealed class Workflow(
             if (runPlanResult.IsFailed)
                 return runPlanResult.ToResult<WorkflowResult>();
 
-            IReadOnlyList<StoredTaskItem> taskItems =
-                await _taskItemStore.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<StoredTaskItem> verifierTaskItems = await _taskItemStore.ListPageAsync(
+                cursor: null,
+                take: TaskItemPage.DefaultPageSize + 1,
+                cancellationToken).ConfigureAwait(false);
 
-            if (taskItems.Count == 0)
+            if (verifierTaskItems.Count == 0)
             {
                 missingSubmissionAttempts++;
 
@@ -157,7 +161,8 @@ public sealed class Workflow(
             }
 
             missingSubmissionAttempts = 0;
-            List<ChatMessage> verifierMessages = messageBuilder.CreateVerifierMessages(taskItems);
+            TaskItemPage taskItemPage = TaskItemPageFactory.Create(verifierTaskItems, TaskItemPage.DefaultPageSize);
+            List<ChatMessage> verifierMessages = messageBuilder.CreateVerifierMessages(taskItemPage);
             int verifierPublishedMessageCount = 0;
             int verifierMissingVerdictAttempts = 0;
 
@@ -204,14 +209,14 @@ public sealed class Workflow(
 
                 if (verdict.Approved)
                 {
-                    return Result.Ok(ResultFactory.Create(
+                    return Result.Ok(await CreateResultAsync(
                         scanProject,
-                        taskItems,
                         verdict,
                         planAttempts,
                         verifierAttempts,
                         projectPlanAgentResetCount,
-                        continuedAfterVerifierRejectionLimit: false));
+                        continuedAfterVerifierRejectionLimit: false,
+                        cancellationToken).ConfigureAwait(false));
                 }
 
                 verifierRejectionAttempts++;
@@ -219,20 +224,43 @@ public sealed class Workflow(
                 if (RetryLimit.IsReached(verifierRejectionAttempts, _options.MaxVerifierRejectionAttempts))
                 {
                     await verifierAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.DegradedStatus, cancellationToken).ConfigureAwait(false);
-                    return Result.Ok(ResultFactory.Create(
+                    return Result.Ok(await CreateResultAsync(
                         scanProject,
-                        taskItems,
                         verdict,
                         planAttempts,
                         verifierAttempts,
                         projectPlanAgentResetCount,
-                        continuedAfterVerifierRejectionLimit: true));
+                        continuedAfterVerifierRejectionLimit: true,
+                        cancellationToken).ConfigureAwait(false));
                 }
 
                 planMessages.Add(new ChatMessage(ChatRole.User, verdict.Message));
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Creates the final project-plan result from the complete stored task-item set after verification concludes.
+    /// </summary>
+    private async ValueTask<WorkflowResult> CreateResultAsync(
+        StoredScanProject scanProject,
+        ReviewVerdict verdict,
+        int planAttempts,
+        int verifierAttempts,
+        int projectPlanAgentResetCount,
+        bool continuedAfterVerifierRejectionLimit,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<StoredTaskItem> taskItems = await _taskItemStore.ListAllAsync(cancellationToken).ConfigureAwait(false);
+        return ResultFactory.Create(
+            scanProject,
+            taskItems,
+            verdict,
+            planAttempts,
+            verifierAttempts,
+            projectPlanAgentResetCount,
+            continuedAfterVerifierRejectionLimit);
     }
 
     /// <summary>

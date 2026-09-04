@@ -79,12 +79,25 @@ public sealed class InMemoryIssueStore : IIssueStore
     }
 
     /// <inheritdoc />
-    public ValueTask<IReadOnlyList<ReportStoredIssue>> ListAsync(
+    public ValueTask<IReadOnlyList<ReportStoredIssue>> ListAllAsync(
         RuleFlowKey ruleFlowKey,
         CancellationToken _)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult(_workingStateStore.List(ruleFlowKey));
+            return ValueTask.FromResult(_workingStateStore.ListAll(ruleFlowKey));
+    }
+
+    /// <inheritdoc />
+    public ValueTask<IReadOnlyList<ReportStoredIssue>> ListPageAsync(
+        RuleFlowKey ruleFlowKey,
+        string? cursor,
+        int take,
+        CancellationToken _)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+
+        lock (_syncRoot)
+            return ValueTask.FromResult(_workingStateStore.ListPage(ruleFlowKey, cursor, take));
     }
 
     /// <inheritdoc />
@@ -172,7 +185,7 @@ public sealed class InMemoryIssueStore : IIssueStore
             if (!_writeGuard.CanWrite(ruleFlowKey))
                 return ValueTask.CompletedTask;
 
-            _snapshotStore.Promote(ruleReportKey, _workingStateStore.List(ruleFlowKey));
+            _snapshotStore.Promote(ruleReportKey, _workingStateStore.ListAll(ruleFlowKey));
         }
 
         return ValueTask.CompletedTask;

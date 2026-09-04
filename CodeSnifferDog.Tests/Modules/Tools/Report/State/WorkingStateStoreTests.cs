@@ -20,7 +20,7 @@ public sealed class WorkingStateStoreTests
 
         store.Initialize(flow, [snapshotIssue]);
 
-        IReadOnlyList<StoredIssue> issues = store.List(flow);
+        IReadOnlyList<StoredIssue> issues = store.ListAll(flow);
         Diff diff = store.GetLatestDiff(flow);
 
         Assert.HasCount(1, issues);
@@ -45,7 +45,7 @@ public sealed class WorkingStateStoreTests
         Assert.AreSame(first, duplicate);
         Assert.AreEqual("Updated.cs", updated.FileOrFunction);
         Assert.IsTrue(deleted);
-        Assert.IsEmpty(store.List(flow));
+        Assert.IsEmpty(store.ListAll(flow));
     }
 
     [TestMethod]
@@ -61,7 +61,7 @@ public sealed class WorkingStateStoreTests
         store.SetLatestDiff(flow, CreateDiff("after"));
         store.Restore(flow, snapshot);
 
-        IReadOnlyList<StoredIssue> issues = store.List(flow);
+        IReadOnlyList<StoredIssue> issues = store.ListAll(flow);
         Diff diff = store.GetLatestDiff(flow);
         Assert.HasCount(1, issues);
         Assert.AreEqual("Program.cs", issues[0].FileOrFunction);
@@ -78,7 +78,7 @@ public sealed class WorkingStateStoreTests
 
         store.Clear(flow);
 
-        Assert.IsEmpty(store.List(flow));
+        Assert.IsEmpty(store.ListAll(flow));
         Assert.IsEmpty(store.GetLatestDiff(flow).UpdatedIssues);
     }
 

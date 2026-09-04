@@ -50,6 +50,59 @@ public sealed class WorkflowTests
     }
 
     [TestMethod]
+    public async Task RunAsync_PreservesAllTaskItems_WhenVerifierReceivesOnlyTheFirstPage()
+    {
+        Workflow workflow = CreateWorkflow(
+            invocation =>
+            {
+                if (HasFunctionResult(invocation.Messages, "plan-add-many"))
+                    return CreateAssistantResponse("All task items recorded.");
+
+                return CreateFunctionCallResponse(
+                    "plan-add-many",
+                    "AddProjectPlanTaskItems",
+                    new Dictionary<string, object?>
+                    {
+                        ["TaskItems"] = Enumerable.Range(0, 12).Select(index => new Dictionary<string, object?>
+                        {
+                            ["Files"] = new[]
+                            {
+                                new Dictionary<string, object?>
+                                {
+                                    ["FilePath"] = $"src/Task{index:D2}.cs",
+                                    ["TotalLines"] = index + 1,
+                                },
+                            },
+                        }).ToArray(),
+                    });
+            },
+            invocation =>
+            {
+                if (HasFunctionResult(invocation.Messages, "verdict-approve"))
+                    return CreateAssistantResponse("Project plan approved.");
+
+                return CreateFunctionCallResponse(
+                    "verdict-approve",
+                    "SubmitReviewVerdict",
+                    new Dictionary<string, object?>
+                    {
+                        ["Approved"] = true,
+                        ["Message"] = "The project plan is acceptable.",
+                    });
+            });
+
+        Result<WorkflowResult> result = await workflow.RunAsync(
+            TestRepositoryRootPath,
+            CreateScanProject(),
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.HasCount(12, result.Value.TaskItems);
+        Assert.IsTrue(result.Value.TaskItems.Any(taskItem =>
+            taskItem.Files.Any(file => file.FilePath == "src/Task11.cs")));
+    }
+
+    [TestMethod]
     public async Task RunAsync_ResetsProjectPlanAgentConversation_AfterRepeatedMissingSubmissions()
     {
         int emptyAttempts = 0;

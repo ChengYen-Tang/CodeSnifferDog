@@ -25,7 +25,7 @@ internal sealed class ScanProjectStateStore
         if (existingProject is not null)
             return existingProject;
 
-        _projects.Add(storedProject);
+        _projects.Insert(FindInsertionIndex(storedProject.ScanProjectId), storedProject);
         return storedProject;
     }
 
@@ -36,21 +36,38 @@ internal sealed class ScanProjectStateStore
     /// <returns><see langword="true"/> when a project was removed; otherwise, <see langword="false"/>.</returns>
     public bool Delete(string scanProjectId)
     {
-        StoredScanProject? existingProject = _projects.FirstOrDefault(project => project.ScanProjectId == scanProjectId);
+        int index = FindIndex(scanProjectId.Trim());
 
-        if (existingProject is null)
+        if (index < 0)
             return false;
 
-        _projects.Remove(existingProject);
+        _projects.RemoveAt(index);
         return true;
     }
 
     /// <summary>
-    /// Lists the stored projects in insertion order.
+    /// Lists all stored projects for internal workflow aggregation.
     /// </summary>
     /// <returns>The stored projects.</returns>
-    public IReadOnlyList<StoredScanProject> List() =>
+    public IReadOnlyList<StoredScanProject> ListAll() =>
         [.. _projects];
+
+    /// <summary>
+    /// Lists at most <paramref name="take"/> stored projects after <paramref name="cursor"/>.
+    /// </summary>
+    public IReadOnlyList<StoredScanProject> ListPage(string? cursor, int take)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+
+        int startIndex = string.IsNullOrWhiteSpace(cursor)
+            ? 0
+            : FindFirstAfter(cursor.Trim());
+        int count = Math.Min(take, _projects.Count - startIndex);
+
+        return count == 0
+            ? []
+            : _projects.GetRange(startIndex, count);
+    }
 
     /// <summary>
     /// Clears all stored projects.
@@ -73,6 +90,7 @@ internal sealed class ScanProjectStateStore
     {
         _projects.Clear();
         _projects.AddRange(snapshot.Select(CloneProject));
+        _projects.Sort(static (left, right) => string.CompareOrdinal(left.ScanProjectId, right.ScanProjectId));
     }
 
     /// <summary>
@@ -121,4 +139,58 @@ internal sealed class ScanProjectStateStore
             ProjectType = project.ProjectType,
             Reason = project.Reason,
         };
+
+    /// <summary>
+    /// Finds the index of the specified scan project identifier.
+    /// </summary>
+    private int FindIndex(string scanProjectId)
+    {
+        int index = FindInsertionIndex(scanProjectId);
+        return index < _projects.Count && string.Equals(
+            _projects[index].ScanProjectId,
+            scanProjectId,
+            StringComparison.Ordinal)
+            ? index
+            : -1;
+    }
+
+    /// <summary>
+    /// Finds the first insertion position for a scan project identifier.
+    /// </summary>
+    private int FindInsertionIndex(string scanProjectId)
+    {
+        int low = 0;
+        int high = _projects.Count;
+
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (string.CompareOrdinal(_projects[middle].ScanProjectId, scanProjectId) < 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
+
+    /// <summary>
+    /// Finds the first project whose identifier sorts after the supplied cursor.
+    /// </summary>
+    private int FindFirstAfter(string cursor)
+    {
+        int low = 0;
+        int high = _projects.Count;
+
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (string.CompareOrdinal(_projects[middle].ScanProjectId, cursor) <= 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+
+        return low;
+    }
 }

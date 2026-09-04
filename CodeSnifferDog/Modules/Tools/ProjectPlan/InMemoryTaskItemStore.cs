@@ -50,6 +50,15 @@ public sealed class InMemoryTaskItemStore : ITaskItemStore
     }
 
     /// <inheritdoc />
+    public ValueTask<StoredTaskItem> GetAsync(string projectPlanTaskItemId, CancellationToken _)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectPlanTaskItemId);
+
+        lock (_syncRoot)
+            return ValueTask.FromResult(_stateStore.Get(projectPlanTaskItemId));
+    }
+
+    /// <inheritdoc />
     public ValueTask<bool> DeleteAsync(string projectPlanTaskItemId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPlanTaskItemId);
@@ -64,10 +73,22 @@ public sealed class InMemoryTaskItemStore : ITaskItemStore
     }
 
     /// <inheritdoc />
-    public ValueTask<IReadOnlyList<StoredTaskItem>> ListAsync(CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<StoredTaskItem>> ListAllAsync(CancellationToken _)
     {
         lock (_syncRoot)
-            return ValueTask.FromResult(_stateStore.List());
+            return ValueTask.FromResult(_stateStore.ListAll());
+    }
+
+    /// <inheritdoc />
+    public ValueTask<IReadOnlyList<StoredTaskItem>> ListPageAsync(
+        string? cursor,
+        int take,
+        CancellationToken _)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+
+        lock (_syncRoot)
+            return ValueTask.FromResult(_stateStore.ListPage(cursor, take));
     }
 
     /// <inheritdoc />

@@ -65,6 +65,8 @@ Use the provided tools as your only mechanism for maintaining scan results:
 If you identify a project unit that should be kept, add it through the scan tools.
 If an earlier scan result should not be kept, delete it through the scan tools.
 If you need to inspect the current stored scan results, use the list tool.
+`ListScanProjects` returns one bounded page; when `HasMore` is true, pass
+`NextCursor` back as `Cursor` to inspect the following page.
 
 Do not produce a free-form project inventory instead of using the scan tools.
 

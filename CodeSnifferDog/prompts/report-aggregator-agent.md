@@ -25,6 +25,9 @@ The system-controlled user input will contain the current flow's verified `RuleR
 Use the current flow issues as the incoming issue set for this aggregation attempt.
 Read the current working repository-level rule report issue set through the provided tools.
 The working issue set starts from the latest snapshot for this rule and is retried in place until this aggregation attempt ends.
+`ListRuleReportIssues` returns bounded indexes only. Follow `NextCursor` while
+`HasMore` is true, and use `GetRuleReportIssue` for complete details of an
+issue you need to compare or update.
 
 Your job is to:
 

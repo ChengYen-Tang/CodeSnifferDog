@@ -20,14 +20,28 @@ public interface ITaskItemStore : CodeSnifferDog.Workflows.Common.IRetrySafeAgen
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets one stored task item by identifier.
+    /// </summary>
+    ValueTask<StoredTaskItem> GetAsync(string projectPlanTaskItemId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Deletes one stored task item.
     /// </summary>
     ValueTask<bool> DeleteAsync(string projectPlanTaskItemId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lists all stored task items.
+    /// Lists all stored task items for internal workflow aggregation and result creation.
+    /// This operation is not exposed as an agent tool.
     /// </summary>
-    ValueTask<IReadOnlyList<StoredTaskItem>> ListAsync(CancellationToken cancellationToken);
+    ValueTask<IReadOnlyList<StoredTaskItem>> ListAllAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists at most <paramref name="take"/> stored task items after <paramref name="cursor"/>.
+    /// </summary>
+    ValueTask<IReadOnlyList<StoredTaskItem>> ListPageAsync(
+        string? cursor,
+        int take,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Clears all stored task items.

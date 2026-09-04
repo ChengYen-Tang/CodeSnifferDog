@@ -34,11 +34,20 @@ public interface IScanProjectStore : CodeSnifferDog.Workflows.Common.IRetrySafeA
     ValueTask<bool> DeleteAsync(string scanProjectId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Lists all stored scan projects.
+    /// Lists all stored scan projects for internal workflow aggregation and result creation.
+    /// This operation is not exposed as an agent tool.
     /// </summary>
     /// <param name="cancellationToken">Token that cancels the store operation.</param>
     /// <returns>The stored scan projects.</returns>
-    ValueTask<IReadOnlyList<StoredScanProject>> ListAsync(CancellationToken cancellationToken);
+    ValueTask<IReadOnlyList<StoredScanProject>> ListAllAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists at most <paramref name="take"/> stored scan projects after <paramref name="cursor"/>.
+    /// </summary>
+    ValueTask<IReadOnlyList<StoredScanProject>> ListPageAsync(
+        string? cursor,
+        int take,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Clears all stored scan projects.

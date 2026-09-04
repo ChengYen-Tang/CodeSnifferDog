@@ -1,9 +1,12 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
+using CodeSnifferDog.Models.Report.Tools.Listing;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
+using Microsoft.Extensions.AI;
+using System.Text.Json;
 using StoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.Report;
@@ -37,7 +40,7 @@ public sealed class ToolSetTests
                 RuleReportIssueId = $" {created.RuleReportIssueId} ",
             },
             TestContext.CancellationToken);
-        IReadOnlyList<StoredIssue> issues = await toolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+        IssuePage issues = await toolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
         bool deleted = await toolSet.DeleteRuleReportIssueAsync(
             new DeleteRuleReportIssueArgs
             {
@@ -55,7 +58,7 @@ public sealed class ToolSetTests
         ReviewVerdict? verdict = verdictBuffer.GetLatest(RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey));
         Assert.AreEqual(created.RuleReportIssueId, fetched.RuleReportIssueId);
         Assert.AreEqual("Program.cs", fetched.FileOrFunction);
-        Assert.HasCount(1, issues);
+        Assert.HasCount(1, issues.Items);
         Assert.IsTrue(deleted);
         Assert.IsTrue(verdictSubmitted);
         Assert.IsNull(verdictBuffer.Latest);
@@ -122,10 +125,10 @@ public sealed class ToolSetTests
             },
             TestContext.CancellationToken);
 
-        IReadOnlyList<StoredIssue> issues = await toolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+        IssuePage issues = await toolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, issues);
-        Assert.AreEqual(Severity.High, issues[0].Severity);
+        Assert.HasCount(1, issues.Items);
+        Assert.AreEqual(Severity.High, issues.Items[0].Severity);
     }
 
     [TestMethod]
@@ -204,10 +207,10 @@ public sealed class ToolSetTests
         await store.PromoteWorkingReportAsync(ruleReportKey, ruleFlowKey, TestContext.CancellationToken);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
 
-        IReadOnlyList<StoredIssue> workingIssues = await toolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+        IssuePage workingIssues = await toolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, workingIssues);
-        Assert.AreEqual(createdIssue.RuleReportIssueId, workingIssues[0].RuleReportIssueId);
+        Assert.HasCount(1, workingIssues.Items);
+        Assert.AreEqual(createdIssue.RuleReportIssueId, workingIssues.Items[0].RuleReportIssueId);
     }
 
     [TestMethod]
@@ -254,11 +257,11 @@ public sealed class ToolSetTests
             CreateIssueArgs("Program.cs", "Repeated synchronous call", "Use a cached async path."),
             TestContext.CancellationToken);
 
-        IReadOnlyList<StoredIssue> firstIssues = await firstToolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
-        IReadOnlyList<StoredIssue> secondIssues = await secondToolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+        IssuePage firstIssues = await firstToolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
+        IssuePage secondIssues = await secondToolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, firstIssues);
-        Assert.IsEmpty(secondIssues);
+        Assert.HasCount(1, firstIssues.Items);
+        Assert.IsEmpty(secondIssues.Items);
     }
 
     [TestMethod]
@@ -281,20 +284,138 @@ public sealed class ToolSetTests
             CreateIssueArgs("Program.cs", "Repeated synchronous call", "Use a cached async path."),
             TestContext.CancellationToken);
 
-        IReadOnlyList<StoredIssue> firstIssues = await firstToolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
-        IReadOnlyList<StoredIssue> secondIssues = await secondToolSet.ListRuleReportIssuesAsync(TestContext.CancellationToken);
+        IssuePage firstIssues = await firstToolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
+        IssuePage secondIssues = await secondToolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
 
-        Assert.HasCount(1, firstIssues);
-        Assert.IsEmpty(secondIssues);
+        Assert.HasCount(1, firstIssues.Items);
+        Assert.IsEmpty(secondIssues.Items);
+    }
+
+    [TestMethod]
+    public async Task ListRuleReportIssuesAsync_ReturnsBoundedIndexesAndContinuation()
+    {
+        InMemoryIssueStore store = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+
+        for (int index = 0; index < 11; index++)
+        {
+            await toolSet.CreateRuleReportIssueAsync(
+                CreateIssueArgs($"File{index:D2}.cs", $"Pattern {index}", $"Fix {index}"),
+                TestContext.CancellationToken);
+        }
+
+        IssuePage firstPage = await toolSet.ListRuleReportIssuesAsync(
+            new ListIssuesArgs(),
+            TestContext.CancellationToken);
+        IssuePage secondPage = await toolSet.ListRuleReportIssuesAsync(
+            new ListIssuesArgs
+            {
+                Cursor = firstPage.NextCursor,
+            },
+            TestContext.CancellationToken);
+
+        Assert.HasCount(IssuePage.DefaultPageSize, firstPage.Items);
+        Assert.IsTrue(firstPage.HasMore);
+        Assert.IsNotNull(firstPage.NextCursor);
+        Assert.HasCount(1, secondPage.Items);
+        Assert.IsFalse(secondPage.HasMore);
+        Assert.IsNull(secondPage.NextCursor);
+    }
+
+    [TestMethod]
+    public async Task ListRuleReportIssuesAsync_ReturnsBoundedPreviewsAndLeavesDetailsToGet()
+    {
+        InMemoryIssueStore store = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        string issueType = new('T', 300);
+        string location = new('L', 300);
+
+        CreateRuleReportIssueResult created = await toolSet.CreateRuleReportIssueAsync(
+            CreateIssueArgs(location, "Pattern", "Fix", issueType),
+            TestContext.CancellationToken);
+        IssuePage page = await toolSet.ListRuleReportIssuesAsync(new ListIssuesArgs(), TestContext.CancellationToken);
+        StoredIssue detail = await toolSet.GetRuleReportIssueAsync(
+            new GetRuleReportIssueArgs
+            {
+                RuleReportIssueId = created.RuleReportIssueId,
+            },
+            TestContext.CancellationToken);
+
+        IssueListItem item = page.Items[0];
+        Assert.AreEqual(120, item.IssueTypePreview.Length);
+        Assert.AreEqual(160, item.LocationPreview.Length);
+        Assert.IsTrue(item.IssueTypePreview.EndsWith('…'));
+        Assert.IsTrue(item.LocationPreview.EndsWith('…'));
+        Assert.AreEqual(issueType, detail.IssueType);
+        Assert.AreEqual(location, detail.FileOrFunction);
+    }
+
+    [TestMethod]
+    public async Task ListRuleReportIssuesAsync_RejectsPageSizesAboveTheBound()
+    {
+        InMemoryIssueStore store = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => toolSet.ListRuleReportIssuesAsync(
+            new ListIssuesArgs
+            {
+                PageSize = IssuePage.MaxPageSize + 1,
+            },
+            TestContext.CancellationToken).AsTask());
+    }
+
+    [TestMethod]
+    public async Task ListRuleReportIssuesToolAsync_UsesPagedIndexContract()
+    {
+        InMemoryIssueStore store = new();
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
+        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+
+        await toolSet.CreateRuleReportIssueAsync(
+            CreateIssueArgs("Program.cs", "Pattern", "Fix"),
+            TestContext.CancellationToken);
+        AIFunction tool = Assert.IsInstanceOfType<AIFunction>(
+            toolSet.CreateReportAggregatorTools().Single(candidate => candidate.Name == "ListRuleReportIssues"));
+
+        JsonElement result = Assert.IsInstanceOfType<JsonElement>(await tool.InvokeAsync(
+            new AIFunctionArguments(),
+            TestContext.CancellationToken));
+        JsonElement item = result.GetProperty("items")[0];
+
+        Assert.IsTrue(item.TryGetProperty("ruleReportIssueId", out _));
+        Assert.IsTrue(item.TryGetProperty("severity", out _));
+        Assert.IsTrue(item.TryGetProperty("issueTypePreview", out _));
+        Assert.IsTrue(item.TryGetProperty("locationPreview", out _));
+        Assert.IsFalse(item.TryGetProperty("whyThisIsAProblem", out _));
     }
 
     private static CreateRuleReportIssueArgs CreateIssueArgs(
         string fileOrFunction,
         string relevantCodePatternOrExpression,
-        string suggestedFixDirection) =>
+        string suggestedFixDirection,
+        string issueType = "Performance") =>
         new()
         {
-            IssueType = "Performance",
+            IssueType = issueType,
             Severity = "High",
             FileOrFunction = fileOrFunction,
             RelevantCodePatternOrExpression = relevantCodePatternOrExpression,

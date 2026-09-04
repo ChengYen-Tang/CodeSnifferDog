@@ -1,5 +1,6 @@
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
+using CodeSnifferDog.Models.Report.Tools.Listing;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Modules.Tools.Review;
@@ -52,7 +53,7 @@ public sealed class ToolSet
         =>
         ToolFactory.CreateAggregatorTools(new AggregatorToolCallbacks(
             GetRuleReportIssueToolAsync,
-            ListRuleReportIssuesAsync,
+            ListRuleReportIssuesToolAsync,
             CreateRuleReportIssueToolAsync,
             UpdateRuleReportIssueToolAsync,
             DeleteRuleReportIssueToolAsync));
@@ -73,6 +74,21 @@ public sealed class ToolSet
             new GetRuleReportIssueArgs
             {
                 RuleReportIssueId = RuleReportIssueId,
+            },
+            cancellationToken);
+
+    [Description("List one bounded page of repository-level rule report issue indexes. Use GetRuleReportIssue for complete issue details.")]
+    private ValueTask<IssuePage> ListRuleReportIssuesToolAsync(
+        [Description("The continuation cursor returned by the preceding page. Omit it to start from the first page.")]
+        string? Cursor = null,
+        [Description("The number of issue indexes to return. Defaults to 10 and cannot exceed 20.")]
+        int PageSize = IssuePage.DefaultPageSize,
+        CancellationToken cancellationToken = default) =>
+        ListRuleReportIssuesAsync(
+            new ListIssuesArgs
+            {
+                Cursor = Cursor,
+                PageSize = PageSize,
             },
             cancellationToken);
 
@@ -199,11 +215,13 @@ public sealed class ToolSet
         _issueToolService.GetRuleReportIssueAsync(args, cancellationToken);
 
     /// <summary>
-    /// Lists the repository-level issues in the working report.
+    /// Lists one bounded page of repository-level issue indexes.
     /// </summary>
-    public ValueTask<IReadOnlyList<ReportStoredIssue>> ListRuleReportIssuesAsync(CancellationToken cancellationToken)
+    public ValueTask<IssuePage> ListRuleReportIssuesAsync(
+        ListIssuesArgs args,
+        CancellationToken cancellationToken)
         =>
-        _issueToolService.ListRuleReportIssuesAsync(cancellationToken);
+        _issueToolService.ListRuleReportIssuesAsync(args, cancellationToken);
 
     /// <summary>
     /// Creates one stored repository-level issue.

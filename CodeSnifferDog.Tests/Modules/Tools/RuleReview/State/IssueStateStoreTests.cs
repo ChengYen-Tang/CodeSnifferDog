@@ -20,7 +20,7 @@ public sealed class IssueStateStoreTests
 
         Assert.AreSame(first, second);
         Assert.IsNull(store.GetNoIssueConclusion(flow));
-        Assert.HasCount(1, store.List(flow));
+        Assert.HasCount(1, store.ListPage(flow, null, 20));
     }
 
     [TestMethod]
@@ -38,8 +38,8 @@ public sealed class IssueStateStoreTests
 
         Assert.AreEqual("Updated.cs", updated.FileOrFunction);
         Assert.IsTrue(deleted);
-        Assert.IsEmpty(store.List(firstFlow));
-        Assert.HasCount(1, store.List(secondFlow));
+        Assert.IsEmpty(store.ListPage(firstFlow, null, 20));
+        Assert.HasCount(1, store.ListPage(secondFlow, null, 20));
     }
 
     [TestMethod]
@@ -53,7 +53,7 @@ public sealed class IssueStateStoreTests
         store.Add(flow, CreateIssue("Stale.cs"), "second");
         store.Restore(flow, snapshot);
 
-        IReadOnlyList<StoredIssue> issues = store.List(flow);
+        IReadOnlyList<StoredIssue> issues = store.ListPage(flow, null, 20);
         Assert.HasCount(1, issues);
         Assert.AreEqual("Program.cs", issues[0].FileOrFunction);
     }
@@ -66,6 +66,23 @@ public sealed class IssueStateStoreTests
         store.Add(flow, CreateIssue("Program.cs"), "first");
 
         Assert.ThrowsExactly<InvalidOperationException>(() => store.SubmitNoIssueConclusion(flow, CreateConclusion()));
+    }
+
+    [TestMethod]
+    public void ListPage_ContinuesAfterDeletedCursor()
+    {
+        IssueStateStore store = new();
+        RuleFlowKey flow = CreateFlow("task-1");
+        store.Add(flow, CreateIssue("First.cs"), "0001");
+        StoredIssue second = store.Add(flow, CreateIssue("Second.cs"), "0002");
+        store.Add(flow, CreateIssue("Third.cs"), "0003");
+
+        IReadOnlyList<StoredIssue> firstPage = store.ListPage(flow, null, 2);
+        store.Delete(flow, second.RuleReviewIssueId);
+        IReadOnlyList<StoredIssue> nextPage = store.ListPage(flow, second.RuleReviewIssueId, 2);
+
+        CollectionAssert.AreEqual(new[] { "0001", "0002" }, firstPage.Select(issue => issue.RuleReviewIssueId).ToArray());
+        CollectionAssert.AreEqual(new[] { "0003" }, nextPage.Select(issue => issue.RuleReviewIssueId).ToArray());
     }
 
     private static NormalizedRuleIssue CreateIssue(string fileOrFunction) =>
