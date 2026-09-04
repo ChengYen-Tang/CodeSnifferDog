@@ -17,7 +17,7 @@ namespace CodeSnifferDog.Agents.RuleReview;
 /// </summary>
 /// <param name="compactionOptions">Compaction options applied to created agents.</param>
 /// <param name="promptAssetReader">Optional prompt reader used to load prompt assets.</param>
-/// <param name="promptTemplateRenderer">Optional template renderer used to inject repository and scope placeholders.</param>
+/// <param name="promptTemplateRenderer">Optional template renderer used to inject repository and rule placeholders.</param>
 /// <param name="loggerFactory">Optional logger factory forwarded to agent construction and common tools.</param>
 /// <param name="serviceProvider">Optional service provider used by the agent builder pipeline.</param>
 public sealed class AgentFactory(
@@ -104,7 +104,6 @@ public sealed class AgentFactory(
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["ScopeFilesJson"] = AgentPromptRenderer.JsonValue(taskItem.Files),
             });
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         ToolSet toolSet = new(issueStore, verdictBuffer, ruleFlowKey);

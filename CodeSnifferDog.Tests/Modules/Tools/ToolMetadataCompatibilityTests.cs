@@ -94,6 +94,9 @@ public sealed class ToolMetadataCompatibilityTests
         ToolMetadataAssertions.AssertToolMetadata(
             toolSet.CreateVerifierTools(),
             [
+                ("ListRuleReviewIssues", "List one bounded page of review issue indexes. Use GetRuleReviewIssue for complete issue details."),
+                ("GetRuleReviewIssue", "Get one stored review issue by its id from the current rule review attempt."),
+                ("GetNoIssueConclusion", "Get the current no-issue conclusion when the current rule review has no stored issues."),
                 ("SubmitReviewVerdict", "Submit the verifier approval or rejection for the current rule review result."),
             ]);
     }
@@ -103,6 +106,7 @@ public sealed class ToolMetadataCompatibilityTests
     {
         ReportToolSet toolSet = new(
             new ReportIssueStore(),
+            [],
             new ReviewVerdictBuffer(),
             TestKeys.RuleFlowKey,
             TestKeys.RuleReportKey);
@@ -110,6 +114,8 @@ public sealed class ToolMetadataCompatibilityTests
         ToolMetadataAssertions.AssertToolMetadata(
             toolSet.CreateReportAggregatorTools(),
             [
+                ("ListCurrentFlowIssues", "List one bounded page of verified current-flow issue indexes. Use GetCurrentFlowIssue for complete issue details."),
+                ("GetCurrentFlowIssue", "Get one verified rule-review issue from the immutable current-flow input by its id."),
                 ("GetRuleReportIssue", "Get one stored repository-level rule report issue by its id."),
                 ("ListRuleReportIssues", "List one bounded page of repository-level rule report issue indexes. Use GetRuleReportIssue for complete issue details."),
                 ("CreateRuleReportIssue", "Create one new repository-level rule report issue for the current rule."),
@@ -119,6 +125,8 @@ public sealed class ToolMetadataCompatibilityTests
         ToolMetadataAssertions.AssertToolMetadata(
             toolSet.CreateVerifierTools(),
             [
+                ("ListCurrentFlowIssues", "List one bounded page of verified current-flow issue indexes. Use GetCurrentFlowIssue for complete issue details."),
+                ("GetCurrentFlowIssue", "Get one verified rule-review issue from the immutable current-flow input by its id."),
                 ("SubmitReviewVerdict", "Submit the verifier approval or rejection for the current rule report diff."),
             ]);
     }
@@ -265,6 +273,18 @@ public sealed class ToolMetadataCompatibilityTests
                 ["RuleReviewIssueId"] = "The id of the stored review issue to retrieve.",
             });
         ToolMetadataAssertions.AssertAdapterDescription<RuleReviewToolSet>(
+            "ListRuleReviewIssuesToolAsync",
+            "List one bounded page of review issue indexes. Use GetRuleReviewIssue for complete issue details.",
+            new Dictionary<string, string>
+            {
+                ["Cursor"] = "The continuation cursor returned by the preceding page. Omit it to start from the first page.",
+                ["PageSize"] = "The number of issue indexes to return. Defaults to 10 and cannot exceed 20.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<RuleReviewToolSet>(
+            "GetNoIssueConclusionToolAsync",
+            "Get the current no-issue conclusion when the current rule review has no stored issues.",
+            new Dictionary<string, string>());
+        ToolMetadataAssertions.AssertAdapterDescription<RuleReviewToolSet>(
             "UpdateRuleReviewIssueToolAsync",
             "Update one existing review issue by its id for the current rule review attempt.",
             UpdatedIssueParameters("RuleReviewIssueId", "The id of the stored review issue to update."));
@@ -294,6 +314,21 @@ public sealed class ToolMetadataCompatibilityTests
     [TestMethod]
     public void ReportAdapters_PreserveParameterDescriptions()
     {
+        ToolMetadataAssertions.AssertAdapterDescription<ReportToolSet>(
+            "GetCurrentFlowIssueToolAsync",
+            "Get one verified rule-review issue from the immutable current-flow input by its id.",
+            new Dictionary<string, string>
+            {
+                ["RuleReviewIssueId"] = "The id of the current-flow rule-review issue to retrieve.",
+            });
+        ToolMetadataAssertions.AssertAdapterDescription<ReportToolSet>(
+            "ListCurrentFlowIssuesToolAsync",
+            "List one bounded page of verified current-flow issue indexes. Use GetCurrentFlowIssue for complete issue details.",
+            new Dictionary<string, string>
+            {
+                ["Cursor"] = "The continuation cursor returned by the preceding page. Omit it to start from the first page.",
+                ["PageSize"] = "The number of issue indexes to return. Defaults to 10 and cannot exceed 20.",
+            });
         ToolMetadataAssertions.AssertAdapterDescription<ReportToolSet>(
             "GetRuleReportIssueToolAsync",
             "Get one stored repository-level rule report issue by its id.",

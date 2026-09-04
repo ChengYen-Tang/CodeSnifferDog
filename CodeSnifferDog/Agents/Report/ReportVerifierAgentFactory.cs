@@ -18,7 +18,7 @@ namespace CodeSnifferDog.Agents.Report;
 /// </summary>
 /// <param name="compactionOptions">Compaction options applied to created agents.</param>
 /// <param name="promptAssetReader">Optional prompt reader used to load prompt assets.</param>
-/// <param name="promptTemplateRenderer">Optional template renderer used to inject repository and issue placeholders.</param>
+/// <param name="promptTemplateRenderer">Optional template renderer used to inject repository and rule placeholders.</param>
 /// <param name="loggerFactory">Optional logger factory forwarded to agent construction and common tools.</param>
 /// <param name="serviceProvider">Optional service provider used by the agent builder pipeline.</param>
 public sealed class ReportVerifierAgentFactory(
@@ -111,11 +111,10 @@ public sealed class ReportVerifierAgentFactory(
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["CurrentFlowIssuesJson"] = AgentPromptRenderer.JsonValue(currentFlowIssues),
             });
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
-        ToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(reportIssueStore, currentFlowIssues, verdictBuffer, ruleFlowKey, ruleReportKey);
         return _agentBuilderService.Create(new AgentBuildRequest(
             chatClient,
             systemPrompt,

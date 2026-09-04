@@ -64,7 +64,11 @@ public sealed class ToolSet
     /// <returns>The rule-review verifier tools.</returns>
     public IList<AITool> CreateVerifierTools()
         =>
-        ToolFactory.CreateVerifierTools(new VerifierToolCallbacks(SubmitReviewVerdictToolAsync));
+        ToolFactory.CreateVerifierTools(new VerifierToolCallbacks(
+            GetRuleReviewIssueToolAsync,
+            ListRuleReviewIssuesToolAsync,
+            GetNoIssueConclusionToolAsync,
+            SubmitReviewVerdictToolAsync));
 
     [Description("Create one new review issue for the current rule review attempt.")]
     private ValueTask<CreateRuleReviewIssueResult> CreateRuleReviewIssueToolAsync(
@@ -120,7 +124,7 @@ public sealed class ToolSet
             },
             cancellationToken);
 
-    [Description("List one bounded page of review issue indexes. Use GetRuleReviewIssue for the complete issue details.")]
+    [Description("List one bounded page of review issue indexes. Use GetRuleReviewIssue for complete issue details.")]
     private ValueTask<IssuePage> ListRuleReviewIssuesToolAsync(
         [Description("The continuation cursor returned by the preceding page. Omit it to start from the first page.")]
         string? Cursor = null,
@@ -134,6 +138,11 @@ public sealed class ToolSet
                 PageSize = PageSize,
             },
             cancellationToken);
+
+    [Description("Get the current no-issue conclusion when the current rule review has no stored issues.")]
+    private ValueTask<NoIssueConclusion?> GetNoIssueConclusionToolAsync(
+        CancellationToken cancellationToken) =>
+        GetNoIssueConclusionAsync(cancellationToken);
 
     [Description("Update one existing review issue by its id for the current rule review attempt.")]
     private ValueTask<StoredIssue> UpdateRuleReviewIssueToolAsync(

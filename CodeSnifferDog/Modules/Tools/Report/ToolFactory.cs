@@ -2,6 +2,9 @@ using Microsoft.Extensions.AI;
 using CodeSnifferDog.Models.Report;
 using CodeSnifferDog.Models.Report.Tools;
 using CodeSnifferDog.Models.Report.Tools.Listing;
+using CodeSnifferDog.Models.RuleReview.Tools;
+using RuleReviewIssuePage = CodeSnifferDog.Models.RuleReview.Tools.Listing.IssuePage;
+using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
@@ -16,6 +19,16 @@ internal static class ToolFactory
     public static IList<AITool> CreateAggregatorTools(AggregatorToolCallbacks callbacks)
         =>
     [
+        AIFunctionFactory.Create(
+            callbacks.ListCurrentFlowIssuesTool,
+            "ListCurrentFlowIssues",
+            "List one bounded page of verified current-flow issue indexes. Use GetCurrentFlowIssue for complete issue details.",
+            serializerOptions: null),
+        AIFunctionFactory.Create(
+            callbacks.GetCurrentFlowIssueTool,
+            "GetCurrentFlowIssue",
+            "Get one verified rule-review issue from the immutable current-flow input by its id.",
+            serializerOptions: null),
         AIFunctionFactory.Create(
             callbacks.GetRuleReportIssueTool,
             "GetRuleReportIssue",
@@ -50,6 +63,16 @@ internal static class ToolFactory
         =>
     [
         AIFunctionFactory.Create(
+            callbacks.ListCurrentFlowIssuesTool,
+            "ListCurrentFlowIssues",
+            "List one bounded page of verified current-flow issue indexes. Use GetCurrentFlowIssue for complete issue details.",
+            serializerOptions: null),
+        AIFunctionFactory.Create(
+            callbacks.GetCurrentFlowIssueTool,
+            "GetCurrentFlowIssue",
+            "Get one verified rule-review issue from the immutable current-flow input by its id.",
+            serializerOptions: null),
+        AIFunctionFactory.Create(
             callbacks.SubmitReviewVerdictTool,
             "SubmitReviewVerdict",
             "Submit the verifier approval or rejection for the current rule report diff.",
@@ -61,6 +84,8 @@ internal static class ToolFactory
 /// Groups callbacks used by report-aggregator tools.
 /// </summary>
 internal readonly record struct AggregatorToolCallbacks(
+    GetCurrentFlowIssueToolCallback GetCurrentFlowIssueTool,
+    ListCurrentFlowIssuesToolCallback ListCurrentFlowIssuesTool,
     GetRuleReportIssueToolCallback GetRuleReportIssueTool,
     ListRuleReportIssuesToolCallback ListRuleReportIssuesTool,
     CreateRuleReportIssueToolCallback CreateRuleReportIssueTool,
@@ -71,7 +96,24 @@ internal readonly record struct AggregatorToolCallbacks(
 /// Groups callbacks used by report-verifier tools.
 /// </summary>
 internal readonly record struct VerifierToolCallbacks(
+    GetCurrentFlowIssueToolCallback GetCurrentFlowIssueTool,
+    ListCurrentFlowIssuesToolCallback ListCurrentFlowIssuesTool,
     SubmitReviewVerdictToolCallback SubmitReviewVerdictTool);
+
+/// <summary>
+/// Represents the callback used to retrieve one complete verified issue from the current report-flow input.
+/// </summary>
+internal delegate ValueTask<RuleReviewStoredIssue> GetCurrentFlowIssueToolCallback(
+    string RuleReviewIssueId,
+    CancellationToken cancellationToken);
+
+/// <summary>
+/// Represents the callback used to list compact indexes for the verified current report-flow input.
+/// </summary>
+internal delegate ValueTask<RuleReviewIssuePage> ListCurrentFlowIssuesToolCallback(
+    string? Cursor = null,
+    int PageSize = RuleReviewIssuePage.DefaultPageSize,
+    CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Represents the callback used to retrieve one stored report issue.

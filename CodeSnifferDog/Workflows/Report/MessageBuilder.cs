@@ -1,9 +1,8 @@
 using CodeSnifferDog.Json;
+using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Report;
-using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.AI;
-using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Workflows.Report;
 
@@ -16,25 +15,33 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
     private readonly MessageTemplates _messageTemplates = messageTemplates;
 
     /// <summary>
-    /// Creates aggregator messages from the current rule-review issues.
+    /// Creates aggregator messages with the system-controlled task context for one current flow.
     /// </summary>
-    /// <param name="currentFlowIssues">Issues produced by the current rule-review flow.</param>
+    /// <param name="taskItem">Task item whose scope produced the current flow.</param>
+    /// <param name="currentFlowIssueCount">Number of verified issues available through the read-only current-flow tools.</param>
     /// <returns>The aggregator conversation messages.</returns>
-    public List<ChatMessage> CreateAggregatorMessages(IReadOnlyList<RuleReviewStoredIssue> currentFlowIssues)
+    public List<ChatMessage> CreateAggregatorMessages(
+        StoredTaskItem taskItem,
+        int currentFlowIssueCount)
         =>
     [
-        new(ChatRole.User, BuildAggregatorInput(currentFlowIssues)),
+        new(ChatRole.User, BuildTaskContext(_messageTemplates.AggregatorInputPrefix, taskItem, currentFlowIssueCount)),
     ];
 
     /// <summary>
-    /// Creates verifier messages from one stored report diff.
+    /// Creates verifier messages from one stored report diff and its system-controlled task context.
     /// </summary>
+    /// <param name="taskItem">Task item whose scope produced the current flow.</param>
+    /// <param name="currentFlowIssueCount">Number of verified issues available through the read-only current-flow tools.</param>
     /// <param name="diff">Diff produced by the report aggregator.</param>
     /// <returns>The verifier conversation messages.</returns>
-    public List<ChatMessage> CreateVerifierMessages(Diff diff)
+    public List<ChatMessage> CreateVerifierMessages(
+        StoredTaskItem taskItem,
+        int currentFlowIssueCount,
+        Diff diff)
         =>
     [
-        new(ChatRole.User, BuildVerifierInput(diff)),
+        new(ChatRole.User, BuildVerifierInput(taskItem, currentFlowIssueCount, diff)),
     ];
 
     /// <summary>
@@ -46,20 +53,37 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         new(ChatRole.User, WorkflowRetryMessages.MissingVerifierVerdictMessage);
 
     /// <summary>
-    /// Builds the aggregator payload from serialized current-flow issues.
+    /// Builds a task-context payload that directs the aggregator to read the bounded current-flow issue source.
     /// </summary>
-    /// <param name="currentFlowIssues">Issues produced by the current rule-review flow.</param>
+    /// <param name="taskItem">Task item whose scope produced the current flow.</param>
+    /// <param name="currentFlowIssueCount">Number of verified issues available through the read-only current-flow tools.</param>
     /// <returns>The formatted aggregator input.</returns>
-    private string BuildAggregatorInput(IReadOnlyList<RuleReviewStoredIssue> currentFlowIssues)
-        =>
-        $"{_messageTemplates.AggregatorInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(currentFlowIssues)}";
+    private static string BuildTaskContext(
+        string prefix,
+        StoredTaskItem taskItem,
+        int currentFlowIssueCount)
+    {
+        ArgumentNullException.ThrowIfNull(taskItem);
+        ArgumentOutOfRangeException.ThrowIfNegative(currentFlowIssueCount);
+
+        return $"{prefix}{Environment.NewLine}{Environment.NewLine}" +
+            $"Task item id:{Environment.NewLine}{taskItem.ProjectPlanTaskItemId}{Environment.NewLine}{Environment.NewLine}" +
+            $"Scope entry files:{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItem.Files)}{Environment.NewLine}{Environment.NewLine}" +
+            $"Verified current-flow issue count:{Environment.NewLine}{currentFlowIssueCount}";
+    }
 
     /// <summary>
-    /// Builds the verifier payload from one serialized diff.
+    /// Builds the verifier payload from task context and one serialized diff.
     /// </summary>
+    /// <param name="taskItem">Task item whose scope produced the current flow.</param>
+    /// <param name="currentFlowIssueCount">Number of verified issues available through the read-only current-flow tools.</param>
     /// <param name="diff">Diff produced by the report aggregator.</param>
     /// <returns>The formatted verifier input.</returns>
-    private string BuildVerifierInput(Diff diff)
+    private string BuildVerifierInput(
+        StoredTaskItem taskItem,
+        int currentFlowIssueCount,
+        Diff diff)
         =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(diff)}";
+        $"{BuildTaskContext(_messageTemplates.VerifierInputPrefix, taskItem, currentFlowIssueCount)}{Environment.NewLine}{Environment.NewLine}" +
+        $"Current report diff:{Environment.NewLine}{CodeSnifferDogJson.Serialize(diff)}";
 }

@@ -20,7 +20,7 @@ namespace CodeSnifferDog.Workflows.ProjectPlan;
 /// Runs project planning with a planner agent, a verifier agent, retry limits, and planner-reset handling.
 /// </summary>
 /// <param name="AgentFactory">Creates the project planner agent for one repository and event scope.</param>
-/// <param name="VerifierFactory">Creates the verifier agent for one scanned project.</param>
+/// <param name="VerifierFactory">Creates the verifier agent for one project-plan result.</param>
 /// <param name="taskItemStore">Store that receives project-plan task item submissions.</param>
 /// <param name="verdictBuffer">Buffer that captures verifier verdict submissions.</param>
 /// <param name="promptAssetReader">Optional prompt reader used to load workflow prompt assets.</param>
@@ -28,7 +28,7 @@ namespace CodeSnifferDog.Workflows.ProjectPlan;
 /// <param name="agentEventBus">Optional event bus used to publish agent lifecycle and transcript events.</param>
 public sealed class Workflow(
     Func<string, IAgentEventScope, AgentCreationResult> AgentFactory,
-    Func<string, StoredScanProject, IAgentEventScope, AgentCreationResult> VerifierFactory,
+    Func<string, IAgentEventScope, AgentCreationResult> VerifierFactory,
     ITaskItemStore taskItemStore,
     ReviewVerdictBuffer verdictBuffer,
     PromptAssetReader? promptAssetReader = null,
@@ -37,7 +37,7 @@ public sealed class Workflow(
     ILogger? logger = null)
 {
     private readonly Func<string, IAgentEventScope, AgentCreationResult> _projectPlanAgentFactory = AgentFactory;
-    private readonly Func<string, StoredScanProject, IAgentEventScope, AgentCreationResult> _projectVerifierAgentFactory = VerifierFactory;
+    private readonly Func<string, IAgentEventScope, AgentCreationResult> _projectVerifierAgentFactory = VerifierFactory;
     private readonly ITaskItemStore _taskItemStore = taskItemStore;
     private readonly ReviewVerdictBuffer _verdictBuffer = verdictBuffer;
     private readonly PromptAssetReader _promptAssetReader = promptAssetReader ?? new();
@@ -84,7 +84,7 @@ public sealed class Workflow(
             AgentStatusCatalog.WaitingStatus,
             cancellationToken).ConfigureAwait(false);
 
-        AgentCreationResult projectVerifierAgentCreation = _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope);
+        AgentCreationResult projectVerifierAgentCreation = _projectVerifierAgentFactory(repositoryRootPath, verifierAgentScope);
         AIAgent projectVerifierAgent = projectVerifierAgentCreation.Agent;
         await verifierAgentScope.PublishCreatedAsync(
             AgentStatusCatalog.CreateProjectVerifierAgentDisplayName(),
@@ -162,7 +162,7 @@ public sealed class Workflow(
 
             missingSubmissionAttempts = 0;
             TaskItemPage taskItemPage = TaskItemPageFactory.Create(verifierTaskItems, TaskItemPage.DefaultPageSize);
-            List<ChatMessage> verifierMessages = messageBuilder.CreateVerifierMessages(taskItemPage);
+            List<ChatMessage> verifierMessages = messageBuilder.CreateVerifierMessages(scanProject, taskItemPage);
             int verifierPublishedMessageCount = 0;
             int verifierMissingVerdictAttempts = 0;
 
@@ -173,7 +173,7 @@ public sealed class Workflow(
 
                 (Result runVerifierResult, verifierPublishedMessageCount, projectVerifierAgent) = await WorkflowAgentRunService.RunAsync(
                     projectVerifierAgent,
-                    () => _projectVerifierAgentFactory(repositoryRootPath, scanProject, verifierAgentScope).Agent,
+                    () => _projectVerifierAgentFactory(repositoryRootPath, verifierAgentScope).Agent,
                     PrepareAttempt,
                     static state => state.Restore(),
                     verifierMessages,

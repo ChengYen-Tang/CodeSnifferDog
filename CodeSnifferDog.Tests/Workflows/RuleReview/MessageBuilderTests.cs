@@ -1,5 +1,5 @@
 using CodeSnifferDog.Json;
-using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Workflows.RuleReview;
 using Microsoft.Extensions.AI;
@@ -10,16 +10,21 @@ namespace CodeSnifferDog.Tests.Workflows.RuleReview;
 public sealed class MessageBuilderTests
 {
     [TestMethod]
-    public void CreateReviewMessages_UsesStartTemplateAsUserMessage()
+    public void CreateReviewMessages_UsesStartTemplateAndTaskScopeAsUserMessage()
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
+        StoredTaskItem taskItem = CreateTaskItem();
 
-        List<ChatMessage> messages = builder.CreateReviewMessages();
+        List<ChatMessage> messages = builder.CreateReviewMessages(taskItem);
 
         Assert.HasCount(1, messages);
         Assert.AreEqual(ChatRole.User, messages[0].Role);
-        Assert.AreEqual(templates.RuleReviewStartMessage, messages[0].Text);
+        Assert.AreEqual(
+            $"{templates.RuleReviewStartMessage}{Environment.NewLine}{Environment.NewLine}" +
+            $"Task item id:{Environment.NewLine}{taskItem.ProjectPlanTaskItemId}{Environment.NewLine}{Environment.NewLine}" +
+            $"Scope entry files:{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItem.Files)}",
+            messages[0].Text);
     }
 
     [TestMethod]
@@ -35,66 +40,43 @@ public sealed class MessageBuilderTests
     }
 
     [TestMethod]
-    public void CreateVerifierMessages_WhenIssuesExist_UsesSerializedIssuesPayload()
+    public void CreateVerifierMessages_UsesTaskScopeWithoutEmbeddingReviewResults()
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
-        StoredIssue[] issues = [CreateIssue()];
+        StoredTaskItem taskItem = CreateTaskItem();
 
-        List<ChatMessage> messages = builder.CreateVerifierMessages(issues, CreateNoIssueConclusion());
+        List<ChatMessage> messages = builder.CreateVerifierMessages(taskItem);
 
         Assert.HasCount(1, messages);
         Assert.AreEqual(ChatRole.User, messages[0].Role);
         Assert.AreEqual(
-            $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(issues)}",
+            $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}" +
+            $"Task item id:{Environment.NewLine}{taskItem.ProjectPlanTaskItemId}{Environment.NewLine}{Environment.NewLine}" +
+            $"Scope entry files:{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItem.Files)}",
             messages[0].Text);
     }
 
     [TestMethod]
-    public void CreateVerifierMessages_WhenNoIssuesExist_UsesSerializedNoIssueConclusionPayload()
+    public void CreateVerifierMessages_WhenTaskItemIsNull_Throws()
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
-        NoIssueConclusion noIssueConclusion = CreateNoIssueConclusion();
 
-        List<ChatMessage> messages = builder.CreateVerifierMessages([], noIssueConclusion);
-
-        Assert.AreEqual(
-            $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(noIssueConclusion)}",
-            messages[0].Text);
+        Assert.ThrowsExactly<ArgumentNullException>(() => builder.CreateVerifierMessages(null!));
     }
 
-    [TestMethod]
-    public void CreateVerifierMessages_WhenNoReviewResultExists_Throws()
-    {
-        MessageBuilder builder = new(new MessageTemplates(new PromptAssetReader()));
-
-        Assert.ThrowsExactly<InvalidOperationException>(() => builder.CreateVerifierMessages([], null));
-    }
-
-    private static StoredIssue CreateIssue() =>
+    private static StoredTaskItem CreateTaskItem() =>
         new()
         {
-            RuleReviewIssueId = "issue-1",
-            IssueType = "Performance",
-            Severity = "High",
-            FileOrFunction = "Program.cs",
-            RelevantCodePatternOrExpression = "Repeated synchronous call",
-            WhyThisIsAProblem = "This blocks the hot path.",
-            Confidence = "High",
-            FollowUpFiles = "Program.cs",
-            SuggestedFixDirection = "Use a cached async path.",
-            ReviewStrategy = "Reviewed the hot path first.",
-            ScopeCoverage = "Inspected Program.cs.",
-            CrossScopeAnalysis = "No cross-scope inspection was required.",
-        };
-
-    private static NoIssueConclusion CreateNoIssueConclusion() =>
-        new()
-        {
-            ReviewStrategy = "Reviewed the target files.",
-            ScopeCoverage = "Covered Program.cs.",
-            CrossScopeAnalysis = "No cross-scope inspection was required.",
-            WhyNoIssueWasFound = "The rule is satisfied.",
+            ProjectPlanTaskItemId = "task-1",
+            Files =
+            [
+                new PlanFile
+                {
+                    FilePath = "Program.cs",
+                    TotalLines = 120,
+                },
+            ],
         };
 }

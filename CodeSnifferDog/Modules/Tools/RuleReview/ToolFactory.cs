@@ -59,6 +59,21 @@ internal static class ToolFactory
         =>
     [
         AIFunctionFactory.Create(
+            callbacks.ListRuleReviewIssuesTool,
+            "ListRuleReviewIssues",
+            "List one bounded page of review issue indexes. Use GetRuleReviewIssue for complete issue details.",
+            serializerOptions: null),
+        AIFunctionFactory.Create(
+            callbacks.GetRuleReviewIssueTool,
+            "GetRuleReviewIssue",
+            "Get one stored review issue by its id from the current rule review attempt.",
+            serializerOptions: null),
+        AIFunctionFactory.Create(
+            callbacks.GetNoIssueConclusionTool,
+            "GetNoIssueConclusion",
+            "Get the current no-issue conclusion when the current rule review has no stored issues.",
+            serializerOptions: null),
+        AIFunctionFactory.Create(
             callbacks.SubmitReviewVerdictTool,
             "SubmitReviewVerdict",
             "Submit the verifier approval or rejection for the current rule review result.",
@@ -86,8 +101,14 @@ internal readonly record struct AgentToolCallbacks(
 /// <summary>
 /// Groups callbacks used by rule-review verifier tools.
 /// </summary>
+/// <param name="GetRuleReviewIssueTool">Callback for retrieving one issue.</param>
+/// <param name="ListRuleReviewIssuesTool">Callback for listing issue indexes.</param>
+/// <param name="GetNoIssueConclusionTool">Callback for retrieving the no-issue conclusion.</param>
 /// <param name="SubmitReviewVerdictTool">Callback for submitting the verifier verdict.</param>
 internal readonly record struct VerifierToolCallbacks(
+    GetRuleReviewIssueToolCallback GetRuleReviewIssueTool,
+    ListRuleReviewIssuesToolCallback ListRuleReviewIssuesTool,
+    GetNoIssueConclusionToolCallback GetNoIssueConclusionTool,
     SubmitReviewVerdictToolCallback SubmitReviewVerdictTool);
 
 /// <summary>
@@ -155,6 +176,12 @@ internal delegate ValueTask<bool> SubmitNoIssueConclusionToolCallback(
     string ScopeCoverage,
     string CrossScopeAnalysis,
     string WhyNoIssueWasFound,
+    CancellationToken cancellationToken);
+
+/// <summary>
+/// Represents the callback used to retrieve the current no-issue conclusion.
+/// </summary>
+internal delegate ValueTask<NoIssueConclusion?> GetNoIssueConclusionToolCallback(
     CancellationToken cancellationToken);
 
 /// <summary>

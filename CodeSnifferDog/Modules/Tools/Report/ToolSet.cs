@@ -3,10 +3,15 @@ using CodeSnifferDog.Models.Report.Tools;
 using CodeSnifferDog.Models.Report.Tools.Listing;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Models.RuleReview.Tools;
+using CodeSnifferDog.Modules.Tools.Report.CurrentFlow;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
 using ReportStoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using RuleReviewIssuePage = CodeSnifferDog.Models.RuleReview.Tools.Listing.IssuePage;
+using RuleReviewListIssuesArgs = CodeSnifferDog.Models.RuleReview.Tools.Listing.ListIssuesArgs;
+using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Modules.Tools.Report;
 
@@ -16,16 +21,19 @@ namespace CodeSnifferDog.Modules.Tools.Report;
 public sealed class ToolSet
 {
     private readonly IssueToolService _issueToolService;
+    private readonly IssueReader _currentFlowIssueReader;
     private readonly ReviewVerdictToolService _verdictToolService;
     private readonly string _reportVerdictScopeKey;
 
     public ToolSet(
         IIssueStore reportIssueStore,
+        IReadOnlyList<RuleReviewStoredIssue> currentFlowIssues,
         ReviewVerdictBuffer verdictBuffer,
         RuleFlowKey ruleFlowKey,
         RuleReportKey ruleReportKey)
         : this(
             new IssueToolService(reportIssueStore, ruleFlowKey),
+            new IssueReader(currentFlowIssues),
             new ReviewVerdictToolService(verdictBuffer),
             RuleScopeKeyFactory.CreateReportVerdictScopeKey(ruleFlowKey))
     {
@@ -38,10 +46,12 @@ public sealed class ToolSet
     /// </summary>
     internal ToolSet(
         IssueToolService issueToolService,
+        IssueReader currentFlowIssueReader,
         ReviewVerdictToolService verdictToolService,
         string reportVerdictScopeKey)
     {
         _issueToolService = issueToolService;
+        _currentFlowIssueReader = currentFlowIssueReader;
         _verdictToolService = verdictToolService;
         _reportVerdictScopeKey = reportVerdictScopeKey;
     }
@@ -52,6 +62,8 @@ public sealed class ToolSet
     public IList<AITool> CreateReportAggregatorTools()
         =>
         ToolFactory.CreateAggregatorTools(new AggregatorToolCallbacks(
+            GetCurrentFlowIssueToolAsync,
+            ListCurrentFlowIssuesToolAsync,
             GetRuleReportIssueToolAsync,
             ListRuleReportIssuesToolAsync,
             CreateRuleReportIssueToolAsync,
@@ -63,7 +75,37 @@ public sealed class ToolSet
     /// </summary>
     public IList<AITool> CreateVerifierTools()
         =>
-        ToolFactory.CreateVerifierTools(new VerifierToolCallbacks(SubmitReviewVerdictToolAsync));
+        ToolFactory.CreateVerifierTools(new VerifierToolCallbacks(
+            GetCurrentFlowIssueToolAsync,
+            ListCurrentFlowIssuesToolAsync,
+            SubmitReviewVerdictToolAsync));
+
+    [Description("Get one verified rule-review issue from the immutable current-flow input by its id.")]
+    private ValueTask<RuleReviewStoredIssue> GetCurrentFlowIssueToolAsync(
+        [Description("The id of the current-flow rule-review issue to retrieve.")]
+        string RuleReviewIssueId,
+        CancellationToken cancellationToken) =>
+        GetCurrentFlowIssueAsync(
+            new GetRuleReviewIssueArgs
+            {
+                RuleReviewIssueId = RuleReviewIssueId,
+            },
+            cancellationToken);
+
+    [Description("List one bounded page of verified current-flow issue indexes. Use GetCurrentFlowIssue for complete issue details.")]
+    private ValueTask<RuleReviewIssuePage> ListCurrentFlowIssuesToolAsync(
+        [Description("The continuation cursor returned by the preceding page. Omit it to start from the first page.")]
+        string? Cursor = null,
+        [Description("The number of issue indexes to return. Defaults to 10 and cannot exceed 20.")]
+        int PageSize = RuleReviewIssuePage.DefaultPageSize,
+        CancellationToken cancellationToken = default) =>
+        ListCurrentFlowIssuesAsync(
+            new RuleReviewListIssuesArgs
+            {
+                Cursor = Cursor,
+                PageSize = PageSize,
+            },
+            cancellationToken);
 
     [Description("Get one stored repository-level rule report issue by its id.")]
     private ValueTask<ReportStoredIssue> GetRuleReportIssueToolAsync(
@@ -213,6 +255,22 @@ public sealed class ToolSet
         GetRuleReportIssueArgs args,
         CancellationToken cancellationToken) =>
         _issueToolService.GetRuleReportIssueAsync(args, cancellationToken);
+
+    /// <summary>
+    /// Gets one complete issue from the immutable verified input for the current report flow.
+    /// </summary>
+    public ValueTask<RuleReviewStoredIssue> GetCurrentFlowIssueAsync(
+        GetRuleReviewIssueArgs args,
+        CancellationToken cancellationToken) =>
+        _currentFlowIssueReader.GetAsync(args, cancellationToken);
+
+    /// <summary>
+    /// Lists one bounded page of compact issue indexes from the immutable verified input for the current report flow.
+    /// </summary>
+    public ValueTask<RuleReviewIssuePage> ListCurrentFlowIssuesAsync(
+        RuleReviewListIssuesArgs args,
+        CancellationToken cancellationToken) =>
+        _currentFlowIssueReader.ListAsync(args, cancellationToken);
 
     /// <summary>
     /// Lists one bounded page of repository-level issue indexes.

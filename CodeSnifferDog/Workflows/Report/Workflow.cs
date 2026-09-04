@@ -30,7 +30,7 @@ namespace CodeSnifferDog.Workflows.Report;
 /// <param name="options">Optional workflow options that control retries and timeouts.</param>
 /// <param name="agentEventBus">Optional event bus used to publish agent lifecycle and transcript events.</param>
 public sealed class Workflow(
-    Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> reportAggregatorAgentFactory,
+    Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, IAgentEventScope, AgentCreationResult> reportAggregatorAgentFactory,
     Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, IAgentEventScope, AgentCreationResult> reportVerifierAgentFactory,
     IIssueStore reportIssueStore,
     ReviewVerdictBuffer verdictBuffer,
@@ -39,7 +39,7 @@ public sealed class Workflow(
     IAgentEventBus? agentEventBus = null,
     ILogger? logger = null)
 {
-    private readonly Func<string, string, string, StoredTaskItem, IAgentEventScope, AgentCreationResult> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
+    private readonly Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, IAgentEventScope, AgentCreationResult> _reportAggregatorAgentFactory = reportAggregatorAgentFactory;
     private readonly Func<string, string, string, StoredTaskItem, IReadOnlyList<RuleReviewStoredIssue>, IAgentEventScope, AgentCreationResult> _reportVerifierAgentFactory = reportVerifierAgentFactory;
     private readonly IIssueStore _reportIssueStore = reportIssueStore;
     private readonly DiffService _diffService = new(reportIssueStore);
@@ -104,7 +104,7 @@ public sealed class Workflow(
             IAgentEventScope verifierAgentScope = _agentEventBus.CreateScope(groupKey, AgentStatusCatalog.CreateReportVerifierAgentKey(taskItem, ruleKey));
 
             Result<AgentCreationResult> createAggregatorResult = await WorkflowAgentLifecycle.CreateAndPublishAsync(
-                () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope),
+                () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, aggregatorAgentScope),
                 "Report Aggregator Agent",
                 aggregatorAgentScope,
                 AgentStatusCatalog.CreateReportAggregatorAgentDisplayName(ruleKey),
@@ -125,7 +125,7 @@ public sealed class Workflow(
 
             AIAgent reportAggregatorAgent = createAggregatorResult.Value.Agent;
             AIAgent reportVerifierAgent = createVerifierResult.Value.Agent;
-            List<ChatMessage> aggregatorMessages = _messageBuilder.CreateAggregatorMessages(currentFlowIssues);
+            List<ChatMessage> aggregatorMessages = _messageBuilder.CreateAggregatorMessages(taskItem, currentFlowIssues.Count);
             int aggregatorPublishedMessageCount = 0;
 
             int aggregatorAttempts = 0;
@@ -138,7 +138,7 @@ public sealed class Workflow(
 
                 (Result runAggregatorResult, aggregatorPublishedMessageCount, reportAggregatorAgent) = await WorkflowAgentRunService.RunAsync(
                     reportAggregatorAgent,
-                    () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, aggregatorAgentScope).Agent,
+                    () => _reportAggregatorAgentFactory(repositoryRootPath, ruleKey, ruleMarkdown, taskItem, currentFlowIssues, aggregatorAgentScope).Agent,
                     PrepareAttempt,
                     static state => state.Restore(),
                     aggregatorMessages,
@@ -154,7 +154,7 @@ public sealed class Workflow(
 
                 Diff diff = await _diffService.ComputeAndStoreDiffAsync(ruleReportKey, ruleFlowKey, cancellationToken).ConfigureAwait(false);
 
-                List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(diff);
+                List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(taskItem, currentFlowIssues.Count, diff);
                 int verifierPublishedMessageCount = 0;
                 int verifierMissingVerdictAttempts = 0;
 

@@ -94,8 +94,8 @@ public sealed class AgentFactoryConventionsTests
             ["chatClient", "repositoryRootPath", "taskItemStore", "verdictBuffer", "eventScope"]),
         new(
             typeof(CodeSnifferDog.Agents.ProjectPlan.VerifierFactory),
-            [typeof(IChatClient), typeof(string), typeof(StoredScanProject), typeof(ITaskItemStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
-            ["chatClient", "repositoryRootPath", "scanProject", "taskItemStore", "verdictBuffer", "eventScope"]),
+            [typeof(IChatClient), typeof(string), typeof(ITaskItemStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            ["chatClient", "repositoryRootPath", "taskItemStore", "verdictBuffer", "eventScope"]),
         new(
             typeof(CodeSnifferDog.Agents.RuleReview.AgentFactory),
             [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(RuleReviewIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
@@ -106,8 +106,8 @@ public sealed class AgentFactoryConventionsTests
             ["chatClient", "repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "issueStore", "verdictBuffer", "eventScope"]),
         new(
             typeof(CodeSnifferDog.Agents.Report.ReportAggregatorAgentFactory),
-            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(ReportIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
-            ["chatClient", "repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "reportIssueStore", "verdictBuffer", "eventScope"]),
+            [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(IReadOnlyList<StoredIssue>), typeof(ReportIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],
+            ["chatClient", "repositoryRootPath", "ruleKey", "ruleMarkdown", "taskItem", "currentFlowIssues", "reportIssueStore", "verdictBuffer", "eventScope"]),
         new(
             typeof(CodeSnifferDog.Agents.Report.ReportVerifierAgentFactory),
             [typeof(IChatClient), typeof(string), typeof(string), typeof(string), typeof(StoredTaskItem), typeof(IReadOnlyList<StoredIssue>), typeof(ReportIssueStore), typeof(ReviewVerdictBuffer), typeof(IAgentEventScope)],

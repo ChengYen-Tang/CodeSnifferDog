@@ -37,6 +37,121 @@ public sealed class WorkflowTests
     public required TestContext TestContext { get; init; }
 
     [TestMethod]
+    public async Task RunAsync_ExposesCurrentFlowIssuesThroughReadOnlyTools()
+    {
+        ScriptedChatClient aggregatorChatClient = new(invocation =>
+        {
+            if (!HasFunctionResult(invocation.Messages, "list-current-flow-for-aggregation"))
+            {
+                return CreateFunctionCallResponse(
+                    "list-current-flow-for-aggregation",
+                    "ListCurrentFlowIssues",
+                    new Dictionary<string, object?>());
+            }
+
+            if (!HasFunctionResult(invocation.Messages, "get-current-flow-for-aggregation"))
+            {
+                return CreateFunctionCallResponse(
+                    "get-current-flow-for-aggregation",
+                    "GetCurrentFlowIssue",
+                    new Dictionary<string, object?>
+                    {
+                        ["RuleReviewIssueId"] = "flow-issue-1",
+                    });
+            }
+
+            if (HasFunctionResult(invocation.Messages, "create-report-issue"))
+                return CreateAssistantResponse("Initial aggregation recorded.");
+
+            return CreateFunctionCallResponse(
+                "create-report-issue",
+                "CreateRuleReportIssue",
+                CreateIssueArguments(
+                    "Performance",
+                    "High",
+                    "Program.cs",
+                    "Repeated synchronous call",
+                    "This blocks the request path.",
+                    "High",
+                    "Program.cs",
+                    "Use a cached async path.",
+                    "Inspected Program.cs.",
+                    "No cross-scope inspection was required.",
+                    "Reviewed the hot path first."));
+        });
+        ScriptedChatClient verifierChatClient = new(invocation =>
+        {
+            if (!HasFunctionResult(invocation.Messages, "list-current-flow-for-verification"))
+            {
+                return CreateFunctionCallResponse(
+                    "list-current-flow-for-verification",
+                    "ListCurrentFlowIssues",
+                    new Dictionary<string, object?>());
+            }
+
+            if (!HasFunctionResult(invocation.Messages, "get-current-flow-for-verification"))
+            {
+                return CreateFunctionCallResponse(
+                    "get-current-flow-for-verification",
+                    "GetCurrentFlowIssue",
+                    new Dictionary<string, object?>
+                    {
+                        ["RuleReviewIssueId"] = "flow-issue-1",
+                    });
+            }
+
+            if (HasFunctionResult(invocation.Messages, "verdict-approve"))
+                return CreateAssistantResponse("Aggregation approved.");
+
+            return CreateFunctionCallResponse(
+                "verdict-approve",
+                "SubmitReviewVerdict",
+                new Dictionary<string, object?>
+                {
+                    ["Approved"] = true,
+                    ["Message"] = "The current report diff is acceptable.",
+                });
+        });
+        InMemoryIssueStore reportIssueStore = new();
+        ReviewVerdictBuffer verdictBuffer = new();
+        Workflow workflow = new(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
+                CreateAggregatorAgent(
+                    repositoryRootPath,
+                    ruleFileName,
+                    ruleMarkdown,
+                    taskItem,
+                    currentFlowIssues,
+                    aggregatorChatClient,
+                    reportIssueStore,
+                    verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
+                CreateVerifierAgent(
+                    repositoryRootPath,
+                    ruleFileName,
+                    ruleMarkdown,
+                    taskItem,
+                    currentFlowIssues,
+                    verifierChatClient,
+                    reportIssueStore,
+                    verdictBuffer),
+            reportIssueStore,
+            verdictBuffer,
+            new PromptAssetReader());
+
+        Result<WorkflowResult> result = await workflow.RunAsync(
+            TestRepositoryPaths.RootPath,
+            RuleFileName,
+            "- Detect performance issues.",
+            CreateTaskItem(),
+            CreateCurrentFlowIssues(),
+            TestContext.CancellationToken);
+
+        Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+        Assert.HasCount(1, result.Value.RepositoryIssues);
+    }
+
+    [TestMethod]
     public async Task RunAsync_ComputesDiffAgainstPreviousSnapshot()
     {
         InMemoryIssueStore reportIssueStore = await CreateSeededReportStoreAsync(TestContext.CancellationToken);
@@ -194,8 +309,8 @@ public sealed class WorkflowTests
                 ["Message"] = "The current report diff is acceptable.",
             }));
         Workflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
-                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, aggregatorChatClient, reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, aggregatorChatClient, reportIssueStore, verdictBuffer),
             (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, verifierChatClient, reportIssueStore, verdictBuffer),
             reportIssueStore,
@@ -285,12 +400,13 @@ public sealed class WorkflowTests
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         Workflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) => new ReportAggregatorAgentFactory(compactionOptions).Create(
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) => new ReportAggregatorAgentFactory(compactionOptions).Create(
                 aggregatorChatClient,
                 repositoryRootPath,
                 ruleFileName,
                 ruleMarkdown,
                 taskItem,
+                currentFlowIssues,
                 reportIssueStore,
                 verdictBuffer),
             (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) => new ReportVerifierAgentFactory(compactionOptions).Create(
@@ -378,8 +494,8 @@ public sealed class WorkflowTests
         InMemoryIssueStore reportIssueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         Workflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
-                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
             (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(HandleVerifierInvocation), reportIssueStore, verdictBuffer),
             reportIssueStore,
@@ -412,8 +528,8 @@ public sealed class WorkflowTests
         InMemoryIssueStore reportIssueStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         Workflow workflow = new(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
-                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(HandleAggregatorCreateInvocation), reportIssueStore, verdictBuffer),
             (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, new ScriptedChatClient(_ => CreateAssistantResponse("No verdict submitted.")), reportIssueStore, verdictBuffer),
             reportIssueStore,
@@ -453,8 +569,8 @@ public sealed class WorkflowTests
         PromptAssetReader promptAssetReader = new();
 
         return new Workflow(
-            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, _) =>
-                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, aggregatorChatClient, store, verdictBuffer),
+            (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
+                CreateAggregatorAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, aggregatorChatClient, store, verdictBuffer),
             (repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, _) =>
                 CreateVerifierAgent(repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, verifierChatClient, store, verdictBuffer),
             store,
@@ -468,11 +584,12 @@ public sealed class WorkflowTests
         string ruleFileName,
         string ruleMarkdown,
         StoredTaskItem taskItem,
+        IReadOnlyList<RuleReviewStoredIssue> currentFlowIssues,
         IChatClient chatClient,
         IIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer) =>
         new ReportAggregatorAgentFactory(CreateCompactionOptions(ReportAgentPromptAssets.ReportSummaryPrompt))
-            .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, reportIssueStore, verdictBuffer);
+            .Create(chatClient, repositoryRootPath, ruleFileName, ruleMarkdown, taskItem, currentFlowIssues, reportIssueStore, verdictBuffer);
 
     private static AgentCreationResult CreateVerifierAgent(
         string repositoryRootPath,

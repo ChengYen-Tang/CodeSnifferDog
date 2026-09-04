@@ -2,7 +2,6 @@ using CodeSnifferDog.Agents.ProjectPlan;
 using CodeSnifferDog.Agents.Report;
 using CodeSnifferDog.Agents.RuleReview;
 using CodeSnifferDog.Agents.Scan;
-using CodeSnifferDog.Json;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Models.ReviewAgentTeam.Runtime;
@@ -106,14 +105,11 @@ public sealed class AgentFactoryPromptContractTests
     }
 
     [TestMethod]
-    public void ProjectVerifier_RendersRepositoryRootAndScanProjectJsonPlaceholders()
+    public void ProjectVerifier_RendersRepositoryRootPlaceholder()
     {
-        StoredScanProject scanProject = CreateScanProject();
-
         AgentCreationResult result = new ProjectVerifierFactory(CreateCompactionOptions()).Create(
             new NoOpChatClient(),
             AppContext.BaseDirectory,
-            scanProject,
             new InMemoryTaskItemStore(),
             new ReviewVerdictBuffer());
 
@@ -123,7 +119,6 @@ public sealed class AgentFactoryPromptContractTests
                 new Dictionary<string, string>
                 {
                     ["RepositoryRootPath"] = AppContext.BaseDirectory,
-                    ["ScanProjectJson"] = CodeSnifferDogJson.Serialize(scanProject),
                 }),
             result.SystemPrompt);
     }
@@ -156,7 +151,7 @@ public sealed class AgentFactoryPromptContractTests
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            RenderRuleScopePrompt(RuleReviewAgentPromptAssets.RuleReviewAgentPrompt, ruleMarkdown, taskItem),
+            RenderRulePrompt(RuleReviewAgentPromptAssets.RuleReviewAgentPrompt, ruleMarkdown),
             result.SystemPrompt);
     }
 
@@ -176,12 +171,12 @@ public sealed class AgentFactoryPromptContractTests
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            RenderRuleScopePrompt(RuleReviewAgentPromptAssets.ReviewVerifierAgentPrompt, ruleMarkdown, taskItem),
+            RenderRulePrompt(RuleReviewAgentPromptAssets.ReviewVerifierAgentPrompt, ruleMarkdown),
             result.SystemPrompt);
     }
 
     [TestMethod]
-    public void ReportAggregator_RendersRuleScopePlaceholders()
+    public void ReportAggregator_RendersRulePromptWithoutTaskScopePayload()
     {
         StoredTaskItem taskItem = CreateTaskItem();
         string ruleMarkdown = "# Rule";
@@ -192,19 +187,20 @@ public sealed class AgentFactoryPromptContractTests
             "rule-key",
             ruleMarkdown,
             taskItem,
+            [],
             new ReportIssueStore(),
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            RenderRuleScopePrompt(ReportAgentPromptAssets.ReportAggregatorAgentPrompt, ruleMarkdown, taskItem),
+            RenderRulePrompt(ReportAgentPromptAssets.ReportAggregatorAgentPrompt, ruleMarkdown),
             result.SystemPrompt);
     }
 
     [TestMethod]
-    public void ReportVerifier_RendersCurrentFlowIssuesJsonPlaceholder()
+    public void ReportVerifier_RendersRulePromptWithoutCurrentFlowIssuePayload()
     {
         StoredTaskItem taskItem = CreateTaskItem();
-        IReadOnlyList<StoredIssue> currentFlowIssues = [CreateRuleReviewIssue()];
+        IReadOnlyList<StoredIssue> currentFlowIssues = [];
         string ruleMarkdown = "# Rule";
 
         AgentCreationResult result = new ReportVerifierAgentFactory(CreateCompactionOptions()).Create(
@@ -218,28 +214,29 @@ public sealed class AgentFactoryPromptContractTests
             new ReviewVerdictBuffer());
 
         Assert.AreEqual(
-            Render(
-                ReportAgentPromptAssets.ReportVerifierAgentPrompt,
-                new Dictionary<string, string>
-                {
-                    ["RepositoryRootPath"] = AppContext.BaseDirectory,
-                    ["RuleMarkdown"] = ruleMarkdown,
-                    ["CurrentFlowIssuesJson"] = CodeSnifferDogJson.Serialize(currentFlowIssues),
-                }),
+            RenderRulePrompt(ReportAgentPromptAssets.ReportVerifierAgentPrompt, ruleMarkdown),
             result.SystemPrompt);
     }
 
-    private string RenderRuleScopePrompt(
+    [TestMethod]
+    public void ReportVerifierPrompt_QuotesTheCurrentUserInputPrefix()
+    {
+        string verifierPrompt = _promptAssetReader.ReadRequiredPrompt(ReportAgentPromptAssets.ReportVerifierAgentPrompt);
+        string verifierInputPrefix = _promptAssetReader.ReadRequiredPrompt(
+            CodeSnifferDog.Workflows.Report.PromptAssetPaths.VerifierInputPrefix);
+
+        Assert.Contains(verifierInputPrefix, verifierPrompt);
+    }
+
+    private string RenderRulePrompt(
         string promptAssetPath,
-        string ruleMarkdown,
-        StoredTaskItem taskItem) =>
+        string ruleMarkdown) =>
         Render(
             promptAssetPath,
             new Dictionary<string, string>
             {
                 ["RepositoryRootPath"] = AppContext.BaseDirectory,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["ScopeFilesJson"] = CodeSnifferDogJson.Serialize(taskItem.Files),
             });
 
     private string Render(string promptAssetPath, IReadOnlyDictionary<string, string> placeholders) =>
@@ -263,16 +260,6 @@ public sealed class AgentFactoryPromptContractTests
                 new StaticSummarizer()),
         };
 
-    private static StoredScanProject CreateScanProject() =>
-        new()
-        {
-            ScanProjectId = "scan-project",
-            ProjectName = "Project",
-            ProjectPath = "src/Project",
-            ProjectType = "library",
-            Reason = "review target",
-        };
-
     private static StoredTaskItem CreateTaskItem() =>
         new()
         {
@@ -285,23 +272,6 @@ public sealed class AgentFactoryPromptContractTests
                     TotalLines = 42,
                 },
             ],
-        };
-
-    private static StoredIssue CreateRuleReviewIssue() =>
-        new()
-        {
-            RuleReviewIssueId = "review-issue",
-            IssueType = "Bug",
-            Severity = "High",
-            FileOrFunction = "Program.cs",
-            RelevantCodePatternOrExpression = "pattern",
-            WhyThisIsAProblem = "problem",
-            Confidence = "High",
-            FollowUpFiles = "none",
-            SuggestedFixDirection = "fix",
-            ReviewStrategy = "strategy",
-            ScopeCoverage = "coverage",
-            CrossScopeAnalysis = "analysis",
         };
 
     private sealed class StaticSummarizer : ISummarizer

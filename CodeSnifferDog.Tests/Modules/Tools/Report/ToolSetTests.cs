@@ -3,11 +3,15 @@ using CodeSnifferDog.Models.Report.Tools;
 using CodeSnifferDog.Models.Report.Tools.Listing;
 using CodeSnifferDog.Models.Review;
 using CodeSnifferDog.Models.RuleReview;
+using CodeSnifferDog.Models.RuleReview.Tools;
 using CodeSnifferDog.Modules.Tools.Report;
 using CodeSnifferDog.Modules.Tools.Review;
 using Microsoft.Extensions.AI;
 using System.Text.Json;
 using StoredIssue = CodeSnifferDog.Models.Report.StoredIssue;
+using RuleReviewIssuePage = CodeSnifferDog.Models.RuleReview.Tools.Listing.IssuePage;
+using RuleReviewListIssuesArgs = CodeSnifferDog.Models.RuleReview.Tools.Listing.ListIssuesArgs;
+using RuleReviewStoredIssue = CodeSnifferDog.Models.RuleReview.StoredIssue;
 
 namespace CodeSnifferDog.Tests.Modules.Tools.Report;
 
@@ -29,7 +33,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, verdictBuffer, ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], verdictBuffer, ruleFlowKey, ruleReportKey);
 
         CreateRuleReportIssueResult created = await toolSet.CreateRuleReportIssueAsync(
             CreateIssueArgs(" Program.cs ", "Repeated synchronous call", "Use a cached async path."),
@@ -75,7 +79,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         CreateRuleReportIssueResult result = await toolSet.CreateRuleReportIssueAsync(
             new CreateRuleReportIssueArgs
@@ -106,7 +110,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         await toolSet.CreateRuleReportIssueAsync(
             new CreateRuleReportIssueArgs
@@ -140,7 +144,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => toolSet.CreateRuleReportIssueAsync(
             new CreateRuleReportIssueArgs
@@ -169,7 +173,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => toolSet.CreateRuleReportIssueAsync(
             new CreateRuleReportIssueArgs
@@ -198,7 +202,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         CreateRuleReportIssueResult createdIssue = await toolSet.CreateRuleReportIssueAsync(
             CreateIssueArgs("Program.cs", "Repeated synchronous call", "Use a cached async path."),
@@ -220,7 +224,7 @@ public sealed class ToolSetTests
             RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
-        ToolSet toolSet = new(new InMemoryIssueStore(), new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(new InMemoryIssueStore(), [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
         Diff diff = new()
         {
             CreatedIssues = [],
@@ -250,8 +254,8 @@ public sealed class ToolSetTests
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", MemoryRuleFileName);
         await store.InitializeWorkingReportAsync(firstReportKey, PerformanceRuleFileName, firstFlowKey, TestContext.CancellationToken);
         await store.InitializeWorkingReportAsync(secondReportKey, MemoryRuleFileName, secondFlowKey, TestContext.CancellationToken);
-        ToolSet firstToolSet = new(store, verdictBuffer, firstFlowKey, firstReportKey);
-        ToolSet secondToolSet = new(store, verdictBuffer, secondFlowKey, secondReportKey);
+        ToolSet firstToolSet = new(store, [], verdictBuffer, firstFlowKey, firstReportKey);
+        ToolSet secondToolSet = new(store, [], verdictBuffer, secondFlowKey, secondReportKey);
 
         await firstToolSet.CreateRuleReportIssueAsync(
             CreateIssueArgs("Program.cs", "Repeated synchronous call", "Use a cached async path."),
@@ -277,8 +281,8 @@ public sealed class ToolSetTests
             RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-2", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(reportKey, PerformanceRuleFileName, firstFlowKey, TestContext.CancellationToken);
         await store.InitializeWorkingReportAsync(reportKey, PerformanceRuleFileName, secondFlowKey, TestContext.CancellationToken);
-        ToolSet firstToolSet = new(store, verdictBuffer, firstFlowKey, reportKey);
-        ToolSet secondToolSet = new(store, verdictBuffer, secondFlowKey, reportKey);
+        ToolSet firstToolSet = new(store, [], verdictBuffer, firstFlowKey, reportKey);
+        ToolSet secondToolSet = new(store, [], verdictBuffer, secondFlowKey, reportKey);
 
         await firstToolSet.CreateRuleReportIssueAsync(
             CreateIssueArgs("Program.cs", "Repeated synchronous call", "Use a cached async path."),
@@ -292,6 +296,48 @@ public sealed class ToolSetTests
     }
 
     [TestMethod]
+    public async Task CurrentFlowIssues_ArePagedAndCompleteDetailsRemainAvailableById()
+    {
+        RuleFlowKey ruleFlowKey =
+            RuleScopeKeyFactory.CreateRuleFlowKey(@"Z:\RepoA", "task-1", PerformanceRuleFileName);
+        RuleReportKey ruleReportKey =
+            RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
+        RuleReviewStoredIssue[] currentFlowIssues =
+        [
+            .. Enumerable.Range(0, RuleReviewIssuePage.DefaultPageSize + 1)
+                .Select(CreateCurrentFlowIssue),
+        ];
+        ToolSet toolSet = new(
+            new InMemoryIssueStore(),
+            currentFlowIssues,
+            new ReviewVerdictBuffer(),
+            ruleFlowKey,
+            ruleReportKey);
+
+        RuleReviewIssuePage firstPage = await toolSet.ListCurrentFlowIssuesAsync(
+            new RuleReviewListIssuesArgs(),
+            TestContext.CancellationToken);
+        RuleReviewIssuePage secondPage = await toolSet.ListCurrentFlowIssuesAsync(
+            new RuleReviewListIssuesArgs
+            {
+                Cursor = firstPage.NextCursor,
+            },
+            TestContext.CancellationToken);
+        RuleReviewStoredIssue detail = await toolSet.GetCurrentFlowIssueAsync(
+            new GetRuleReviewIssueArgs
+            {
+                RuleReviewIssueId = currentFlowIssues[^1].RuleReviewIssueId,
+            },
+            TestContext.CancellationToken);
+
+        Assert.HasCount(RuleReviewIssuePage.DefaultPageSize, firstPage.Items);
+        Assert.IsTrue(firstPage.HasMore);
+        Assert.AreEqual(currentFlowIssues[^1].RuleReviewIssueId, secondPage.Items[0].RuleReviewIssueId);
+        Assert.IsFalse(secondPage.HasMore);
+        Assert.AreEqual(currentFlowIssues[^1].WhyThisIsAProblem, detail.WhyThisIsAProblem);
+    }
+
+    [TestMethod]
     public async Task ListRuleReportIssuesAsync_ReturnsBoundedIndexesAndContinuation()
     {
         InMemoryIssueStore store = new();
@@ -300,7 +346,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         for (int index = 0; index < 11; index++)
         {
@@ -336,7 +382,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
         string issueType = new('T', 300);
         string location = new('L', 300);
 
@@ -369,7 +415,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => toolSet.ListRuleReportIssuesAsync(
             new ListIssuesArgs
@@ -388,7 +434,7 @@ public sealed class ToolSetTests
         RuleReportKey ruleReportKey =
             RuleScopeKeyFactory.CreateRuleReportKey(@"Z:\RepoA", PerformanceRuleFileName);
         await store.InitializeWorkingReportAsync(ruleReportKey, PerformanceRuleFileName, ruleFlowKey, TestContext.CancellationToken);
-        ToolSet toolSet = new(store, new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(store, [], new ReviewVerdictBuffer(), ruleFlowKey, ruleReportKey);
 
         await toolSet.CreateRuleReportIssueAsync(
             CreateIssueArgs("Program.cs", "Pattern", "Fix"),
@@ -426,5 +472,22 @@ public sealed class ToolSetTests
             ScopeCoverage = $"Inspected {fileOrFunction}.",
             CrossScopeAnalysis = "No cross-scope inspection was required.",
             ReviewStrategy = "Reviewed the hot path first.",
+        };
+
+    private static RuleReviewStoredIssue CreateCurrentFlowIssue(int index) =>
+        new()
+        {
+            RuleReviewIssueId = $"current-flow-{index:D2}",
+            IssueType = $"Issue type {index}",
+            Severity = Severity.High,
+            FileOrFunction = $"File{index:D2}.cs",
+            RelevantCodePatternOrExpression = $"Pattern {index}",
+            WhyThisIsAProblem = $"Why {index}",
+            Confidence = "High",
+            FollowUpFiles = $"File{index:D2}.cs",
+            SuggestedFixDirection = $"Fix {index}",
+            ScopeCoverage = $"Scope {index}",
+            CrossScopeAnalysis = $"Cross scope {index}",
+            ReviewStrategy = $"Strategy {index}",
         };
 }

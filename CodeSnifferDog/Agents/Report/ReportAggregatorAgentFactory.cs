@@ -1,6 +1,7 @@
 using CodeSnifferDog.Agents.Common;
 using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.Review;
+using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Models.ReviewAgentTeam;
 using CodeSnifferDog.Modules.Prompts;
 using CodeSnifferDog.Modules.Tools.Report;
@@ -17,7 +18,7 @@ namespace CodeSnifferDog.Agents.Report;
 /// </summary>
 /// <param name="compactionOptions">Compaction options applied to created agents.</param>
 /// <param name="promptAssetReader">Optional prompt reader used to load prompt assets.</param>
-/// <param name="promptTemplateRenderer">Optional template renderer used to inject repository and scope placeholders.</param>
+/// <param name="promptTemplateRenderer">Optional template renderer used to inject repository and rule placeholders.</param>
 /// <param name="loggerFactory">Optional logger factory forwarded to agent construction and common tools.</param>
 /// <param name="serviceProvider">Optional service provider used by the agent builder pipeline.</param>
 public sealed class ReportAggregatorAgentFactory(
@@ -39,6 +40,7 @@ public sealed class ReportAggregatorAgentFactory(
     /// <param name="ruleKey">Rule key whose repository-level report is being updated.</param>
     /// <param name="ruleMarkdown">Rendered rule guidance supplied to the agent.</param>
     /// <param name="taskItem">Task item whose scope produced the current flow issues.</param>
+    /// <param name="currentFlowIssues">Verified rule-review issues exposed to the agent through read-only tools.</param>
     /// <param name="reportIssueStore">Store that persists report issues and diffs.</param>
     /// <param name="verdictBuffer">Verdict buffer used by review-related tools.</param>
     /// <param name="eventScope">Optional event scope used to publish transcript events.</param>
@@ -49,6 +51,7 @@ public sealed class ReportAggregatorAgentFactory(
         string ruleKey,
         string ruleMarkdown,
         StoredTaskItem taskItem,
+        IReadOnlyList<StoredIssue> currentFlowIssues,
         IIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer,
         IAgentEventScope? eventScope = null) =>
@@ -59,6 +62,7 @@ public sealed class ReportAggregatorAgentFactory(
             ruleKey,
             ruleMarkdown,
             taskItem,
+            currentFlowIssues,
             reportIssueStore,
             verdictBuffer,
             eventScope);
@@ -72,11 +76,12 @@ public sealed class ReportAggregatorAgentFactory(
     /// <param name="ruleKey">Rule key whose repository-level report is being updated.</param>
     /// <param name="ruleMarkdown">Rendered rule guidance supplied to the agent.</param>
     /// <param name="taskItem">Task item whose scope produced the current flow issues.</param>
+    /// <param name="currentFlowIssues">Verified rule-review issues exposed to the agent through read-only tools.</param>
     /// <param name="reportIssueStore">Store that persists report issues and diffs.</param>
     /// <param name="verdictBuffer">Verdict buffer used by review-related tools.</param>
     /// <param name="eventScope">Optional event scope used to publish transcript events.</param>
     /// <returns>The created agent result.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="chatClient" />, <paramref name="taskItem" />, <paramref name="reportIssueStore" />, or <paramref name="verdictBuffer" /> is <see langword="null" />.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="chatClient" />, <paramref name="taskItem" />, <paramref name="currentFlowIssues" />, <paramref name="reportIssueStore" />, or <paramref name="verdictBuffer" /> is <see langword="null" />.</exception>
     /// <exception cref="ArgumentException"><paramref name="promptTemplate" />, <paramref name="repositoryRootPath" />, <paramref name="ruleKey" />, or <paramref name="ruleMarkdown" /> is null, empty, or whitespace.</exception>
     private AgentCreationResult CreateFromPromptTemplate(
         IChatClient chatClient,
@@ -85,6 +90,7 @@ public sealed class ReportAggregatorAgentFactory(
         string ruleKey,
         string ruleMarkdown,
         StoredTaskItem taskItem,
+        IReadOnlyList<StoredIssue> currentFlowIssues,
         IIssueStore reportIssueStore,
         ReviewVerdictBuffer verdictBuffer,
         IAgentEventScope? eventScope)
@@ -95,6 +101,7 @@ public sealed class ReportAggregatorAgentFactory(
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleMarkdown);
         ArgumentNullException.ThrowIfNull(taskItem);
+        ArgumentNullException.ThrowIfNull(currentFlowIssues);
         ArgumentNullException.ThrowIfNull(reportIssueStore);
         ArgumentNullException.ThrowIfNull(verdictBuffer);
 
@@ -104,11 +111,10 @@ public sealed class ReportAggregatorAgentFactory(
             {
                 ["RepositoryRootPath"] = repositoryRootPath,
                 ["RuleMarkdown"] = ruleMarkdown,
-                ["ScopeFilesJson"] = AgentPromptRenderer.JsonValue(taskItem.Files),
             });
         RuleFlowKey ruleFlowKey = RuleScopeKeyFactory.CreateRuleFlowKey(repositoryRootPath, taskItem.ProjectPlanTaskItemId, ruleKey);
         RuleReportKey ruleReportKey = RuleScopeKeyFactory.CreateRuleReportKey(repositoryRootPath, ruleKey);
-        ToolSet toolSet = new(reportIssueStore, verdictBuffer, ruleFlowKey, ruleReportKey);
+        ToolSet toolSet = new(reportIssueStore, currentFlowIssues, verdictBuffer, ruleFlowKey, ruleReportKey);
         return _agentBuilderService.Create(new AgentBuildRequest(
             chatClient,
             systemPrompt,

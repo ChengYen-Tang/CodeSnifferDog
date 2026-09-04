@@ -1,4 +1,5 @@
 using CodeSnifferDog.Json;
+using CodeSnifferDog.Models.ProjectPlan;
 using CodeSnifferDog.Models.RuleReview;
 using CodeSnifferDog.Workflows.Common;
 using Microsoft.Extensions.AI;
@@ -14,13 +15,14 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
     private readonly MessageTemplates _messageTemplates = messageTemplates;
 
     /// <summary>
-    /// Creates the initial rule-review conversation.
+    /// Creates the initial rule-review conversation with its system-controlled task scope.
     /// </summary>
+    /// <param name="taskItem">Task item that supplies the scope entry files.</param>
     /// <returns>The initial review conversation messages.</returns>
-    public List<ChatMessage> CreateReviewMessages()
+    public List<ChatMessage> CreateReviewMessages(StoredTaskItem taskItem)
         =>
     [
-        new(ChatRole.User, _messageTemplates.RuleReviewStartMessage),
+        new(ChatRole.User, BuildScopeInput(_messageTemplates.RuleReviewStartMessage, taskItem)),
     ];
 
     /// <summary>
@@ -32,17 +34,14 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         new(ChatRole.User, _messageTemplates.MissingRuleReviewSubmissionMessage);
 
     /// <summary>
-    /// Creates verifier messages from the rule-review output.
+    /// Creates verifier messages with the system-controlled task scope.
     /// </summary>
-    /// <param name="issues">Issues submitted by the reviewer.</param>
-    /// <param name="noIssueConclusion">No-issue conclusion submitted by the reviewer when no issues were found.</param>
+    /// <param name="taskItem">Task item that supplies the scope entry files.</param>
     /// <returns>The verifier conversation messages.</returns>
-    public List<ChatMessage> CreateVerifierMessages(
-        IReadOnlyList<StoredIssue> issues,
-        NoIssueConclusion? noIssueConclusion)
+    public List<ChatMessage> CreateVerifierMessages(StoredTaskItem taskItem)
         =>
     [
-        new(ChatRole.User, BuildVerifierInput(issues, noIssueConclusion)),
+        new(ChatRole.User, BuildScopeInput(_messageTemplates.VerifierInputPrefix, taskItem)),
     ];
 
     /// <summary>
@@ -54,20 +53,17 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         new(ChatRole.User, WorkflowRetryMessages.MissingVerifierVerdictMessage);
 
     /// <summary>
-    /// Builds the verifier payload from either the issue list or the no-issue conclusion.
+    /// Builds a system-controlled task-scope payload for an agent input message.
     /// </summary>
-    /// <param name="issues">Issues submitted by the reviewer.</param>
-    /// <param name="noIssueConclusion">No-issue conclusion submitted by the reviewer when no issues were found.</param>
-    /// <returns>The formatted verifier input.</returns>
-    /// <exception cref="InvalidOperationException">Neither issues nor a no-issue conclusion were provided.</exception>
-    private string BuildVerifierInput(
-        IReadOnlyList<StoredIssue> issues,
-        NoIssueConclusion? noIssueConclusion)
+    /// <param name="prefix">Fixed workflow instruction that introduces the payload.</param>
+    /// <param name="taskItem">Task item that supplies the scope entry files.</param>
+    /// <returns>The formatted user input.</returns>
+    private static string BuildScopeInput(string prefix, StoredTaskItem taskItem)
     {
-        string payload = issues.Count > 0
-            ? CodeSnifferDogJson.Serialize(issues)
-            : CodeSnifferDogJson.Serialize(noIssueConclusion ?? throw new InvalidOperationException("A review result is required for verification."));
+        ArgumentNullException.ThrowIfNull(taskItem);
 
-        return $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{payload}";
+        return $"{prefix}{Environment.NewLine}{Environment.NewLine}" +
+            $"Task item id:{Environment.NewLine}{taskItem.ProjectPlanTaskItemId}{Environment.NewLine}{Environment.NewLine}" +
+            $"Scope entry files:{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItem.Files)}";
     }
 }

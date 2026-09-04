@@ -55,7 +55,7 @@ internal sealed class RunnerFactory(
 
         ReviewVerdictBuffer verdictBuffer = new();
         Workflow workflow = new(
-            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, eventScope) => new ReportAggregatorAgentFactory(
+            (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, eventScope) => new ReportAggregatorAgentFactory(
                 RunnerCompactionOptions.Create(
                     context.CompactionOptionsFactory,
                     SummaryPromptAssetPath,
@@ -64,7 +64,7 @@ internal sealed class RunnerFactory(
                     _loggerFactory),
                 context.PromptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(context.ChatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, reportIssueStore, verdictBuffer, eventScope),
+                serviceProvider: _serviceProvider).Create(context.ChatClient, reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, reportIssueStore, verdictBuffer, eventScope),
             (reportRepositoryRootPath, reportRuleKey, reportRuleMarkdown, reportTaskItem, issues, eventScope) => new ReportVerifierAgentFactory(
                 RunnerCompactionOptions.Create(
                     context.CompactionOptionsFactory,

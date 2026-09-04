@@ -17,6 +17,7 @@ using CodeSnifferDog.Workflows.RuleReview;
 using FluentResults;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 using CodeSnifferDog.Models.ContextCompaction.Agents;
 using CodeSnifferDog.Models.ContextCompaction.Compaction;
 using CodeSnifferDog.Models.ContextCompaction.Failures;
@@ -725,9 +726,29 @@ public sealed class WorkflowTests
         if (HasFunctionResult(invocation.Messages, "verdict-reject"))
             return CreateAssistantResponse("Review requires one correction.");
 
-        bool hasSecondaryIssue = invocation.Messages.Any(message =>
-            message.Role == ChatRole.User &&
-            message.Text?.Contains("CommonToolSet.cs", StringComparison.Ordinal) == true);
+        if (!HasFunctionResult(invocation.Messages, "list-review-issues"))
+        {
+            return CreateFunctionCallResponse(
+                "list-review-issues",
+                "ListRuleReviewIssues",
+                new Dictionary<string, object?>());
+        }
+
+        if (!HasFunctionResult(invocation.Messages, "get-review-issue"))
+        {
+            return CreateFunctionCallResponse(
+                "get-review-issue",
+                "GetRuleReviewIssue",
+                new Dictionary<string, object?>
+                {
+                    ["RuleReviewIssueId"] = GetLastListedIssueId(invocation.Messages, "list-review-issues"),
+                });
+        }
+
+        bool hasSecondaryIssue = FunctionResultContains(
+            invocation.Messages,
+            "get-review-issue",
+            "CommonToolSet.cs");
 
         return CreateFunctionCallResponse(
             hasSecondaryIssue ? "verdict-approve" : "verdict-reject",
@@ -777,9 +798,18 @@ public sealed class WorkflowTests
         if (HasFunctionResult(invocation.Messages, "verdict-reject"))
             return CreateAssistantResponse("No-issue conclusion requires one correction.");
 
-        bool hasCrossScopeInspection = invocation.Messages.Any(message =>
-            message.Role == ChatRole.User &&
-            message.Text?.Contains("CommonToolSet.cs", StringComparison.Ordinal) == true);
+        if (!HasFunctionResult(invocation.Messages, "get-no-issue-conclusion"))
+        {
+            return CreateFunctionCallResponse(
+                "get-no-issue-conclusion",
+                "GetNoIssueConclusion",
+                new Dictionary<string, object?>());
+        }
+
+        bool hasCrossScopeInspection = FunctionResultContains(
+            invocation.Messages,
+            "get-no-issue-conclusion",
+            "CommonToolSet.cs");
 
         return CreateFunctionCallResponse(
             hasCrossScopeInspection ? "verdict-approve" : "verdict-reject",
@@ -860,6 +890,30 @@ public sealed class WorkflowTests
         messages.SelectMany(message => message.Contents)
             .Where(static content => content is FunctionResultContent)
             .Any(content => string.Equals(GetCallId(content), callId, StringComparison.Ordinal));
+
+    private static string GetLastListedIssueId(IReadOnlyList<ChatMessage> messages, string callId)
+    {
+        FunctionResultContent result = messages
+            .SelectMany(message => message.Contents.OfType<FunctionResultContent>())
+            .Last(content => string.Equals(GetCallId(content), callId, StringComparison.Ordinal));
+        JsonElement payload = result.Result is JsonElement json
+            ? json
+            : JsonSerializer.SerializeToElement(result.Result);
+        JsonElement items = payload.GetProperty("items");
+
+        return items[items.GetArrayLength() - 1].GetProperty("ruleReviewIssueId").GetString()
+            ?? throw new InvalidOperationException("The review issue list result did not contain an issue id.");
+    }
+
+    private static bool FunctionResultContains(
+        IReadOnlyList<ChatMessage> messages,
+        string callId,
+        string expectedText)
+        =>
+        messages
+            .SelectMany(message => message.Contents.OfType<FunctionResultContent>())
+            .Where(content => string.Equals(GetCallId(content), callId, StringComparison.Ordinal))
+            .Any(content => JsonSerializer.Serialize(content.Result).Contains(expectedText, StringComparison.Ordinal));
 
     private static string? GetCallId(AIContent content)
         =>

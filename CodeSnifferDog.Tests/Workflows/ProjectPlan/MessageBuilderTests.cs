@@ -40,10 +40,11 @@ public sealed class MessageBuilderTests
     }
 
     [TestMethod]
-    public void CreateVerifierMessages_UsesUserRolePrefixAndSerializedTaskItemPage()
+    public void CreateVerifierMessages_UsesUserRolePrefixAndSerializedScanProjectAndTaskItemPage()
     {
         MessageTemplates templates = new(new PromptAssetReader());
         MessageBuilder builder = new(templates);
+        StoredScanProject scanProject = CreateScanProject();
         TaskItemPage taskItemPage = new()
         {
             Items =
@@ -59,12 +60,14 @@ public sealed class MessageBuilderTests
             HasMore = false,
         };
 
-        List<ChatMessage> messages = builder.CreateVerifierMessages(taskItemPage);
+        List<ChatMessage> messages = builder.CreateVerifierMessages(scanProject, taskItemPage);
 
         Assert.HasCount(1, messages);
         Assert.AreEqual(ChatRole.User, messages[0].Role);
         Assert.AreEqual(
-            $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItemPage)}",
+            $"{templates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}" +
+            $"Scan project:{Environment.NewLine}{CodeSnifferDogJson.Serialize(scanProject)}{Environment.NewLine}{Environment.NewLine}" +
+            $"Current project plan page:{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItemPage)}",
             messages[0].Text);
     }
 
@@ -78,17 +81,4 @@ public sealed class MessageBuilderTests
             Reason = "Contains workflow logic.",
         };
 
-    private static StoredTaskItem CreateTaskItem() =>
-        new()
-        {
-            ProjectPlanTaskItemId = "task-1",
-            Files =
-            [
-                new PlanFile
-                {
-                    FilePath = "Program.cs",
-                    TotalLines = 120,
-                },
-            ],
-        };
 }

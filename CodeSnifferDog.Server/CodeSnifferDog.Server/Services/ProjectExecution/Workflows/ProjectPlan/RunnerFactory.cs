@@ -63,7 +63,7 @@ internal sealed class RunnerFactory(
                 context.PromptAssetReader,
                 loggerFactory: _loggerFactory,
                 serviceProvider: _serviceProvider).Create(context.ChatClient, planRepositoryRootPath, taskItemStore, verdictBuffer, eventScope),
-            (planRepositoryRootPath, verifierScanProject, eventScope) => new VerifierFactory(
+            (planRepositoryRootPath, eventScope) => new VerifierFactory(
                 RunnerCompactionOptions.Create(
                     context.CompactionOptionsFactory,
                     SummaryPromptAssetPath,
@@ -72,7 +72,7 @@ internal sealed class RunnerFactory(
                     _loggerFactory),
                 context.PromptAssetReader,
                 loggerFactory: _loggerFactory,
-                serviceProvider: _serviceProvider).Create(context.ChatClient, planRepositoryRootPath, verifierScanProject, taskItemStore, verdictBuffer, eventScope),
+                serviceProvider: _serviceProvider).Create(context.ChatClient, planRepositoryRootPath, taskItemStore, verdictBuffer, eventScope),
             taskItemStore,
             verdictBuffer,
             context.PromptAssetReader,

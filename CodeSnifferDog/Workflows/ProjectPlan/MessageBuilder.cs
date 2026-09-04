@@ -35,14 +35,17 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         new(ChatRole.User, _messageTemplates.MissingProjectPlanSubmissionMessage);
 
     /// <summary>
-    /// Creates verifier messages for the first bounded page of task items returned by the planner.
+    /// Creates verifier messages for one scan project and the first bounded page of task items returned by the planner.
     /// </summary>
+    /// <param name="scanProject">Scanned project whose plan is being verified.</param>
     /// <param name="taskItemPage">Bounded task item indexes submitted by the planner.</param>
     /// <returns>The verifier conversation messages.</returns>
-    public List<ChatMessage> CreateVerifierMessages(TaskItemPage taskItemPage)
+    public List<ChatMessage> CreateVerifierMessages(
+        StoredScanProject scanProject,
+        TaskItemPage taskItemPage)
         =>
     [
-        new(ChatRole.User, BuildVerifierInput(taskItemPage)),
+        new(ChatRole.User, BuildVerifierInput(scanProject, taskItemPage)),
     ];
 
     /// <summary>
@@ -63,11 +66,16 @@ internal sealed class MessageBuilder(MessageTemplates messageTemplates)
         $"{_messageTemplates.PlanInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(scanProject)}";
 
     /// <summary>
-    /// Builds the verifier payload from serialized bounded task item indexes.
+    /// Builds the verifier payload from the scan-project handoff and serialized bounded task item indexes.
     /// </summary>
+    /// <param name="scanProject">Scanned project whose plan is being verified.</param>
     /// <param name="taskItemPage">Bounded task item indexes submitted by the planner.</param>
     /// <returns>The formatted verifier input.</returns>
-    private string BuildVerifierInput(TaskItemPage taskItemPage)
+    private string BuildVerifierInput(
+        StoredScanProject scanProject,
+        TaskItemPage taskItemPage)
         =>
-        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItemPage)}";
+        $"{_messageTemplates.VerifierInputPrefix}{Environment.NewLine}{Environment.NewLine}" +
+        $"Scan project:{Environment.NewLine}{CodeSnifferDogJson.Serialize(scanProject)}{Environment.NewLine}{Environment.NewLine}" +
+        $"Current project plan page:{Environment.NewLine}{CodeSnifferDogJson.Serialize(taskItemPage)}";
 }

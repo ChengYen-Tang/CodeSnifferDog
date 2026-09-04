@@ -170,30 +170,43 @@ public sealed class ToolFactoryTypedSeamTests
             DeleteRuleReviewIssueTool,
             SubmitNoIssueConclusionTool));
         IList<AITool> verifierTools = RuleReviewToolFactory.CreateVerifierTools(
-            new RuleReviewVerifierToolCallbacks(SubmitReviewVerdictTool));
+            new RuleReviewVerifierToolCallbacks(
+                GetRuleReviewIssueTool,
+                ListRuleReviewIssuesTool,
+                GetNoIssueConclusionTool,
+                SubmitReviewVerdictTool));
 
         CollectionAssert.AreEqual(
             new[] { "CreateRuleReviewIssue", "GetRuleReviewIssue", "ListRuleReviewIssues", "UpdateRuleReviewIssue", "DeleteRuleReviewIssue", "SubmitNoIssueConclusion" },
             agentTools.Select(tool => tool.Name).ToArray());
-        CollectionAssert.AreEqual(new[] { "SubmitReviewVerdict" }, verifierTools.Select(tool => tool.Name).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "ListRuleReviewIssues", "GetRuleReviewIssue", "GetNoIssueConclusion", "SubmitReviewVerdict" },
+            verifierTools.Select(tool => tool.Name).ToArray());
     }
 
     [TestMethod]
     public void ReportToolFactory_UsesTypedCallbacks()
     {
         IList<AITool> aggregatorTools = ReportToolFactory.CreateAggregatorTools(new ReportToolCallbacks(
+            GetCurrentFlowIssueTool,
+            ListCurrentFlowIssuesTool,
             GetRuleReportIssueTool,
             ListRuleReportIssuesTool,
             CreateRuleReportIssueTool,
             UpdateRuleReportIssueTool,
             DeleteRuleReportIssueTool));
         IList<AITool> verifierTools = ReportToolFactory.CreateVerifierTools(
-            new ReportVerifierToolCallbacks(SubmitReviewVerdictTool));
+            new ReportVerifierToolCallbacks(
+                GetCurrentFlowIssueTool,
+                ListCurrentFlowIssuesTool,
+                SubmitReviewVerdictTool));
 
         CollectionAssert.AreEqual(
-            new[] { "GetRuleReportIssue", "ListRuleReportIssues", "CreateRuleReportIssue", "UpdateRuleReportIssue", "DeleteRuleReportIssue" },
+            new[] { "ListCurrentFlowIssues", "GetCurrentFlowIssue", "GetRuleReportIssue", "ListRuleReportIssues", "CreateRuleReportIssue", "UpdateRuleReportIssue", "DeleteRuleReportIssue" },
             aggregatorTools.Select(tool => tool.Name).ToArray());
-        CollectionAssert.AreEqual(new[] { "SubmitReviewVerdict" }, verifierTools.Select(tool => tool.Name).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "ListCurrentFlowIssues", "GetCurrentFlowIssue", "SubmitReviewVerdict" },
+            verifierTools.Select(tool => tool.Name).ToArray());
     }
 
     private static ValueTask<CommandExecutionResult> RunShellCommandTool(string Command, CancellationToken cancellationToken) =>
@@ -324,6 +337,20 @@ public sealed class ToolFactoryTypedSeamTests
         string WhyNoIssueWasFound,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(true);
+
+    private static ValueTask<NoIssueConclusion?> GetNoIssueConclusionTool(CancellationToken cancellationToken) =>
+        ValueTask.FromResult<NoIssueConclusion?>(null);
+
+    private static ValueTask<ReviewStoredIssue> GetCurrentFlowIssueTool(
+        string RuleReviewIssueId,
+        CancellationToken cancellationToken) =>
+        GetRuleReviewIssueTool(RuleReviewIssueId, cancellationToken);
+
+    private static ValueTask<IssuePage> ListCurrentFlowIssuesTool(
+        string? Cursor,
+        int PageSize,
+        CancellationToken cancellationToken) =>
+        ListRuleReviewIssuesTool(Cursor, PageSize, cancellationToken);
 
     private static ValueTask<ReportStoredIssue> GetRuleReportIssueTool(string RuleReportIssueId, CancellationToken cancellationToken) =>
         ValueTask.FromResult(new ReportStoredIssue { RuleReportIssueId = RuleReportIssueId, IssueType = "", Severity = Severity.Low, FileOrFunction = "", RelevantCodePatternOrExpression = "", WhyThisIsAProblem = "", Confidence = "", FollowUpFiles = "", SuggestedFixDirection = "", ScopeCoverage = "", CrossScopeAnalysis = "", ReviewStrategy = "" });

@@ -198,8 +198,8 @@ public sealed class WorkflowTests
                 createdPlanAgents++;
                 return CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer);
             },
-            (repositoryRootPath, scanProject, _) =>
-                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            (repositoryRootPath, _) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
             promptAssetReader,
@@ -257,8 +257,8 @@ public sealed class WorkflowTests
         PromptAssetReader promptAssetReader = new();
         Workflow workflow = new(
             (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
-            (repositoryRootPath, scanProject, _) =>
-                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            (repositoryRootPath, _) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
             promptAssetReader,
@@ -291,8 +291,8 @@ public sealed class WorkflowTests
         PromptAssetReader promptAssetReader = new();
         Workflow workflow = new(
             (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
-            (repositoryRootPath, scanProject, _) =>
-                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            (repositoryRootPath, _) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
             promptAssetReader,
@@ -428,7 +428,7 @@ public sealed class WorkflowTests
     }
 
     [TestMethod]
-    public async Task RunAsync_PassesCurrentScanProject_ToVerifierPromptContext()
+    public async Task RunAsync_PassesCurrentScanProject_ToVerifierUserInput()
     {
         StoredScanProject scanProject = new()
         {
@@ -438,33 +438,40 @@ public sealed class WorkflowTests
             ProjectType = ".csproj",
             Reason = "RuntimeContext-selected project.",
         };
-        string? verifierPrompt = null;
+        string? verifierInput = null;
         ScriptedChatClient planChatClient = new(HandlePlanInvocation);
-        ScriptedChatClient verifierChatClient = new(_ => CreateFunctionCallResponse(
-            "verdict-approve",
-            "SubmitReviewVerdict",
-            new Dictionary<string, object?>
-            {
-                ["Approved"] = true,
-                ["Message"] = "The project plan is acceptable.",
-            }));
+        ScriptedChatClient verifierChatClient = new(invocation =>
+        {
+            verifierInput = invocation.Messages
+                .FirstOrDefault(message =>
+                    message.Role == ChatRole.User &&
+                    message.Text?.StartsWith(CreateMessageTemplates().VerifierInputPrefix, StringComparison.Ordinal) == true)
+                ?.Text;
+
+            return CreateFunctionCallResponse(
+                "verdict-approve",
+                "SubmitReviewVerdict",
+                new Dictionary<string, object?>
+                {
+                    ["Approved"] = true,
+                    ["Message"] = "The project plan is acceptable.",
+                });
+        });
         InMemoryTaskItemStore taskItemStore = new();
         ReviewVerdictBuffer verdictBuffer = new();
         PromptAssetReader promptAssetReader = new();
         Workflow workflow = new(
             (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
-            (repositoryRootPath, currentScanProject, _) =>
+            (repositoryRootPath, _) =>
             {
                 VerifierFactory factory =
                     new(CreateCompactionOptions(ProjectPlanAgentPromptAssets.ProjectPlanSummaryPrompt));
                 AgentCreationResult createdAgent = factory.Create(
                     verifierChatClient,
                     repositoryRootPath,
-                    currentScanProject,
                     taskItemStore,
                     verdictBuffer);
 
-                verifierPrompt = createdAgent.SystemPrompt;
                 return createdAgent;
             },
             taskItemStore,
@@ -475,9 +482,9 @@ public sealed class WorkflowTests
             await workflow.RunAsync(TestRepositoryRootPath, scanProject, TestContext.CancellationToken);
 
         Assert.IsTrue(result.IsSuccess, string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
-        Assert.IsNotNull(verifierPrompt);
-        Assert.IsTrue(verifierPrompt.Contains("RuntimeProject", StringComparison.Ordinal));
-        Assert.IsTrue(verifierPrompt.Contains("scan-project-runtime", StringComparison.Ordinal));
+        Assert.IsNotNull(verifierInput);
+        Assert.IsTrue(verifierInput.Contains("RuntimeProject", StringComparison.Ordinal));
+        Assert.IsTrue(verifierInput.Contains("scan-project-runtime", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -539,8 +546,8 @@ public sealed class WorkflowTests
                 repositoryRootPath,
                 taskItemStore,
                 verdictBuffer),
-            (repositoryRootPath, scanProject, _) =>
-                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            (repositoryRootPath, _) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
             promptAssetReader);
@@ -635,8 +642,8 @@ public sealed class WorkflowTests
 
         return new Workflow(
             (repositoryRootPath, _) => CreatePlanAgent(repositoryRootPath, planChatClient, taskItemStore, verdictBuffer),
-            (repositoryRootPath, scanProject, _) =>
-                CreateVerifierAgent(repositoryRootPath, verifierChatClient, scanProject, taskItemStore, verdictBuffer),
+            (repositoryRootPath, _) =>
+                CreateVerifierAgent(repositoryRootPath, verifierChatClient, taskItemStore, verdictBuffer),
             taskItemStore,
             verdictBuffer,
             promptAssetReader,
@@ -674,11 +681,10 @@ public sealed class WorkflowTests
     private static AgentCreationResult CreateVerifierAgent(
         string repositoryRootPath,
         IChatClient chatClient,
-        StoredScanProject scanProject,
         ITaskItemStore taskItemStore,
         ReviewVerdictBuffer verdictBuffer) =>
         new VerifierFactory(CreateCompactionOptions(ProjectPlanAgentPromptAssets.ProjectPlanSummaryPrompt))
-            .Create(chatClient, repositoryRootPath, scanProject, taskItemStore, verdictBuffer);
+            .Create(chatClient, repositoryRootPath, taskItemStore, verdictBuffer);
 
     private static AgentCompactionOptions CreateCompactionOptions(
         string summaryPromptAssetPath,

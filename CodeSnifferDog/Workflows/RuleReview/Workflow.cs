@@ -114,7 +114,7 @@ public sealed class Workflow(
 
             AIAgent ruleReviewAgent = createRuleReviewAgentResult.Value.Agent;
             AIAgent reviewVerifierAgent = createReviewVerifierAgentResult.Value.Agent;
-            List<ChatMessage> reviewMessages = _messageBuilder.CreateReviewMessages();
+            List<ChatMessage> reviewMessages = _messageBuilder.CreateReviewMessages(taskItem);
             int reviewPublishedMessageCount = 0;
 
             int reviewAttempts = 0;
@@ -187,7 +187,7 @@ public sealed class Workflow(
 
                         ruleReviewAgent = recreateRuleReviewAgentResult.Value.Agent;
                         await reviewAgentScope.PublishStatusChangedAsync(AgentStatusCatalog.WaitingStatus, cancellationToken).ConfigureAwait(false);
-                        reviewMessages = _messageBuilder.CreateReviewMessages();
+                        reviewMessages = _messageBuilder.CreateReviewMessages(taskItem);
                         reviewPublishedMessageCount = 0;
                         missingSubmissionAttempts = 0;
                         continue;
@@ -198,7 +198,7 @@ public sealed class Workflow(
                 }
 
                 missingSubmissionAttempts = 0;
-                List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(issues, noIssueConclusion);
+                List<ChatMessage> verifierMessages = _messageBuilder.CreateVerifierMessages(taskItem);
                 int verifierPublishedMessageCount = 0;
                 int verifierMissingVerdictAttempts = 0;
 
